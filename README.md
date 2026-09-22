@@ -2,7 +2,7 @@
 
 Mink is lakehouse-native streaming storage on object storage. Log tables and primary-key tables over Kafka and Arrow Flight, history tiered into Iceberg and served with the live tail as one table.
 
-[Documentation](website/pages/docs/index.md) · [Quick start](website/pages/docs/quick-start.md) · [Mink vs Apache Fluss](website/pages/docs/faq/fluss.md) · [Contribute](website/pages/docs/contribute.md)
+[Documentation](https://minkdb.com/docs/) · [Quick start](website/pages/docs/quick-start.md) · [Mink vs Apache Fluss](https://minkdb.com/docs/faq/fluss) · [Contribute](https://minkdb.com/docs/contribute)
 
 ## Install
 

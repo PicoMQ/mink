@@ -1,0 +1,58 @@
+name: Bug report
+description: Report a bug in Mink.
+title: "[bug] "
+labels: ["bug"]
+type: Bug
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what happened instead.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Node
+        - Arrow Flight
+        - Kafka protocol
+        - Storage (WAL, S3)
+        - Metadata (Postgres, SQLite)
+        - Tiering (Iceberg)
+        - Query (mink-query)
+        - CLI
+        - Docs
+        - Other
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: "v0.1.0, image tag, or commit SHA"
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: "Docker compose on macOS, S3 backend RustFS, single node"
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      placeholder: |
+        1. Start with ...
+        2. Write ...
+        3. Observe ...
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and config
+      description: Node output, query output, or the `mink serve` flags / `MINK_*` env you run with.
+      render: text
