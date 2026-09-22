@@ -1,0 +1,28 @@
+[package]
+name = "mink-log"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Mink log tablet: one s3stream stream per bucket, offsets, timestamps, idempotent writers"
+repository.workspace = true
+
+[dependencies]
+s3stream = { workspace = true }
+mink-common = { workspace = true }
+mink-table = { workspace = true }
+mink-record = { workspace = true }
+
+async-trait = { workspace = true }
+bytes = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+arrow-array = { workspace = true }
+arrow-schema = { workspace = true }
+
+[lints]
+workspace = true

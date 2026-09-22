@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc c0b693d8a7f86efe12e7d4ff8e5016ba317d148af60efeb4cbb88924deb4c7c5 # shrinks to data_type = DataType { kind: Row(Fields([Field { name: "a", data_type: DataType { kind: Boolean, nullable: true }, description: None, id: Some(FieldId(0)) }])), nullable: false }

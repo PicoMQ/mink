@@ -1,0 +1,25 @@
+[package]
+name = "mink-table"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Mink table model: paths, schema, descriptor, buckets, partitions, merge engines, bucketing"
+repository.workspace = true
+
+[dependencies]
+mink-common = { workspace = true }
+mink-types = { workspace = true }
+
+chrono-tz = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+hex = { workspace = true }
+pretty_assertions = { workspace = true }
+proptest = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

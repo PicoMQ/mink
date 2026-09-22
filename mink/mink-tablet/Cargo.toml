@@ -1,0 +1,38 @@
+[package]
+name = "mink-tablet"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Mink KV tablet: upsert path, pre-write buffer, merge engines, partial update, checkpoint and recovery"
+repository.workspace = true
+
+[dependencies]
+mink-common = { workspace = true }
+mink-types = { workspace = true }
+mink-table = { workspace = true }
+mink-record = { workspace = true }
+mink-log = { workspace = true }
+mink-kv = { workspace = true }
+
+arrow-array = { workspace = true }
+arrow-schema = { workspace = true }
+async-trait = { workspace = true }
+bytes = { workspace = true }
+futures = { workspace = true }
+object_store = { workspace = true }
+roaring = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+futures = { workspace = true }
+object_store = { workspace = true }
+mink-common = { workspace = true }
+s3stream = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

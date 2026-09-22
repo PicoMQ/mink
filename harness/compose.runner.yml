@@ -1,0 +1,49 @@
+services:
+  runner:
+    image: ${MINK_RUNNER_IMAGE:-mink-runner:local}
+    build:
+      context: ..
+      dockerfile: Dockerfile.e2e
+    profiles: ["runner"]
+    working_dir: /src
+    environment:
+      RUST_LOG: ${RUST_LOG:-info}
+      RUST_BACKTRACE: "1"
+      CARGO_TARGET_DIR: /target
+      CARGO_HOME: /cargo
+      CARGO_INCREMENTAL: ${CARGO_INCREMENTAL:-1}
+      CARGO_PROFILE_DEV_DEBUG: ${CARGO_PROFILE_DEV_DEBUG:-true}
+      MINK_E2E: "1"
+      MINK_E2E_SCENARIO: ${MINK_E2E_SCENARIO:-single}
+      MINK_E2E_NODES: ${MINK_E2E_NODES:-grpc://mink1:9123}
+      MINK_E2E_KAFKA: ${MINK_E2E_KAFKA:-mink1:9092}
+      MINK_E2E_LAKE: ${MINK_E2E_LAKE:-1}
+      MINK_E2E_QUERY: ${MINK_E2E_QUERY:-}
+      MINK_E2E_ICEBERG_REST: http://iceberg-rest:8181
+      MINK_E2E_WAREHOUSE: s3://mink-lake
+      MINK_E2E_S3_ENDPOINT: http://rustfs:9000
+      MINK_E2E_POSTGRES: postgres://mink:mink@postgres:5432/mink
+      MINK_E2E_COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME:-mink-e2e}
+      MINK_BIN: /target/debug/mink
+      AWS_ACCESS_KEY_ID: mink
+      AWS_SECRET_ACCESS_KEY: minkminkmink
+      AWS_REGION: us-east-1
+    volumes:
+      - ..:/src
+      - e2e-target:/target
+      - e2e-cargo:/cargo
+      - /var/run/docker.sock:/var/run/docker.sock
+    entrypoint:
+      - sh
+      - -c
+      - cargo build --locked -p mink-cli && exec cargo test --locked -p mink-e2e "$@"
+      - runner
+    command: ["--", "--test-threads=1", "--nocapture"]
+
+volumes:
+  e2e-target:
+    name: mink-e2e-target
+    external: true
+  e2e-cargo:
+    name: mink-e2e-cargo
+    external: true

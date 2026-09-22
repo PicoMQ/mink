@@ -1,0 +1,38 @@
+[package]
+name = "mink-query-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "The `mink-query` binary: serve Flight SQL, run a statement, or open a shell"
+repository.workspace = true
+
+[[bin]]
+name = "mink-query"
+path = "src/main.rs"
+
+[dependencies]
+mink-lake = { workspace = true }
+mink-query = { workspace = true }
+
+anyhow = { workspace = true }
+arrow = { workspace = true }
+arrow-array = { workspace = true }
+arrow-flight = { workspace = true, features = ["flight-sql-experimental"] }
+arrow-schema = { workspace = true }
+async-trait = { workspace = true }
+bytes = { workspace = true }
+clap = { workspace = true }
+datafusion = { workspace = true }
+figment = { workspace = true }
+futures = { workspace = true }
+prost = { workspace = true }
+rustyline = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true, features = ["signal", "io-std"] }
+tonic = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,55 @@
+[package]
+name = "mink-lake"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Lake tiering: writer / committer / source traits and Iceberg, Lance, Paimon backends"
+repository.workspace = true
+
+[features]
+default = ["iceberg"]
+iceberg = ["dep:iceberg", "dep:iceberg-catalog-rest", "dep:iceberg-storage-opendal", "dep:reqwest"]
+lance = []
+paimon = []
+
+[dependencies]
+mink-common = { workspace = true }
+mink-types = { workspace = true }
+mink-table = { workspace = true }
+mink-record = { workspace = true }
+mink-metadata = { workspace = true }
+mink-coordinator = { workspace = true }
+
+arrow-array = { workspace = true }
+arrow-cast = { workspace = true }
+arrow-row = { workspace = true }
+arrow-schema = { workspace = true }
+arrow-select = { workspace = true }
+async-trait = { workspace = true }
+bytes = { workspace = true }
+chrono = { workspace = true }
+futures = { workspace = true }
+object_store = { workspace = true }
+parquet = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+tokio = { workspace = true }
+url = { workspace = true }
+tracing = { workspace = true }
+
+iceberg = { workspace = true, optional = true }
+iceberg-catalog-rest = { workspace = true, optional = true }
+iceberg-storage-opendal = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tracing-subscriber = { workspace = true }
+
+[lints]
+workspace = true

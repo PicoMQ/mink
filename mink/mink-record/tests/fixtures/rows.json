@@ -1,0 +1,30 @@
+{
+  "columns": [{"name": "bool", "type": "BOOLEAN"}, {"name": "i8", "type": "TINYINT"}, {"name": "i16", "type": "SMALLINT"}, {"name": "i32", "type": "INT"}, {"name": "i64", "type": "BIGINT"}, {"name": "f32", "type": "FLOAT"}, {"name": "f64", "type": "DOUBLE"}, {"name": "s", "type": "STRING"}, {"name": "c", "type": "CHAR(5)"}, {"name": "b", "type": "BYTES"}, {"name": "fb", "type": "BINARY(4)"}, {"name": "d10", "type": "DECIMAL(10, 2)"}, {"name": "d30", "type": "DECIMAL(30, 5)"}, {"name": "date", "type": "DATE"}, {"name": "time", "type": "TIME(3)"}, {"name": "ts3", "type": "TIMESTAMP(3)"}, {"name": "ts6", "type": "TIMESTAMP(6)"}, {"name": "ltz3", "type": "TIMESTAMP_LTZ(3)"}, {"name": "ltz6", "type": "TIMESTAMP_LTZ(6)"}],
+  "schema_id": 7,
+  "rows": [
+    {"values": [true, 1, 2, 3, 4, 1.5, 2.25, "a", "abc", "01", "01020304", "12345", "1234567890123456789012345", 19723, 3600123, {"millis": 1700000000123, "nanos": 0}, {"millis": 1700000000123, "nanos": 456000}, {"millis": 1700000000999, "nanos": 0}, {"millis": 1700000000999, "nanos": 1000}],
+     "compacted": "0000000101020003040000c03f000000000000024001610361626301010401020304b9600b01056e0f36a6443de2df798b9a01fbdddb01fbd095ffbc31fbd095ffbc31c0ea1be7d795ffbc31e7d795ffbc31e807",
+     "value": "07000000000101020003040000c03f000000000000024001610361626301010401020304b9600b01056e0f36a6443de2df798b9a01fbdddb01fbd095ffbc31fbd095ffbc31c0ea1be7d795ffbc31e7d795ffbc31e807"},
+    {"values": [false, -1, -2, -3, -4, -1.5, -2.25, "", "", "", "00000000", "-12345", "-1234567890123456789012345", -1, 0, {"millis": -1, "nanos": 0}, {"millis": -1, "nanos": 0}, {"millis": -1, "nanos": 0}, {"millis": -1, "nanos": 999000}],
+     "compacted": "00000000fffefffdffffff0ffcffffffffffffffff010000c0bf00000000000002c00000000400000000c79fffffffffffffff010bfefa91f0c959bbc21d2087ffffffff0f00ffffffffffffffffff01ffffffffffffffffff0100ffffffffffffffffff01ffffffffffffffffff01d8fc3c",
+     "value": "070000000000fffefffdffffff0ffcffffffffffffffff010000c0bf00000000000002c00000000400000000c79fffffffffffffff010bfefa91f0c959bbc21d2087ffffffff0f00ffffffffffffffffff01ffffffffffffffffff0100ffffffffffffffffff01ffffffffffffffffff01d8fc3c"},
+    {"values": [true, 127, 32767, 2147483647, 9223372036854775807, 3.4028235E38, 1.7976931348623157E308, "1234567", "12345", "31323334353637", "fffefdfc", "9999999999", "999999999999999999999999999999", 2147483647, 86399999, {"millis": 9223372036854775807, "nanos": 0}, {"millis": 9223372036854, "nanos": 775000}, {"millis": 9223372036854775807, "nanos": 0}, {"millis": 9223372036854, "nanos": 0}],
+     "compacted": "000000017fff7fffffffff07ffffffffffffffff7fffff7f7fffffffffffffef7f0731323334353637053132333435073132333435363704fffefdfcffc7afa0250d0c9f2c9cd04674edea3fffffffffffffff07ffb79929ffffffffffffffff7ff6b5c1deb78c02d8a62fffffffffffffffff7ff6b5c1deb78c0200",
+     "value": "0700000000017fff7fffffffff07ffffffffffffffff7fffff7f7fffffffffffffef7f0731323334353637053132333435073132333435363704fffefdfcffc7afa0250d0c9f2c9cd04674edea3fffffffffffffff07ffb79929ffffffffffffffff7ff6b5c1deb78c02d8a62fffffffffffffffff7ff6b5c1deb78c0200"},
+    {"values": [false, -128, -32768, -2147483648, -9223372036854775808, 1.4E-45, 4.9E-324, "12345678", "x", "3132333435363738", "80000001", "-9999999999", "-999999999999999999999999999999", -2147483648, 1, {"millis": -9223372036854775808, "nanos": 0}, {"millis": -9223372036854, "nanos": 1000}, {"millis": -9223372036854775808, "nanos": 0}, {"millis": -9223372036854, "nanos": 1000}],
+     "compacted": "000000008000808080808008808080808080808080010100000001000000000000000831323334353637380178083132333435363738048000000181b8d0dfdaffffffff010df360d3632fb98b1215c0000001808080800801808080808080808080018acabea1c8f3fdffff01e807808080808080808080018acabea1c8f3fdffff01e807",
+     "value": "0700000000008000808080808008808080808080808080010100000001000000000000000831323334353637380178083132333435363738048000000181b8d0dfdaffffffff010df360d3632fb98b1215c0000001808080800801808080808080808080018acabea1c8f3fdffff01e807808080808080808080018acabea1c8f3fdffff01e807"},
+    {"values": [true, 0, 0, 0, 0, 0.0, 0.0, "héllo wörld ✓ 中文", "héllo", "74686520717569636b2062726f776e20666f78206a756d7073206f76657220746865206c617a7920646f67", "01000000", "0", "0", 0, 43200000, {"millis": 0, "nanos": 0}, {"millis": 0, "nanos": 0}, {"millis": 0, "nanos": 0}, {"millis": 0, "nanos": 0}],
+     "compacted": "0000000100000000000000000000000000000000001868c3a96c6c6f2077c3b6726c6420e29c9320e4b8ade696870668c3a96c6c6f2b74686520717569636b2062726f776e20666f78206a756d7073206f76657220746865206c617a7920646f6704010000000001000080dccc14000000000000",
+     "value": "07000000000100000000000000000000000000000000001868c3a96c6c6f2077c3b6726c6420e29c9320e4b8ade696870668c3a96c6c6f2b74686520717569636b2062726f776e20666f78206a756d7073206f76657220746865206c617a7920646f6704010000000001000080dccc14000000000000"},
+    {"values": [null, 1, null, 3, null, 1.5, null, "a", null, "01", null, "12345", null, 19723, null, {"millis": 1700000000123, "nanos": 0}, null, {"millis": 1700000000999, "nanos": 0}, null],
+     "compacted": "55550501030000c03f01610101b9608b9a01fbd095ffbc31e7d795ffbc31",
+     "value": "070055550501030000c03f01610101b9608b9a01fbd095ffbc31e7d795ffbc31"},
+    {"values": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
+     "compacted": "ffff07",
+     "value": "0700ffff07"},
+    {"values": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, {"millis": -1, "nanos": 999000}],
+     "compacted": "ffff03ffffffffffffffffff01d8fc3c",
+     "value": "0700ffff03ffffffffffffffffff01d8fc3c"}
+  ]
+}

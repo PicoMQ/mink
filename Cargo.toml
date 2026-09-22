@@ -1,0 +1,157 @@
+[workspace]
+resolver = "2"
+members = [
+    "mink/mink-common",
+    "mink/mink-types",
+    "mink/mink-table",
+    "mink/mink-record",
+    "mink/mink-metadata",
+    "mink/mink-sql",
+    "mink/mink-auth",
+    "mink/mink-log",
+    "mink/mink-kv",
+    "mink/mink-tablet",
+    "mink/mink-coordinator",
+    "mink/mink-lake",
+    "mink/mink-read",
+    "mink/mink-protocol",
+    "mink/mink-flight",
+    "mink/mink-kafka",
+    "mink/mink-server",
+    "mink/mink-client",
+    "mink/mink-runtime",
+    "mink/mink-cli",
+    "mink/mink-e2e",
+    "query/mink-query",
+    "query/mink-query-cli",
+]
+default-members = ["mink/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.98"
+license = "Apache-2.0"
+description = "Mink: real-time tables on object storage."
+repository = "https://github.com/PicoMQ/mink"
+
+[workspace.dependencies]
+s3stream = { git = "https://github.com/PicoMQ/s3stream", tag = "v0.1.0" }
+
+mink-common = { path = "mink/mink-common" }
+mink-types = { path = "mink/mink-types" }
+mink-table = { path = "mink/mink-table" }
+mink-record = { path = "mink/mink-record" }
+mink-metadata = { path = "mink/mink-metadata" }
+mink-sql = { path = "mink/mink-sql" }
+mink-auth = { path = "mink/mink-auth" }
+mink-log = { path = "mink/mink-log" }
+mink-kv = { path = "mink/mink-kv" }
+mink-tablet = { path = "mink/mink-tablet" }
+mink-coordinator = { path = "mink/mink-coordinator" }
+mink-lake = { path = "mink/mink-lake" }
+mink-protocol = { path = "mink/mink-protocol" }
+mink-read = { path = "mink/mink-read" }
+mink-flight = { path = "mink/mink-flight" }
+mink-kafka = { path = "mink/mink-kafka" }
+mink-server = { path = "mink/mink-server" }
+mink-client = { path = "mink/mink-client" }
+mink-runtime = { path = "mink/mink-runtime" }
+mink-query = { path = "query/mink-query" }
+
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "sync", "time", "macros", "io-util", "fs"] }
+tokio-stream = "0.1.19"
+async-trait = "0.1.92"
+async-stream = "0.3.6"
+futures = "0.3.34"
+
+anyhow = "1.0.104"
+bytes = "1.12.1"
+thiserror = "2.0.20"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+metrics = "0.24.6"
+uuid = { version = "1.26.0", features = ["serde", "v4", "v7"] }
+chrono = { version = "0.4.45", features = ["serde"] }
+chrono-tz = "0.10"
+im = "15.1.0"
+arc-swap = "1.9.2"
+crc32fast = "1.5.1"
+crc32c = "0.6.8"
+flatbuffers = "25.2.10"
+lru = "0.18.4"
+fastrand = "2.5.0"
+md-5 = "0.11.0"
+hex = "0.4.3"
+humantime = "2.4.0"
+url = "2.5.8"
+reqwest = { version = "0.12.28", default-features = false, features = ["json", "rustls-tls"] }
+
+arrow = "58.4.0"
+arrow-array = "58.4.0"
+arrow-schema = "58.4.0"
+arrow-ipc = { version = "58.4.0", features = ["zstd", "lz4"] }
+arrow-data = "58.4.0"
+arrow-buffer = "58.4.0"
+arrow-row = "58.4.0"
+arrow-select = "58.4.0"
+arrow-cast = "58.4.0"
+arrow-json = "58.4.0"
+arrow-flight = "58.4.0"
+parquet = "58.4.0"
+datafusion = { version = "54.1.0", default-features = false, features = [
+    "nested_expressions",
+    "crypto_expressions",
+    "datetime_expressions",
+    "encoding_expressions",
+    "regex_expressions",
+    "string_expressions",
+    "unicode_expressions",
+    "math_expressions",
+    "recursive_protection",
+    "sql",
+] }
+rustyline = "18.0.1"
+tonic = "0.14.4"
+prost = "0.14.4"
+
+roaring = "0.11"
+object_store = { version = "0.14.1", features = ["aws"] }
+surrealkv = "0.21"
+sqlx = { version = "0.9.0", default-features = false, features = [
+    "runtime-tokio",
+    "sqlite",
+    "postgres",
+    "chrono",
+    "json",
+] }
+
+iceberg = "0.10.1"
+iceberg-catalog-rest = "0.10.1"
+iceberg-storage-opendal = "0.10.1"
+
+kafka-protocol = { version = "0.18.0", default-features = false, features = ["broker", "client", "gzip", "zstd", "snappy", "lz4"] }
+rdkafka = { version = "0.39.0", default-features = false, features = ["cmake-build", "tokio"] }
+
+clap = { version = "4.6.6", features = ["derive", "env"] }
+figment = { version = "0.10.19", features = ["toml", "env"] }
+toml = "1.1.5"
+base64 = "0.23.1"
+sha2 = "0.11.0"
+subtle = "2.6.1"
+zeroize = { version = "1.9.0", features = ["derive"] }
+getrandom = "0.4.3"
+
+proptest = "1.11.0"
+tokio-test = "0.4.5"
+tempfile = "3.27.0"
+criterion = "0.8.2"
+pretty_assertions = "1.4.1"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+todo = "allow"

@@ -1,0 +1,140 @@
+x-mink: &mink
+  image: ${MINK_IMAGE:-mink:local}
+  build:
+    context: ..
+    dockerfile: Dockerfile
+    args:
+      PROFILE: ${MINK_PROFILE:-release}
+  environment: &mink-env
+    RUST_LOG: ${RUST_LOG:-info}
+    RUST_BACKTRACE: "1"
+    MINK_CLUSTER_ID: mink-e2e
+    MINK_META_URL: postgres://mink:mink@postgres:5432/mink
+    MINK_STORAGE_URI: "-2@s3://mink?region=us-east-1&endpoint=http://rustfs:9000&pathStyle=true"
+    MINK_WAL_URI: "0@s3://mink?region=us-east-1&endpoint=http://rustfs:9000&pathStyle=true&batchInterval=5"
+    MINK_DATA_DIR: /data
+    MINK_LISTEN: 0.0.0.0:9123
+    AWS_ACCESS_KEY_ID: mink
+    AWS_SECRET_ACCESS_KEY: minkminkmink
+    AWS_REGION: us-east-1
+  volumes:
+    - ./mink.toml:/etc/mink/mink.toml:ro
+  depends_on:
+    postgres:
+      condition: service_healthy
+    createbucket:
+      condition: service_completed_successfully
+    iceberg-rest:
+      condition: service_healthy
+  healthcheck:
+    test: ["CMD", "mink", "-b", "grpc://127.0.0.1:9123", "cluster", "health"]
+    interval: 2s
+    timeout: 5s
+    retries: 30
+    start_period: 5s
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:17-bookworm
+    container_name: mink-postgres
+    environment:
+      POSTGRES_USER: mink
+      POSTGRES_PASSWORD: mink
+      POSTGRES_DB: mink
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mink -d mink"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  rustfs:
+    image: rustfs/rustfs:1.0.0-rc.3
+    container_name: mink-rustfs
+    command: ["/data"]
+    environment:
+      RUSTFS_ACCESS_KEY: mink
+      RUSTFS_SECRET_KEY: minkminkmink
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_OBS_LOGGER_LEVEL: error
+    volumes:
+      - rustfs-data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/health || exit 1"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+    restart: unless-stopped
+
+  createbucket:
+    image: amazon/aws-cli:2.27.50
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    environment:
+      AWS_ACCESS_KEY_ID: mink
+      AWS_SECRET_ACCESS_KEY: minkminkmink
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        aws --endpoint-url http://rustfs:9000 s3 mb s3://mink 2>/dev/null || true
+        aws --endpoint-url http://rustfs:9000 s3 mb s3://mink-lake 2>/dev/null || true
+        aws --endpoint-url http://rustfs:9000 s3 ls s3://mink >/dev/null
+        aws --endpoint-url http://rustfs:9000 s3 ls s3://mink-lake >/dev/null
+    restart: "no"
+
+  iceberg-rest:
+    image: apache/iceberg-rest-fixture:1.9.2
+    container_name: mink-iceberg-rest
+    depends_on:
+      createbucket:
+        condition: service_completed_successfully
+    environment:
+      CATALOG_WAREHOUSE: s3://mink-lake/
+      CATALOG_URI: jdbc:sqlite:file:/tmp/iceberg_rest.db
+      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
+      CATALOG_S3_ENDPOINT: http://rustfs:9000
+      CATALOG_S3_PATH__STYLE__ACCESS: "true"
+      AWS_ACCESS_KEY_ID: mink
+      AWS_SECRET_ACCESS_KEY: minkminkmink
+      AWS_REGION: us-east-1
+    ports:
+      - "8181:8181"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8181/v1/config || exit 1"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+    restart: unless-stopped
+
+  mink1:
+    <<: *mink
+    container_name: mink1
+    environment:
+      <<: *mink-env
+      MINK_NODE_ID: "1"
+    command:
+      - serve
+      - --config=/etc/mink/mink.toml
+      - --advertise=grpc://mink1:9123
+      - --kafka-advertise=mink1:9092
+    ports:
+      - "9123:9123"
+      - "9092:9092"
+
+volumes:
+  pg-data:
+  rustfs-data:

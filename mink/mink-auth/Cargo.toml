@@ -1,0 +1,11 @@
+[package]
+name = "mink-auth"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Mink authentication and authorization: tokens, scopes, and the authorizer"
+repository.workspace = true
+
+[lints]
+workspace = true

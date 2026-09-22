@@ -1,0 +1,148 @@
+name: image
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/picomq/mink
+  QUERY_IMAGE_NAME: ghcr.io/picomq/mink-query
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  build:
+    name: build ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: free runner disk
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: image-${{ matrix.arch }}
+
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake pkg-config libcurl4-openssl-dev
+
+      - name: build binaries
+        run: |
+          cargo build --locked --release -p mink-cli -p mink-query-cli
+          mkdir -p dist
+          cp target/release/mink target/release/mink-query dist/
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: node
+        uses: docker/build-push-action@v7
+        with:
+          context: dist
+          file: harness/Dockerfile.prebuilt
+          target: mink
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+
+      - id: query
+        uses: docker/build-push-action@v7
+        with:
+          context: dist
+          file: harness/Dockerfile.prebuilt
+          target: mink-query
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.QUERY_IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: export digests
+        run: |
+          mkdir -p /tmp/digests/mink /tmp/digests/mink-query
+          touch "/tmp/digests/mink/${NODE_DIGEST#sha256:}"
+          touch "/tmp/digests/mink-query/${QUERY_DIGEST#sha256:}"
+        env:
+          NODE_DIGEST: ${{ steps.node.outputs.digest }}
+          QUERY_DIGEST: ${{ steps.query.outputs.digest }}
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: publish manifests
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: node
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=
+
+      - id: query
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.QUERY_IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=
+
+      - name: node manifest
+        working-directory: /tmp/digests/mink
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.IMAGE_NAME }}@sha256:%s ' *)
+          docker buildx imagetools inspect "${{ env.IMAGE_NAME }}:${{ steps.node.outputs.version }}"
+        env:
+          DOCKER_METADATA_OUTPUT_JSON: ${{ steps.node.outputs.json }}
+
+      - name: query manifest
+        working-directory: /tmp/digests/mink-query
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.QUERY_IMAGE_NAME }}@sha256:%s ' *)
+          docker buildx imagetools inspect "${{ env.QUERY_IMAGE_NAME }}:${{ steps.query.outputs.version }}"
+        env:
+          DOCKER_METADATA_OUTPUT_JSON: ${{ steps.query.outputs.json }}

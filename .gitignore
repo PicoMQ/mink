@@ -1,0 +1,35 @@
+# Rust
+**/target/
+**/*.rs.bk
+*.profraw
+*.profdata
+
+# Local node state
+/data/
+/objects/
+**/data/
+*.db
+*.db-wal
+*.db-shm
+
+# Website
+website/node_modules/
+website/.vitepress/cache/
+website/.vitepress/dist/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+/dist

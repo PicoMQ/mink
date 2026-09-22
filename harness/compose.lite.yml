@@ -1,0 +1,40 @@
+services:
+  mink:
+    image: ${MINK_IMAGE:-mink:local}
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        PROFILE: ${MINK_PROFILE:-release}
+    environment:
+      RUST_LOG: ${RUST_LOG:-info}
+      MINK_NODE_ID: "1"
+      MINK_CLUSTER_ID: mink-lite
+      MINK_META_URL: sqlite:/data/meta.db
+      MINK_STORAGE_URI: "-2@file:///objects"
+      MINK_DATA_DIR: /data
+      MINK_LISTEN: 0.0.0.0:9123
+      MINK_WAL_UPLOAD_INTERVAL: 1s
+      MINK_KV_SNAPSHOT_INTERVAL: 2s
+    command:
+      - serve
+      - --advertise=${MINK_LITE_ADVERTISE:-grpc://localhost:9123}
+      - --kafka-listen=0.0.0.0:9092
+      - --kafka-advertise=${MINK_LITE_KAFKA_ADVERTISE:-localhost:9092}
+    volumes:
+      - mink-data:/data
+      - mink-objects:/objects
+    ports:
+      - "9123:9123"
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD", "mink", "-b", "grpc://127.0.0.1:9123", "cluster", "health"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  mink-data:
+  mink-objects:

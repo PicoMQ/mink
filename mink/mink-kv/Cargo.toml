@@ -1,0 +1,32 @@
+[package]
+name = "mink-kv"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Mink embedded KV store trait and engines: surrealkv (default), memory, and optional rocksdb"
+repository.workspace = true
+
+[features]
+default = ["surrealkv"]
+surrealkv = ["dep:surrealkv"]
+# Behind the same trait; wired in when its port lands.
+rocksdb = []
+
+[dependencies]
+mink-common = { workspace = true }
+async-trait = { workspace = true }
+bytes = { workspace = true }
+crc32c = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+
+surrealkv = { workspace = true, optional = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

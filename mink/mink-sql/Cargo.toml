@@ -1,0 +1,27 @@
+[package]
+name = "mink-sql"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Mink SQL-backed metadata sink: Postgres / SQLite command log and coordinator lease"
+repository.workspace = true
+
+[dependencies]
+s3stream = { workspace = true }
+mink-metadata = { workspace = true }
+mink-common = { workspace = true }
+
+async-trait = { workspace = true }
+bytes = { workspace = true }
+sqlx = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,44 @@
+[package]
+name = "mink-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Mink node core: tablet ownership and fencing, registry, table service. No protocol, no metadata backend choice."
+repository.workspace = true
+
+[dependencies]
+s3stream = { workspace = true }
+mink-common = { workspace = true }
+mink-types = { workspace = true }
+mink-table = { workspace = true }
+mink-record = { workspace = true }
+mink-metadata = { workspace = true }
+mink-auth = { workspace = true }
+mink-log = { workspace = true }
+mink-kv = { workspace = true }
+mink-tablet = { workspace = true }
+mink-coordinator = { workspace = true }
+mink-lake = { workspace = true }
+mink-read = { workspace = true }
+
+arc-swap = { workspace = true }
+async-stream = { workspace = true }
+async-trait = { workspace = true }
+arrow-schema = { workspace = true }
+bytes = { workspace = true }
+futures = { workspace = true }
+metrics = { workspace = true }
+object_store = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+arrow-array = { workspace = true }
+arrow-schema = { workspace = true }
+tokio-test = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

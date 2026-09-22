@@ -1,0 +1,19 @@
+[package]
+name = "mink-protocol"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Mink Flight protocol messages: what rides in descriptors, tickets, actions and app_metadata. Shared by server and client."
+repository.workspace = true
+
+[dependencies]
+mink-table = { workspace = true }
+
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

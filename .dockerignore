@@ -1,0 +1,7 @@
+target
+**/target
+.git
+data
+**/data/
+harness
+Dockerfile*

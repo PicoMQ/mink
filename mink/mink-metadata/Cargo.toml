@@ -1,0 +1,30 @@
+[package]
+name = "mink-metadata"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Mink metadata plane: the replicated control-plane state machine (consensus-free core)"
+repository.workspace = true
+
+[dependencies]
+s3stream = { workspace = true }
+mink-common = { workspace = true }
+mink-table = { workspace = true }
+
+arc-swap = { workspace = true }
+async-trait = { workspace = true }
+bytes = { workspace = true }
+im = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+mink-types = { workspace = true }
+proptest = { workspace = true }
+
+[lints]
+workspace = true

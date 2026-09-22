@@ -1,0 +1,25 @@
+wal_upload_interval = "1s"
+kv_snapshot_interval = "2s"
+log_retention_interval = "1m"
+lease_ttl = "10s"
+coordinator_tick = "1s"
+tiering_poll_interval = "2s"
+default_bucket_count = 3
+
+[lake]
+format = "iceberg"
+catalog = "rest"
+uri = "http://iceberg-rest:8181"
+warehouse = "s3://mink-lake"
+
+[lake.properties]
+"s3.endpoint" = "http://rustfs:9000"
+"s3.region" = "us-east-1"
+"s3.path-style-access" = "true"
+"s3.access-key-id" = "mink"
+"s3.secret-access-key" = "minkminkmink"
+
+[kafka]
+listen = "0.0.0.0:9092"
+database = "kafka"
+default_partitions = 3

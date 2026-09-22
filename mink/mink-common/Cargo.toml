@@ -1,0 +1,19 @@
+[package]
+name = "mink-common"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Domain-free helpers shared by every Mink crate: clock, lock accessors, serde adapters"
+repository.workspace = true
+
+[dependencies]
+bytes = { workspace = true }
+humantime = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+url = { workspace = true }
+
+[lints]
+workspace = true

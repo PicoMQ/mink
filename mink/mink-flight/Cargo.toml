@@ -1,0 +1,49 @@
+[package]
+name = "mink-flight"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Mink Arrow Flight frontend: append, scan, lookup, tail, admin"
+repository.workspace = true
+
+[dependencies]
+mink-coordinator = { workspace = true }
+mink-log = { workspace = true }
+mink-common = { workspace = true }
+mink-protocol = { workspace = true }
+mink-read = { workspace = true }
+mink-metadata = { workspace = true }
+mink-record = { workspace = true }
+mink-server = { workspace = true }
+mink-table = { workspace = true }
+mink-tablet = { workspace = true }
+
+arrow-array = { workspace = true }
+arrow-schema = { workspace = true }
+arrow-select = { workspace = true }
+arrow-ipc = { workspace = true }
+arrow-flight = { workspace = true }
+tonic = { workspace = true }
+prost = { workspace = true }
+bytes = { workspace = true }
+futures = { workspace = true }
+humantime = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+mink-client = { workspace = true }
+mink-kv = { workspace = true }
+mink-types = { workspace = true }
+object_store = { workspace = true }
+s3stream = { workspace = true }
+tempfile = { workspace = true }
+tokio-stream = { workspace = true }
+
+[lints]
+workspace = true

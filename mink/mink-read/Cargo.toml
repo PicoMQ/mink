@@ -1,0 +1,30 @@
+[package]
+name = "mink-read"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Mink union reader: lake snapshot plus log tail as one scan, sort-merged for primary-key tables"
+repository.workspace = true
+
+[dependencies]
+mink-table = { workspace = true }
+mink-record = { workspace = true }
+mink-lake = { workspace = true }
+
+arrow-array = { workspace = true }
+arrow-cast = { workspace = true }
+arrow-schema = { workspace = true }
+arrow-row = { workspace = true }
+arrow-select = { workspace = true }
+futures = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+async-trait = { workspace = true }
+bytes = { workspace = true }
+mink-types = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true

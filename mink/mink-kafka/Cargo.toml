@@ -1,0 +1,40 @@
+[package]
+name = "mink-kafka"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Mink Kafka wire-protocol frontend: topics as log tables"
+repository.workspace = true
+
+[dependencies]
+mink-client = { workspace = true }
+mink-common = { workspace = true }
+mink-coordinator = { workspace = true }
+mink-log = { workspace = true }
+mink-metadata = { workspace = true }
+mink-record = { workspace = true }
+mink-server = { workspace = true }
+mink-table = { workspace = true }
+mink-types = { workspace = true }
+
+anyhow = { workspace = true }
+arrow-array = { workspace = true }
+arrow-schema = { workspace = true }
+bytes = { workspace = true }
+futures = { workspace = true }
+kafka-protocol = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tonic = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+mink-runtime = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "net"] }
+
+[lints]
+workspace = true

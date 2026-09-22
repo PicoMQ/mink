@@ -1,0 +1,37 @@
+[package]
+name = "mink-query"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Mink query engine: DataFusion over Mink tables, reading the lake directly and log tails from nodes"
+repository.workspace = true
+
+[dependencies]
+mink-client = { workspace = true }
+mink-common = { workspace = true }
+mink-lake = { workspace = true }
+mink-read = { workspace = true }
+mink-record = { workspace = true }
+mink-table = { workspace = true }
+mink-types = { workspace = true }
+
+arrow-array = { workspace = true }
+arrow-schema = { workspace = true }
+async-trait = { workspace = true }
+bytes = { workspace = true }
+datafusion = { workspace = true }
+futures = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tonic = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+mink-runtime = { workspace = true }
+
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

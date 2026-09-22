@@ -1,0 +1,40 @@
+x-node: &node
+  extends:
+    file: compose.yml
+    service: mink1
+  depends_on:
+    postgres:
+      condition: service_healthy
+    createbucket:
+      condition: service_completed_successfully
+    iceberg-rest:
+      condition: service_healthy
+
+services:
+  mink2:
+    <<: *node
+    container_name: mink2
+    environment:
+      MINK_NODE_ID: "2"
+    command:
+      - serve
+      - --config=/etc/mink/mink.toml
+      - --advertise=grpc://mink2:9123
+      - --kafka-advertise=mink2:9092
+    ports: !override
+      - "9124:9123"
+      - "9093:9092"
+
+  mink3:
+    <<: *node
+    container_name: mink3
+    environment:
+      MINK_NODE_ID: "3"
+    command:
+      - serve
+      - --config=/etc/mink/mink.toml
+      - --advertise=grpc://mink3:9123
+      - --kafka-advertise=mink3:9092
+    ports: !override
+      - "9125:9123"
+      - "9094:9092"

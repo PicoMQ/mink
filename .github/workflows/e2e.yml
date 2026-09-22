@@ -1,0 +1,94 @@
+name: e2e
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - name: free runner disk
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: e2e-images
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake pkg-config libcurl4-openssl-dev
+      - name: build binaries
+        run: |
+          cargo build --locked --release -p mink-cli -p mink-query-cli
+          mkdir -p dist
+          cp target/release/mink target/release/mink-query dist/
+      - uses: docker/setup-buildx-action@v3
+      - name: build node image
+        uses: docker/build-push-action@v6
+        with:
+          context: dist
+          file: harness/Dockerfile.prebuilt
+          target: mink
+          tags: mink:local
+          outputs: type=docker,dest=/tmp/mink.tar
+      - name: build query image
+        uses: docker/build-push-action@v6
+        with:
+          context: dist
+          file: harness/Dockerfile.prebuilt
+          target: mink-query
+          tags: mink-query:local
+          outputs: type=docker,dest=/tmp/mink-query.tar
+      - name: build runner image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.e2e
+          tags: mink-runner:local
+          outputs: type=docker,dest=/tmp/mink-runner.tar
+          cache-from: type=gha,scope=mink-runner
+          cache-to: type=gha,scope=mink-runner,mode=max
+      - uses: actions/upload-artifact@v4
+        with:
+          name: images
+          path: /tmp/*.tar
+          retention-days: 1
+
+  scenario:
+    needs: images
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [lite, single, cluster, load, chaos, sql]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: images
+          path: /tmp
+      - run: docker load -i /tmp/mink.tar && docker load -i /tmp/mink-query.tar && docker load -i /tmp/mink-runner.tar
+      - name: free runner disk
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+      - name: restore runner cargo cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/e2e-cache
+          key: e2e-cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: e2e-cargo-${{ runner.os }}-
+      - name: bind runner volumes to the cache
+        run: |
+          mkdir -p /tmp/e2e-cache/target /tmp/e2e-cache/cargo
+          docker volume create --driver local --opt type=none --opt o=bind --opt device=/tmp/e2e-cache/target mink-e2e-target
+          docker volume create --driver local --opt type=none --opt o=bind --opt device=/tmp/e2e-cache/cargo mink-e2e-cargo
+      - run: SKIP_BUILD=1 scripts/e2e.sh ${{ matrix.scenario }}
+        env:
+          CARGO_INCREMENTAL: "0"
+          CARGO_PROFILE_DEV_DEBUG: line-tables-only

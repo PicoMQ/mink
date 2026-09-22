@@ -1,0 +1,32 @@
+services:
+  query:
+    image: ${MINK_QUERY_IMAGE:-mink-query:local}
+    build:
+      context: ..
+      dockerfile: Dockerfile.query
+      args:
+        PROFILE: ${MINK_PROFILE:-release}
+    container_name: mink-query
+    environment:
+      RUST_LOG: ${RUST_LOG:-info}
+      RUST_BACKTRACE: "1"
+      MINK_BOOTSTRAP: ${MINK_E2E_NODES:-grpc://mink1:9123}
+      MINK_QUERY_CONFIG: /etc/mink/mink.toml
+      MINK_QUERY_LISTEN: 0.0.0.0:9130
+      AWS_ACCESS_KEY_ID: mink
+      AWS_SECRET_ACCESS_KEY: minkminkmink
+      AWS_REGION: us-east-1
+    volumes:
+      - ./mink.toml:/etc/mink/mink.toml:ro
+    depends_on:
+      mink1:
+        condition: service_healthy
+    ports:
+      - "9130:9130"
+    healthcheck:
+      test: ["CMD", "mink-query", "exec", "-e", "SELECT 1"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 5s
+    restart: unless-stopped

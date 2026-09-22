@@ -1,0 +1,36 @@
+# syntax=docker/dockerfile:1
+
+FROM rust:1-bookworm
+
+ARG DUCKDB_VERSION=v1.3.2
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        cmake \
+        curl \
+        gnupg \
+        libcurl4-openssl-dev \
+        pkg-config \
+        unzip \
+ && install -m 0755 -d /etc/apt/keyrings \
+ && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
+ && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable" \
+      > /etc/apt/sources.list.d/docker.list \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN arch="$(dpkg --print-architecture)" \
+ && case "$arch" in amd64) duck=amd64 ;; arm64) duck=arm64 ;; *) echo "unsupported arch $arch" && exit 1 ;; esac \
+ && curl -fsSL "https://github.com/duckdb/duckdb/releases/download/${DUCKDB_VERSION}/duckdb_cli-linux-${duck}.zip" -o /tmp/duckdb.zip \
+ && unzip -q /tmp/duckdb.zip -d /usr/local/bin \
+ && rm /tmp/duckdb.zip \
+ && duckdb -c "INSTALL iceberg; INSTALL httpfs;"
+
+WORKDIR /toolchain
+COPY rust-toolchain.toml .
+RUN rustup show active-toolchain
+
+WORKDIR /src
