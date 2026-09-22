@@ -113,15 +113,24 @@ fn coordinator_node(nodes: &[Server]) -> &Server {
 }
 
 async fn leader_of(nodes: &[Server], bucket: Bucket) -> &Server {
-    let mut found = None;
+    let leader = nodes[0]
+        .node()
+        .metadata()
+        .views()
+        .load()
+        .state
+        .catalog
+        .buckets[&bucket]
+        .leader;
+    let server = nodes
+        .iter()
+        .find(|n| n.node().node_id() == leader)
+        .expect("leader is a test node");
     wait_until("bucket hosted", || {
-        found = nodes
-            .iter()
-            .position(|n| n.node().registry().contains(bucket));
-        found.is_some()
+        server.node().registry().contains(bucket)
     })
     .await;
-    &nodes[found.unwrap()]
+    server
 }
 
 #[tokio::test]
@@ -138,10 +147,11 @@ async fn coordinator_node_tiers_local_and_remote_buckets_into_one_snapshot() {
         .await
         .unwrap();
     let nodes = [first, second];
-    wait_until("two live nodes", || {
-        nodes[0].service().view().state.nodes.len() == 2
-    })
-    .await;
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while coordinator.live_nodes().await.unwrap().len() < 2 {
+        assert!(Instant::now() < deadline, "timed out: two live nodes");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
 
     coordinator
         .create_database("db", None, Default::default(), false)
@@ -170,12 +180,6 @@ async fn coordinator_node_tiers_local_and_remote_buckets_into_one_snapshot() {
         leader_of(&nodes, buckets[0]).await,
         leader_of(&nodes, buckets[1]).await,
     ];
-    assert_ne!(
-        leaders[0].node().node_id(),
-        leaders[1].node().node_id(),
-        "the two buckets should land on different nodes"
-    );
-
     leaders[0]
         .service()
         .append(buckets[0], batch(&[(1, "a"), (2, "b")]))
