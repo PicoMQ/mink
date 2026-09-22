@@ -4,19 +4,19 @@ import { computed, ref } from 'vue';
 const features = [
   {
     name: 'Real-time tables',
-    body: 'Log tables and primary-key tables with typed columns, bucketing, and partitioning. Append, upsert, partial update, aggregate, point lookup, and scan on the same table, with a changelog for primary-key tables.',
+    body: 'Log tables and primary-key tables with typed columns, bucketing, and partitioning. An acknowledged write is readable by scan, tail, or lookup. Primary-key tables carry a changelog.',
   },
   {
     name: 'Zero-disk storage',
-    body: 'The WAL and table data live on S3-compatible object storage through the s3stream engine. Nodes hold no persistent local state. Durability and economics are those of the object store, with no cross-AZ replication traffic.',
+    body: 'The WAL and table data live on S3-compatible object storage through <a href="https://github.com/PicoMQ/s3stream" target="_blank" rel="noreferrer">s3stream</a>. Nodes hold only caches and rebuildable working copies. No replication between nodes.',
   },
   {
     name: 'Lakehouse tiering',
-    body: 'A tiering worker moves closed log segments and KV snapshots into open lakehouse table formats behind a catalog. Each lake commit records the log offset it covers. Retention on the log is independent of the lake.',
+    body: 'A worker copies bucket logs and KV state into Iceberg behind a catalog on a freshness schedule. Each commit records the log offset it covers per bucket. Log retention is independent of the lake.',
   },
   {
     name: 'One unified read',
-    body: 'A query resolves to a lake snapshot plus the log tail after it, per bucket, and returns one result. DataFusion and Flight SQL run over the union with predicates pushed to both sides. Lakehouse engines read the tiered data directly.',
+    body: 'A read is the lake snapshot plus the log tail after it, per bucket, deduplicated by primary key. DataFusion and Flight SQL run over the union. Iceberg engines read the tiered data directly.',
   },
   {
     name: 'Kafka and Arrow Flight',
@@ -39,7 +39,7 @@ function select(index: number) {
     <div class="engine__plate">
       <div class="engine__copy">
         <h3>{{ current.name }}</h3>
-        <p class="engine__body">{{ current.body }}</p>
+        <p class="engine__body" v-html="current.body"></p>
       </div>
 
       <div class="engine__tabs" role="tablist" aria-label="Engine features">
@@ -102,10 +102,16 @@ function select(index: number) {
 .engine__body {
   margin: 0;
   max-width: 36rem;
-  min-height: 4.8rem;
+  min-height: 3.3rem;
   font-size: 1rem;
   line-height: 1.62;
   color: var(--mink-ink-3);
+}
+
+.engine__body :deep(a) {
+  color: var(--mink-ink-1);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
 }
 
 .engine__tabs {

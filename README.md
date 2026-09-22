@@ -2,7 +2,7 @@
 
 Mink is lakehouse-native streaming storage on object storage. Log tables and primary-key tables over Kafka and Arrow Flight, history tiered into Iceberg and served with the live tail as one table.
 
-[Documentation](website/pages/docs/index.md) · [Quick start](website/pages/docs/quick-start.md) · [Contribute](website/pages/docs/contribute.md)
+[Documentation](website/pages/docs/index.md) · [Quick start](website/pages/docs/quick-start.md) · [Mink vs Apache Fluss](website/pages/docs/faq/fluss.md) · [Contribute](website/pages/docs/contribute.md)
 
 ## Install
 
@@ -37,9 +37,6 @@ docker compose -f compose.yml -f compose.query.yml up      # + mink-query, Fligh
 ```
 
 Without the two variables `--build` builds the images from source.
-
-```bash
-```
 
 Arrow Flight: `localhost:9123` (cluster also `:9124`, `:9125`). Kafka: `:9092` (`:9093`, `:9094`). Nodes advertise as `mink1`, `mink2`, `mink3`, the lite stack as `localhost`. RustFS console: `:9001`. Iceberg REST: `:8181`.
 
