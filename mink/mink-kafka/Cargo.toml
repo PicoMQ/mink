@@ -1,0 +1,26 @@
+[package]
+name = "mink-kafka"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Kafka client for Mink: topic discovery, offsets, and the committed records of an offset range"
+repository.workspace = true
+
+[dependencies]
+mink-core = { workspace = true }
+mink-metrics = { workspace = true }
+
+anyhow = { workspace = true }
+bytes = { workspace = true }
+crc32c = { workspace = true }
+kafka-protocol = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["net"] }
+
+[dev-dependencies]
+proptest = { workspace = true }
+uuid = { workspace = true }
+
+[lints]
+workspace = true
