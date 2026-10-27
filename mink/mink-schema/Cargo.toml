@@ -1,0 +1,29 @@
+[package]
+name = "mink-schema"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Schemas for Mink: Schema Registry schemas, decoding Avro, Protobuf and JSON payloads, and merging them into the table schema"
+repository.workspace = true
+
+[dependencies]
+mink-core = { workspace = true }
+
+apache-avro = { workspace = true }
+chrono = { workspace = true }
+iceberg = { workspace = true }
+prost-reflect = { workspace = true }
+protox = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+bytes = { workspace = true }
+proptest = { workspace = true }
+tokio = { workspace = true }
+
+[lints]
+workspace = true

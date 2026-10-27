@@ -1,0 +1,247 @@
+use std::collections::HashMap;
+use std::fmt;
+
+use mink_core::Part;
+use uuid::Uuid;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SchemaFormat {
+    Avro,
+    Protobuf,
+    Json,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum SchemaRef {
+    Id(i32),
+    Guid(Uuid),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reference {
+    name: String,
+    id: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegistrySchema {
+    id: i32,
+    format: SchemaFormat,
+    definition: String,
+    references: Vec<Reference>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SchemaSet {
+    schema: RegistrySchema,
+    referenced: Vec<RegistrySchema>,
+}
+
+impl SchemaFormat {
+    pub(crate) const ALL: [SchemaFormat; 3] = [
+        SchemaFormat::Avro,
+        SchemaFormat::Protobuf,
+        SchemaFormat::Json,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            SchemaFormat::Avro => "avro",
+            SchemaFormat::Protobuf => "protobuf",
+            SchemaFormat::Json => "json",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<SchemaFormat> {
+        SchemaFormat::ALL
+            .into_iter()
+            .find(|format| format.name() == name)
+    }
+}
+
+impl SchemaRef {
+    pub fn from_key(key: &str) -> Option<SchemaRef> {
+        let (kind, value) = key.split_once(':')?;
+
+        match kind {
+            "id" => value.parse().ok().map(SchemaRef::Id),
+            "guid" => Uuid::parse_str(value).ok().map(SchemaRef::Guid),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for SchemaRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SchemaRef::Id(id) => write!(f, "id:{id}"),
+            SchemaRef::Guid(guid) => write!(f, "guid:{guid}"),
+        }
+    }
+}
+
+impl Reference {
+    pub fn new(name: impl Into<String>, id: i32) -> Reference {
+        Reference {
+            name: name.into(),
+            id,
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn id(&self) -> i32 {
+        self.id
+    }
+}
+
+impl RegistrySchema {
+    pub fn new(
+        id: i32,
+        format: SchemaFormat,
+        definition: impl Into<String>,
+        references: Vec<Reference>,
+    ) -> RegistrySchema {
+        RegistrySchema {
+            id,
+            format,
+            definition: definition.into(),
+            references,
+        }
+    }
+
+    pub fn id(&self) -> i32 {
+        self.id
+    }
+
+    pub fn format(&self) -> SchemaFormat {
+        self.format
+    }
+
+    pub fn definition(&self) -> &str {
+        &self.definition
+    }
+
+    pub fn references(&self) -> &[Reference] {
+        &self.references
+    }
+}
+
+impl SchemaSet {
+    pub fn new(schema: RegistrySchema, referenced: Vec<RegistrySchema>) -> SchemaSet {
+        SchemaSet { schema, referenced }
+    }
+
+    pub async fn load<E, Fut>(id: i32, mut lookup: impl FnMut(i32) -> Fut) -> Result<SchemaSet, E>
+    where
+        Fut: Future<Output = Result<RegistrySchema, E>>,
+    {
+        let mut pending = vec![id];
+        let mut found: Vec<RegistrySchema> = Vec::new();
+
+        while let Some(next) = pending.pop() {
+            if found.iter().any(|schema| schema.id() == next) {
+                continue;
+            }
+
+            let schema = lookup(next).await?;
+
+            pending.extend(schema.references().iter().map(Reference::id));
+            found.push(schema);
+        }
+
+        let schema = found.remove(0);
+
+        Ok(SchemaSet::new(schema, found))
+    }
+
+    pub fn schema(&self) -> &RegistrySchema {
+        &self.schema
+    }
+
+    pub fn referenced(&self) -> &[RegistrySchema] {
+        &self.referenced
+    }
+
+    pub(crate) fn definitions_by_name(&self) -> HashMap<&str, &str> {
+        let mut by_name = HashMap::new();
+
+        for declaring in [&self.schema].into_iter().chain(&self.referenced) {
+            for reference in declaring.references() {
+                let referenced = self
+                    .referenced
+                    .iter()
+                    .find(|candidate| candidate.id() == reference.id());
+
+                if let Some(referenced) = referenced {
+                    by_name.insert(reference.name(), referenced.definition());
+                }
+            }
+        }
+
+        by_name
+    }
+}
+
+pub fn subject(topic: &str, part: Part) -> String {
+    format!("{topic}-{}", part.name())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn names_and_keys_round_trip() {
+        let refs = [SchemaRef::Id(7), SchemaRef::Guid(Uuid::from_u128(9))];
+
+        for format in SchemaFormat::ALL {
+            assert_eq!(SchemaFormat::from_name(format.name()), Some(format));
+        }
+        for schema_ref in refs {
+            assert_eq!(
+                SchemaRef::from_key(&schema_ref.to_string()),
+                Some(schema_ref)
+            );
+        }
+
+        assert_eq!(SchemaRef::from_key("name:7"), None);
+        assert_eq!(subject("orders", Part::Value), "orders-value");
+    }
+
+    #[tokio::test]
+    async fn a_schema_set_holds_every_referenced_schema_once() {
+        let shared = RegistrySchema::new(3, SchemaFormat::Avro, "shared", Vec::new());
+        let left = RegistrySchema::new(2, SchemaFormat::Avro, "left", vec![Reference::new("s", 3)]);
+        let main = RegistrySchema::new(
+            1,
+            SchemaFormat::Avro,
+            "main",
+            vec![Reference::new("l", 2), Reference::new("s", 3)],
+        );
+        let registry = [main.clone(), left.clone(), shared.clone()];
+        let mut lookups = Vec::new();
+
+        let set = SchemaSet::load(1, |id| {
+            lookups.push(id);
+
+            let found = registry.iter().find(|schema| schema.id() == id).cloned();
+
+            async move { found.ok_or(id) }
+        })
+        .await
+        .unwrap();
+        let missing = SchemaSet::load(4, |id| async move { Err::<RegistrySchema, i32>(id) }).await;
+
+        assert_eq!(set.schema(), &main);
+        assert_eq!(set.referenced(), [shared, left]);
+        assert_eq!(lookups, [1, 3, 2]);
+        assert_eq!(
+            set.definitions_by_name(),
+            HashMap::from([("l", "left"), ("s", "shared")])
+        );
+        assert_eq!(missing, Err(4));
+    }
+}

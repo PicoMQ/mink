@@ -4,11 +4,13 @@ members = [
     "mink/mink-core",
     "mink/mink-kafka",
     "mink/mink-metrics",
+    "mink/mink-schema",
 ]
 default-members = [
     "mink/mink-core",
     "mink/mink-kafka",
     "mink/mink-metrics",
+    "mink/mink-schema",
 ]
 
 [workspace.package]
@@ -23,6 +25,7 @@ repository = "https://github.com/PicoMQ/mink"
 mink-core = { path = "mink/mink-core" }
 mink-kafka = { path = "mink/mink-kafka" }
 mink-metrics = { path = "mink/mink-metrics" }
+mink-schema = { path = "mink/mink-schema" }
 
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "sync", "time", "macros", "io-util"] }
 
