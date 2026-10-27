@@ -1,0 +1,23 @@
+[package]
+name = "mink-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Mink domain model: topics, partitions, records, files, snapshots and metadata objects"
+repository.workspace = true
+
+[dependencies]
+bytes = { workspace = true }
+datasketches = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+hex = { workspace = true }
+serde_json = { workspace = true }
+proptest = { workspace = true }
+
+[lints]
+workspace = true

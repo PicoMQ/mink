@@ -1,0 +1,81 @@
+[workspace]
+resolver = "2"
+members = [
+    "mink/mink-core",
+]
+default-members = [
+    "mink/mink-core",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.98"
+license = "Apache-2.0"
+description = "Mink, in development: Kafka topics as Iceberg tables, through a read-only Iceberg REST catalog."
+repository = "https://github.com/PicoMQ/mink"
+
+[workspace.dependencies]
+mink-core = { path = "mink/mink-core" }
+
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "sync", "time", "macros", "io-util"] }
+
+anyhow = "1.0.104"
+base64 = "0.23.1"
+bytes = "1.12.1"
+thiserror = "2.0.21"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+uuid = { version = "1.29.0", features = ["v4"] }
+crc32c = "0.6.8"
+fastrand = "2.5.0"
+hex = "0.4.3"
+axum = "0.8.9"
+apache-avro = { version = "0.22.0", default-features = false }
+prost-reflect = { version = "0.16.5", features = ["serde"] }
+protox = "0.10.0"
+rust-embed = "8.13.0"
+nestor = { git = "https://github.com/PicoMQ/nestor", branch = "main", features = ["serde"] }
+nestor-store = { git = "https://github.com/PicoMQ/nestor", branch = "main" }
+metrics = "0.24.6"
+metrics-exporter-prometheus = { version = "0.18.3", default-features = false }
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls", "stream"] }
+
+arrow-array = "58.4.1"
+arrow-schema = "58.4.1"
+arrow-buffer = "58.4.1"
+arrow-select = "58.4.1"
+parquet = { version = "58.4.1", default-features = false, features = ["arrow", "zstd"] }
+
+sqlx = { version = "0.9.0", default-features = false, features = [
+    "runtime-tokio",
+    "postgres",
+    "migrate",
+    "macros",
+    "json",
+    "uuid",
+] }
+
+iceberg = "0.10.1"
+iceberg-catalog-rest = "0.10.1"
+
+kafka-protocol = { version = "0.18.0", default-features = false, features = ["client", "broker", "gzip", "zstd", "snappy", "lz4"] }
+rdkafka = { version = "0.39.0", default-features = false, features = ["cmake-build", "tokio"] }
+
+clap = { version = "4.6.7", features = ["derive", "env"] }
+figment = { version = "0.10.19", features = ["toml", "env"] }
+
+proptest = "1.12.0"
+chrono = { version = "0.4.45", default-features = false, features = ["std"] }
+datasketches = { version = "0.5.0", features = ["theta"] }
+object_store = { version = "0.14.2", features = ["aws"] }
+futures = "0.3.34"
+async-trait = "0.1.92"
+tempfile = "3.27.0"
+sha2 = "0.11.1"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
