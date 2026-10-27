@@ -1,0 +1,9 @@
+target
+**/target
+.git
+data
+**/data/
+harness
+Dockerfile*
+console/node_modules
+mink/mink-server/console

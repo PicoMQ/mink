@@ -1,0 +1,36 @@
+# Rust
+**/target/
+**/*.rs.bk
+*.profraw
+*.profdata
+
+# Console
+console/node_modules/
+console/test-results/
+console/playwright-report/
+mink/mink-server/console/
+
+# Website
+website/node_modules/
+website/.vitepress/cache/
+website/.vitepress/dist/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+/dist
+
+# Python
+__pycache__/
