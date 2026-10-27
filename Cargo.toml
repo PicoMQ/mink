@@ -2,9 +2,11 @@
 resolver = "2"
 members = [
     "mink/mink-core",
+    "mink/mink-metrics",
 ]
 default-members = [
     "mink/mink-core",
+    "mink/mink-metrics",
 ]
 
 [workspace.package]
@@ -17,6 +19,7 @@ repository = "https://github.com/PicoMQ/mink"
 
 [workspace.dependencies]
 mink-core = { path = "mink/mink-core" }
+mink-metrics = { path = "mink/mink-metrics" }
 
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "sync", "time", "macros", "io-util"] }
 

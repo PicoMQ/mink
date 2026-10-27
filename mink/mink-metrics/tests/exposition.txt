@@ -1,0 +1,136 @@
+# TYPE mink_indexed_records_total counter
+mink_indexed_records_total{source="live"} 0
+mink_indexed_records_total{source="backfill"} 0
+# TYPE mink_indexed_bytes_total counter
+mink_indexed_bytes_total{source="live"} 0
+mink_indexed_bytes_total{source="backfill"} 0
+# TYPE mink_files_written_total counter
+mink_files_written_total{source="live"} 0
+mink_files_written_total{source="backfill"} 0
+# TYPE mink_kafka_requests_total counter
+mink_kafka_requests_total{request="metadata",result="ok"} 0
+mink_kafka_requests_total{request="metadata",result="error"} 0
+mink_kafka_requests_total{request="offsets",result="ok"} 0
+mink_kafka_requests_total{request="offsets",result="error"} 0
+mink_kafka_requests_total{request="fetch",result="ok"} 0
+mink_kafka_requests_total{request="fetch",result="error"} 0
+# TYPE mink_kafka_fetched_bytes_total counter
+mink_kafka_fetched_bytes_total 0
+# TYPE mink_commits_total counter
+mink_commits_total{result="ok"} 0
+mink_commits_total{result="error"} 0
+# TYPE mink_commit_duration_seconds histogram
+mink_commit_duration_seconds_bucket{le="0.0005"} 0
+mink_commit_duration_seconds_bucket{le="0.001"} 0
+mink_commit_duration_seconds_bucket{le="0.0025"} 0
+mink_commit_duration_seconds_bucket{le="0.005"} 0
+mink_commit_duration_seconds_bucket{le="0.01"} 0
+mink_commit_duration_seconds_bucket{le="0.025"} 0
+mink_commit_duration_seconds_bucket{le="0.05"} 0
+mink_commit_duration_seconds_bucket{le="0.1"} 0
+mink_commit_duration_seconds_bucket{le="0.25"} 0
+mink_commit_duration_seconds_bucket{le="0.5"} 0
+mink_commit_duration_seconds_bucket{le="1"} 0
+mink_commit_duration_seconds_bucket{le="2.5"} 0
+mink_commit_duration_seconds_bucket{le="5"} 0
+mink_commit_duration_seconds_bucket{le="10"} 0
+mink_commit_duration_seconds_bucket{le="+Inf"} 0
+mink_commit_duration_seconds_sum 0
+mink_commit_duration_seconds_count 0
+# TYPE mink_assemblies_total counter
+mink_assemblies_total 0
+# TYPE mink_snapshots_expired_total counter
+mink_snapshots_expired_total 0
+# TYPE mink_objects_collected_total counter
+mink_objects_collected_total 0
+# TYPE mink_s3_requests_total counter
+mink_s3_requests_total{method="get",object="data",status="2xx"} 0
+mink_s3_requests_total{method="get",object="data",status="4xx"} 0
+mink_s3_requests_total{method="get",object="data",status="5xx"} 0
+mink_s3_requests_total{method="get",object="metadata",status="2xx"} 0
+mink_s3_requests_total{method="get",object="metadata",status="4xx"} 0
+mink_s3_requests_total{method="get",object="metadata",status="5xx"} 0
+mink_s3_requests_total{method="head",object="data",status="2xx"} 0
+mink_s3_requests_total{method="head",object="data",status="4xx"} 0
+mink_s3_requests_total{method="head",object="data",status="5xx"} 0
+mink_s3_requests_total{method="head",object="metadata",status="2xx"} 0
+mink_s3_requests_total{method="head",object="metadata",status="4xx"} 0
+mink_s3_requests_total{method="head",object="metadata",status="5xx"} 0
+# TYPE mink_s3_sent_bytes_total counter
+mink_s3_sent_bytes_total 0
+# TYPE mink_s3_forwarded_total counter
+mink_s3_forwarded_total{result="ok"} 0
+mink_s3_forwarded_total{result="unreachable"} 0
+# TYPE mink_builds_total counter
+mink_builds_total{result="ok"} 0
+mink_builds_total{result="error"} 0
+# TYPE mink_build_duration_seconds histogram
+mink_build_duration_seconds_bucket{le="0.0005"} 0
+mink_build_duration_seconds_bucket{le="0.001"} 0
+mink_build_duration_seconds_bucket{le="0.0025"} 0
+mink_build_duration_seconds_bucket{le="0.005"} 0
+mink_build_duration_seconds_bucket{le="0.01"} 0
+mink_build_duration_seconds_bucket{le="0.025"} 0
+mink_build_duration_seconds_bucket{le="0.05"} 0
+mink_build_duration_seconds_bucket{le="0.1"} 0
+mink_build_duration_seconds_bucket{le="0.25"} 0
+mink_build_duration_seconds_bucket{le="0.5"} 0
+mink_build_duration_seconds_bucket{le="1"} 0
+mink_build_duration_seconds_bucket{le="2.5"} 0
+mink_build_duration_seconds_bucket{le="5"} 0
+mink_build_duration_seconds_bucket{le="10"} 0
+mink_build_duration_seconds_bucket{le="+Inf"} 0
+mink_build_duration_seconds_sum 0
+mink_build_duration_seconds_count 0
+# TYPE mink_catalog_requests_total counter
+mink_catalog_requests_total{route="config",status="2xx"} 0
+mink_catalog_requests_total{route="config",status="4xx"} 0
+mink_catalog_requests_total{route="config",status="5xx"} 0
+mink_catalog_requests_total{route="namespaces",status="2xx"} 0
+mink_catalog_requests_total{route="namespaces",status="4xx"} 0
+mink_catalog_requests_total{route="namespaces",status="5xx"} 0
+mink_catalog_requests_total{route="tables",status="2xx"} 0
+mink_catalog_requests_total{route="tables",status="4xx"} 0
+mink_catalog_requests_total{route="tables",status="5xx"} 0
+mink_catalog_requests_total{route="load",status="2xx"} 0
+mink_catalog_requests_total{route="load",status="4xx"} 0
+mink_catalog_requests_total{route="load",status="5xx"} 0
+mink_catalog_requests_total{route="write",status="2xx"} 0
+mink_catalog_requests_total{route="write",status="4xx"} 0
+mink_catalog_requests_total{route="write",status="5xx"} 0
+# TYPE mink_tails_total counter
+mink_tails_total 0
+# TYPE mink_tail_duration_seconds histogram
+mink_tail_duration_seconds_bucket{le="0.0005"} 0
+mink_tail_duration_seconds_bucket{le="0.001"} 0
+mink_tail_duration_seconds_bucket{le="0.0025"} 0
+mink_tail_duration_seconds_bucket{le="0.005"} 0
+mink_tail_duration_seconds_bucket{le="0.01"} 0
+mink_tail_duration_seconds_bucket{le="0.025"} 0
+mink_tail_duration_seconds_bucket{le="0.05"} 0
+mink_tail_duration_seconds_bucket{le="0.1"} 0
+mink_tail_duration_seconds_bucket{le="0.25"} 0
+mink_tail_duration_seconds_bucket{le="0.5"} 0
+mink_tail_duration_seconds_bucket{le="1"} 0
+mink_tail_duration_seconds_bucket{le="2.5"} 0
+mink_tail_duration_seconds_bucket{le="5"} 0
+mink_tail_duration_seconds_bucket{le="10"} 0
+mink_tail_duration_seconds_bucket{le="+Inf"} 0
+mink_tail_duration_seconds_sum 0
+mink_tail_duration_seconds_count 0
+# TYPE mink_registry_requests_total counter
+mink_registry_requests_total{result="ok"} 0
+mink_registry_requests_total{result="missing"} 0
+mink_registry_requests_total{result="error"} 0
+# TYPE mink_worker_failures_total counter
+mink_worker_failures_total{worker="indexer"} 0
+mink_worker_failures_total{worker="writer"} 0
+# TYPE mink_admin_requests_total counter
+mink_admin_requests_total{status="2xx"} 0
+mink_admin_requests_total{status="4xx"} 0
+mink_admin_requests_total{status="5xx"} 0
+# TYPE mink_leases gauge
+mink_leases{scope="partition"} 0
+mink_leases{scope="topic"} 0
+# TYPE mink_cache_bytes gauge
+mink_cache_bytes 0

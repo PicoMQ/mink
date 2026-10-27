@@ -1,0 +1,15 @@
+[package]
+name = "mink-metrics"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Counts the work a Mink node does and writes it as Prometheus text"
+repository.workspace = true
+
+[dependencies]
+metrics = { workspace = true }
+metrics-exporter-prometheus = { workspace = true }
+
+[lints]
+workspace = true
