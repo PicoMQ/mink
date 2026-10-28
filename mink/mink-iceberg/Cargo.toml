@@ -1,0 +1,34 @@
+[package]
+name = "mink-iceberg"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Iceberg for Mink: Kafka records as rows, the Parquet files that hold them, and the table metadata over those files"
+repository.workspace = true
+
+[dependencies]
+mink-core = { workspace = true }
+mink-schema = { workspace = true }
+
+arrow-array = { workspace = true }
+arrow-buffer = { workspace = true }
+arrow-schema = { workspace = true }
+bytes = { workspace = true }
+iceberg = { workspace = true }
+parquet = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+arrow-select = { workspace = true }
+
+hex = { workspace = true }
+proptest = { workspace = true }
+
+tokio = { workspace = true }
+
+[lints]
+workspace = true

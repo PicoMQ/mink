@@ -2194,6 +2194,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "mink-iceberg"
+version = "0.1.0"
+dependencies = [
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-schema",
+ "arrow-select",
+ "bytes",
+ "hex",
+ "iceberg",
+ "mink-core",
+ "mink-schema",
+ "parquet",
+ "proptest",
+ "serde_json",
+ "sha2 0.11.1",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "mink-kafka"
 version = "0.1.0"
 dependencies = [

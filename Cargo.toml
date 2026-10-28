@@ -6,6 +6,7 @@ members = [
     "mink/mink-metrics",
     "mink/mink-schema",
     "mink/mink-store",
+    "mink/mink-iceberg",
 ]
 default-members = [
     "mink/mink-core",
@@ -13,6 +14,7 @@ default-members = [
     "mink/mink-metrics",
     "mink/mink-schema",
     "mink/mink-store",
+    "mink/mink-iceberg",
 ]
 
 [workspace.package]
@@ -29,6 +31,7 @@ mink-kafka = { path = "mink/mink-kafka" }
 mink-metrics = { path = "mink/mink-metrics" }
 mink-schema = { path = "mink/mink-schema" }
 mink-store = { path = "mink/mink-store" }
+mink-iceberg = { path = "mink/mink-iceberg" }
 
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "sync", "time", "macros", "io-util"] }
 
