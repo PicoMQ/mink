@@ -8,6 +8,7 @@ members = [
     "mink/mink-store",
     "mink/mink-iceberg",
     "mink/mink-server",
+    "mink/mink-cli",
 ]
 default-members = [
     "mink/mink-core",
@@ -17,6 +18,7 @@ default-members = [
     "mink/mink-store",
     "mink/mink-iceberg",
     "mink/mink-server",
+    "mink/mink-cli",
 ]
 
 [workspace.package]
