@@ -1,0 +1,169 @@
+{
+  "current-schema-id": 0,
+  "current-snapshot-id": 2,
+  "default-sort-order-id": 0,
+  "default-spec-id": 0,
+  "format-version": 2,
+  "last-column-id": 9,
+  "last-partition-id": 1000,
+  "last-sequence-number": 2,
+  "last-updated-ms": 1793000120000,
+  "location": "s3://warehouse/orders",
+  "metadata-log": [
+    {
+      "metadata-file": "s3://warehouse/orders/metadata/v1-e1.metadata.json",
+      "timestamp-ms": 1793000060000
+    }
+  ],
+  "partition-specs": [
+    {
+      "fields": [
+        {
+          "field-id": 1000,
+          "name": "_kafka_partition",
+          "source-id": 1,
+          "transform": "identity"
+        }
+      ],
+      "spec-id": 0
+    }
+  ],
+  "refs": {
+    "main": {
+      "snapshot-id": 2,
+      "type": "branch"
+    }
+  },
+  "schemas": [
+    {
+      "fields": [
+        {
+          "id": 1,
+          "name": "_kafka_partition",
+          "required": true,
+          "type": "int"
+        },
+        {
+          "id": 2,
+          "name": "_kafka_offset",
+          "required": true,
+          "type": "long"
+        },
+        {
+          "id": 3,
+          "name": "_kafka_timestamp",
+          "required": true,
+          "type": "timestamptz"
+        },
+        {
+          "id": 4,
+          "name": "_kafka_key",
+          "required": false,
+          "type": "binary"
+        },
+        {
+          "id": 5,
+          "name": "_kafka_headers",
+          "required": true,
+          "type": {
+            "element": {
+              "fields": [
+                {
+                  "id": 7,
+                  "name": "key",
+                  "required": true,
+                  "type": "string"
+                },
+                {
+                  "id": 8,
+                  "name": "value",
+                  "required": false,
+                  "type": "binary"
+                }
+              ],
+              "type": "struct"
+            },
+            "element-id": 6,
+            "element-required": true,
+            "type": "list"
+          }
+        },
+        {
+          "id": 9,
+          "name": "_kafka_value",
+          "required": false,
+          "type": "binary"
+        }
+      ],
+      "schema-id": 0,
+      "type": "struct"
+    }
+  ],
+  "snapshot-log": [
+    {
+      "snapshot-id": 1,
+      "timestamp-ms": 1793000060000
+    },
+    {
+      "snapshot-id": 2,
+      "timestamp-ms": 1793000120000
+    }
+  ],
+  "snapshots": [
+    {
+      "manifest-list": "s3://warehouse/orders/metadata/snap-1-e1.avro",
+      "schema-id": 0,
+      "sequence-number": 1,
+      "snapshot-id": 1,
+      "summary": {
+        "added-data-files": "2",
+        "added-files-size": "15000",
+        "added-records": "150",
+        "mink.partition.0.end-offset": "100",
+        "mink.partition.0.start-offset": "0",
+        "mink.partition.1.end-offset": "50",
+        "mink.partition.1.start-offset": "0",
+        "operation": "append",
+        "total-data-files": "2",
+        "total-delete-files": "0",
+        "total-equality-deletes": "0",
+        "total-files-size": "15000",
+        "total-position-deletes": "0",
+        "total-records": "150"
+      },
+      "timestamp-ms": 1793000060000
+    },
+    {
+      "manifest-list": "s3://warehouse/orders/metadata/snap-2-e1.avro",
+      "parent-snapshot-id": 1,
+      "schema-id": 0,
+      "sequence-number": 2,
+      "snapshot-id": 2,
+      "summary": {
+        "added-data-files": "1",
+        "added-files-size": "10000",
+        "added-records": "100",
+        "mink.partition.0.end-offset": "200",
+        "mink.partition.0.start-offset": "0",
+        "mink.partition.1.end-offset": "50",
+        "mink.partition.1.start-offset": "0",
+        "operation": "append",
+        "total-data-files": "3",
+        "total-delete-files": "0",
+        "total-equality-deletes": "0",
+        "total-files-size": "25000",
+        "total-position-deletes": "0",
+        "total-records": "250"
+      },
+      "timestamp-ms": 1793000120000
+    }
+  ],
+  "sort-orders": [
+    {
+      "fields": [],
+      "order-id": 0
+    }
+  ],
+  "statistics": [],
+  "table-uuid": "00000000-0000-0000-0000-000000000001"
+}

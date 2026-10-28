@@ -9,6 +9,7 @@ members = [
     "mink/mink-iceberg",
     "mink/mink-server",
     "mink/mink-cli",
+    "mink/mink-conformance",
 ]
 default-members = [
     "mink/mink-core",
@@ -36,6 +37,7 @@ mink-metrics = { path = "mink/mink-metrics" }
 mink-schema = { path = "mink/mink-schema" }
 mink-store = { path = "mink/mink-store" }
 mink-iceberg = { path = "mink/mink-iceberg" }
+mink-conformance = { path = "mink/mink-conformance" }
 mink-server = { path = "mink/mink-server" }
 
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "sync", "time", "macros", "io-util"] }

@@ -1,0 +1,73 @@
+{
+  "manifests": [
+    {
+      "added_files_count": 1,
+      "added_rows_count": 50,
+      "added_snapshot_id": 5,
+      "content": "data",
+      "deleted_files_count": 0,
+      "deleted_rows_count": 0,
+      "existing_files_count": 0,
+      "existing_rows_count": 0,
+      "manifest_length": 4115,
+      "manifest_path": "s3://warehouse/orders/metadata/5-e2-m0.avro",
+      "min_sequence_number": 5,
+      "partition_spec_id": 0,
+      "partitions": [
+        {
+          "contains_nan": false,
+          "contains_null": false,
+          "lower_bound": "00000000",
+          "upper_bound": "00000000"
+        }
+      ],
+      "sequence_number": 5
+    },
+    {
+      "added_files_count": 2,
+      "added_rows_count": 80,
+      "added_snapshot_id": 3,
+      "content": "data",
+      "deleted_files_count": 0,
+      "deleted_rows_count": 0,
+      "existing_files_count": 0,
+      "existing_rows_count": 0,
+      "manifest_length": 4258,
+      "manifest_path": "s3://warehouse/orders/metadata/3-e2-m0.avro",
+      "min_sequence_number": 3,
+      "partition_spec_id": 0,
+      "partitions": [
+        {
+          "contains_nan": false,
+          "contains_null": false,
+          "lower_bound": "00000000",
+          "upper_bound": "01000000"
+        }
+      ],
+      "sequence_number": 3
+    },
+    {
+      "added_files_count": 0,
+      "added_rows_count": 0,
+      "added_snapshot_id": 3,
+      "content": "data",
+      "deleted_files_count": 1,
+      "deleted_rows_count": 100,
+      "existing_files_count": 1,
+      "existing_rows_count": 50,
+      "manifest_length": 4259,
+      "manifest_path": "s3://warehouse/orders/metadata/3-e2-m1.avro",
+      "min_sequence_number": 1,
+      "partition_spec_id": 0,
+      "partitions": [
+        {
+          "contains_nan": false,
+          "contains_null": false,
+          "lower_bound": "00000000",
+          "upper_bound": "01000000"
+        }
+      ],
+      "sequence_number": 3
+    }
+  ]
+}

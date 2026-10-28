@@ -19,6 +19,8 @@ thiserror = { workspace = true }
 tokio = { workspace = true, features = ["net"] }
 
 [dev-dependencies]
+mink-conformance = { workspace = true }
+
 proptest = { workspace = true }
 uuid = { workspace = true }
 

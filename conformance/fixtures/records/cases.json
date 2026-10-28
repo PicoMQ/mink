@@ -1,0 +1,2082 @@
+{
+  "cases": [
+    {
+      "aborted": [],
+      "error": null,
+      "fetch_offset": 0,
+      "name": "codec_none",
+      "records": [
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "30"
+            }
+          ],
+          "key_hex": "6b30",
+          "offset": 0,
+          "timestamp_ms": 1793142250508,
+          "value_hex": "7630"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "31"
+            }
+          ],
+          "key_hex": "6b31",
+          "offset": 1,
+          "timestamp_ms": 1793142250508,
+          "value_hex": "7631"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "32"
+            }
+          ],
+          "key_hex": "6b32",
+          "offset": 2,
+          "timestamp_ms": 1793142250508,
+          "value_hex": "7632"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "33"
+            }
+          ],
+          "key_hex": "6b33",
+          "offset": 3,
+          "timestamp_ms": 1793142250508,
+          "value_hex": "7633"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "34"
+            }
+          ],
+          "key_hex": "6b34",
+          "offset": 4,
+          "timestamp_ms": 1793142250508,
+          "value_hex": "7634"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "35"
+            }
+          ],
+          "key_hex": "6b35",
+          "offset": 5,
+          "timestamp_ms": 1793142250508,
+          "value_hex": "7635"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "36"
+            }
+          ],
+          "key_hex": "6b36",
+          "offset": 6,
+          "timestamp_ms": 1793142250508,
+          "value_hex": "7636"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "37"
+            }
+          ],
+          "key_hex": "6b37",
+          "offset": 7,
+          "timestamp_ms": 1793142250508,
+          "value_hex": "7637"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "38"
+            }
+          ],
+          "key_hex": "6b38",
+          "offset": 8,
+          "timestamp_ms": 1793142250508,
+          "value_hex": "7638"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "39"
+            }
+          ],
+          "key_hex": "6b39",
+          "offset": 9,
+          "timestamp_ms": 1793142250508,
+          "value_hex": "7639"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3130"
+            }
+          ],
+          "key_hex": "6b3130",
+          "offset": 10,
+          "timestamp_ms": 1793142250613,
+          "value_hex": "763130"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3131"
+            }
+          ],
+          "key_hex": "6b3131",
+          "offset": 11,
+          "timestamp_ms": 1793142250613,
+          "value_hex": "763131"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3132"
+            }
+          ],
+          "key_hex": "6b3132",
+          "offset": 12,
+          "timestamp_ms": 1793142250613,
+          "value_hex": "763132"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3133"
+            }
+          ],
+          "key_hex": "6b3133",
+          "offset": 13,
+          "timestamp_ms": 1793142250613,
+          "value_hex": "763133"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3134"
+            }
+          ],
+          "key_hex": "6b3134",
+          "offset": 14,
+          "timestamp_ms": 1793142250613,
+          "value_hex": "763134"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3135"
+            }
+          ],
+          "key_hex": "6b3135",
+          "offset": 15,
+          "timestamp_ms": 1793142250613,
+          "value_hex": "763135"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3136"
+            }
+          ],
+          "key_hex": "6b3136",
+          "offset": 16,
+          "timestamp_ms": 1793142250613,
+          "value_hex": "763136"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3137"
+            }
+          ],
+          "key_hex": "6b3137",
+          "offset": 17,
+          "timestamp_ms": 1793142250613,
+          "value_hex": "763137"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3138"
+            }
+          ],
+          "key_hex": "6b3138",
+          "offset": 18,
+          "timestamp_ms": 1793142250613,
+          "value_hex": "763138"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3139"
+            }
+          ],
+          "key_hex": "6b3139",
+          "offset": 19,
+          "timestamp_ms": 1793142250613,
+          "value_hex": "763139"
+        }
+      ]
+    },
+    {
+      "aborted": [],
+      "error": null,
+      "fetch_offset": 0,
+      "name": "truncated_last_batch",
+      "records": [
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "30"
+            }
+          ],
+          "key_hex": "6b30",
+          "offset": 0,
+          "timestamp_ms": 1793142250508,
+          "value_hex": "7630"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "31"
+            }
+          ],
+          "key_hex": "6b31",
+          "offset": 1,
+          "timestamp_ms": 1793142250508,
+          "value_hex": "7631"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "32"
+            }
+          ],
+          "key_hex": "6b32",
+          "offset": 2,
+          "timestamp_ms": 1793142250508,
+          "value_hex": "7632"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "33"
+            }
+          ],
+          "key_hex": "6b33",
+          "offset": 3,
+          "timestamp_ms": 1793142250508,
+          "value_hex": "7633"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "34"
+            }
+          ],
+          "key_hex": "6b34",
+          "offset": 4,
+          "timestamp_ms": 1793142250508,
+          "value_hex": "7634"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "35"
+            }
+          ],
+          "key_hex": "6b35",
+          "offset": 5,
+          "timestamp_ms": 1793142250508,
+          "value_hex": "7635"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "36"
+            }
+          ],
+          "key_hex": "6b36",
+          "offset": 6,
+          "timestamp_ms": 1793142250508,
+          "value_hex": "7636"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "37"
+            }
+          ],
+          "key_hex": "6b37",
+          "offset": 7,
+          "timestamp_ms": 1793142250508,
+          "value_hex": "7637"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "38"
+            }
+          ],
+          "key_hex": "6b38",
+          "offset": 8,
+          "timestamp_ms": 1793142250508,
+          "value_hex": "7638"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "39"
+            }
+          ],
+          "key_hex": "6b39",
+          "offset": 9,
+          "timestamp_ms": 1793142250508,
+          "value_hex": "7639"
+        }
+      ]
+    },
+    {
+      "aborted": [],
+      "error": {
+        "base_offset": 0,
+        "kind": "corrupt_batch"
+      },
+      "fetch_offset": 0,
+      "name": "corrupt_crc",
+      "records": []
+    },
+    {
+      "aborted": [],
+      "error": null,
+      "fetch_offset": 0,
+      "name": "codec_gzip",
+      "records": [
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "30"
+            }
+          ],
+          "key_hex": "6b30",
+          "offset": 0,
+          "timestamp_ms": 1793142254045,
+          "value_hex": "7630"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "31"
+            }
+          ],
+          "key_hex": "6b31",
+          "offset": 1,
+          "timestamp_ms": 1793142254045,
+          "value_hex": "7631"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "32"
+            }
+          ],
+          "key_hex": "6b32",
+          "offset": 2,
+          "timestamp_ms": 1793142254045,
+          "value_hex": "7632"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "33"
+            }
+          ],
+          "key_hex": "6b33",
+          "offset": 3,
+          "timestamp_ms": 1793142254045,
+          "value_hex": "7633"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "34"
+            }
+          ],
+          "key_hex": "6b34",
+          "offset": 4,
+          "timestamp_ms": 1793142254045,
+          "value_hex": "7634"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "35"
+            }
+          ],
+          "key_hex": "6b35",
+          "offset": 5,
+          "timestamp_ms": 1793142254045,
+          "value_hex": "7635"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "36"
+            }
+          ],
+          "key_hex": "6b36",
+          "offset": 6,
+          "timestamp_ms": 1793142254045,
+          "value_hex": "7636"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "37"
+            }
+          ],
+          "key_hex": "6b37",
+          "offset": 7,
+          "timestamp_ms": 1793142254045,
+          "value_hex": "7637"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "38"
+            }
+          ],
+          "key_hex": "6b38",
+          "offset": 8,
+          "timestamp_ms": 1793142254045,
+          "value_hex": "7638"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "39"
+            }
+          ],
+          "key_hex": "6b39",
+          "offset": 9,
+          "timestamp_ms": 1793142254045,
+          "value_hex": "7639"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3130"
+            }
+          ],
+          "key_hex": "6b3130",
+          "offset": 10,
+          "timestamp_ms": 1793142254147,
+          "value_hex": "763130"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3131"
+            }
+          ],
+          "key_hex": "6b3131",
+          "offset": 11,
+          "timestamp_ms": 1793142254147,
+          "value_hex": "763131"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3132"
+            }
+          ],
+          "key_hex": "6b3132",
+          "offset": 12,
+          "timestamp_ms": 1793142254147,
+          "value_hex": "763132"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3133"
+            }
+          ],
+          "key_hex": "6b3133",
+          "offset": 13,
+          "timestamp_ms": 1793142254147,
+          "value_hex": "763133"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3134"
+            }
+          ],
+          "key_hex": "6b3134",
+          "offset": 14,
+          "timestamp_ms": 1793142254147,
+          "value_hex": "763134"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3135"
+            }
+          ],
+          "key_hex": "6b3135",
+          "offset": 15,
+          "timestamp_ms": 1793142254147,
+          "value_hex": "763135"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3136"
+            }
+          ],
+          "key_hex": "6b3136",
+          "offset": 16,
+          "timestamp_ms": 1793142254147,
+          "value_hex": "763136"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3137"
+            }
+          ],
+          "key_hex": "6b3137",
+          "offset": 17,
+          "timestamp_ms": 1793142254147,
+          "value_hex": "763137"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3138"
+            }
+          ],
+          "key_hex": "6b3138",
+          "offset": 18,
+          "timestamp_ms": 1793142254147,
+          "value_hex": "763138"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3139"
+            }
+          ],
+          "key_hex": "6b3139",
+          "offset": 19,
+          "timestamp_ms": 1793142254147,
+          "value_hex": "763139"
+        }
+      ]
+    },
+    {
+      "aborted": [],
+      "error": null,
+      "fetch_offset": 0,
+      "name": "codec_snappy",
+      "records": [
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "30"
+            }
+          ],
+          "key_hex": "6b30",
+          "offset": 0,
+          "timestamp_ms": 1793142257531,
+          "value_hex": "7630"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "31"
+            }
+          ],
+          "key_hex": "6b31",
+          "offset": 1,
+          "timestamp_ms": 1793142257531,
+          "value_hex": "7631"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "32"
+            }
+          ],
+          "key_hex": "6b32",
+          "offset": 2,
+          "timestamp_ms": 1793142257531,
+          "value_hex": "7632"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "33"
+            }
+          ],
+          "key_hex": "6b33",
+          "offset": 3,
+          "timestamp_ms": 1793142257531,
+          "value_hex": "7633"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "34"
+            }
+          ],
+          "key_hex": "6b34",
+          "offset": 4,
+          "timestamp_ms": 1793142257531,
+          "value_hex": "7634"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "35"
+            }
+          ],
+          "key_hex": "6b35",
+          "offset": 5,
+          "timestamp_ms": 1793142257531,
+          "value_hex": "7635"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "36"
+            }
+          ],
+          "key_hex": "6b36",
+          "offset": 6,
+          "timestamp_ms": 1793142257531,
+          "value_hex": "7636"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "37"
+            }
+          ],
+          "key_hex": "6b37",
+          "offset": 7,
+          "timestamp_ms": 1793142257531,
+          "value_hex": "7637"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "38"
+            }
+          ],
+          "key_hex": "6b38",
+          "offset": 8,
+          "timestamp_ms": 1793142257531,
+          "value_hex": "7638"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "39"
+            }
+          ],
+          "key_hex": "6b39",
+          "offset": 9,
+          "timestamp_ms": 1793142257531,
+          "value_hex": "7639"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3130"
+            }
+          ],
+          "key_hex": "6b3130",
+          "offset": 10,
+          "timestamp_ms": 1793142257631,
+          "value_hex": "763130"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3131"
+            }
+          ],
+          "key_hex": "6b3131",
+          "offset": 11,
+          "timestamp_ms": 1793142257631,
+          "value_hex": "763131"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3132"
+            }
+          ],
+          "key_hex": "6b3132",
+          "offset": 12,
+          "timestamp_ms": 1793142257631,
+          "value_hex": "763132"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3133"
+            }
+          ],
+          "key_hex": "6b3133",
+          "offset": 13,
+          "timestamp_ms": 1793142257631,
+          "value_hex": "763133"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3134"
+            }
+          ],
+          "key_hex": "6b3134",
+          "offset": 14,
+          "timestamp_ms": 1793142257631,
+          "value_hex": "763134"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3135"
+            }
+          ],
+          "key_hex": "6b3135",
+          "offset": 15,
+          "timestamp_ms": 1793142257632,
+          "value_hex": "763135"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3136"
+            }
+          ],
+          "key_hex": "6b3136",
+          "offset": 16,
+          "timestamp_ms": 1793142257632,
+          "value_hex": "763136"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3137"
+            }
+          ],
+          "key_hex": "6b3137",
+          "offset": 17,
+          "timestamp_ms": 1793142257632,
+          "value_hex": "763137"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3138"
+            }
+          ],
+          "key_hex": "6b3138",
+          "offset": 18,
+          "timestamp_ms": 1793142257632,
+          "value_hex": "763138"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3139"
+            }
+          ],
+          "key_hex": "6b3139",
+          "offset": 19,
+          "timestamp_ms": 1793142257632,
+          "value_hex": "763139"
+        }
+      ]
+    },
+    {
+      "aborted": [],
+      "error": null,
+      "fetch_offset": 0,
+      "name": "codec_lz4",
+      "records": [
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "30"
+            }
+          ],
+          "key_hex": "6b30",
+          "offset": 0,
+          "timestamp_ms": 1793142261040,
+          "value_hex": "7630"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "31"
+            }
+          ],
+          "key_hex": "6b31",
+          "offset": 1,
+          "timestamp_ms": 1793142261040,
+          "value_hex": "7631"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "32"
+            }
+          ],
+          "key_hex": "6b32",
+          "offset": 2,
+          "timestamp_ms": 1793142261040,
+          "value_hex": "7632"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "33"
+            }
+          ],
+          "key_hex": "6b33",
+          "offset": 3,
+          "timestamp_ms": 1793142261040,
+          "value_hex": "7633"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "34"
+            }
+          ],
+          "key_hex": "6b34",
+          "offset": 4,
+          "timestamp_ms": 1793142261040,
+          "value_hex": "7634"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "35"
+            }
+          ],
+          "key_hex": "6b35",
+          "offset": 5,
+          "timestamp_ms": 1793142261040,
+          "value_hex": "7635"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "36"
+            }
+          ],
+          "key_hex": "6b36",
+          "offset": 6,
+          "timestamp_ms": 1793142261040,
+          "value_hex": "7636"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "37"
+            }
+          ],
+          "key_hex": "6b37",
+          "offset": 7,
+          "timestamp_ms": 1793142261040,
+          "value_hex": "7637"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "38"
+            }
+          ],
+          "key_hex": "6b38",
+          "offset": 8,
+          "timestamp_ms": 1793142261040,
+          "value_hex": "7638"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "39"
+            }
+          ],
+          "key_hex": "6b39",
+          "offset": 9,
+          "timestamp_ms": 1793142261040,
+          "value_hex": "7639"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3130"
+            }
+          ],
+          "key_hex": "6b3130",
+          "offset": 10,
+          "timestamp_ms": 1793142261140,
+          "value_hex": "763130"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3131"
+            }
+          ],
+          "key_hex": "6b3131",
+          "offset": 11,
+          "timestamp_ms": 1793142261140,
+          "value_hex": "763131"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3132"
+            }
+          ],
+          "key_hex": "6b3132",
+          "offset": 12,
+          "timestamp_ms": 1793142261140,
+          "value_hex": "763132"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3133"
+            }
+          ],
+          "key_hex": "6b3133",
+          "offset": 13,
+          "timestamp_ms": 1793142261140,
+          "value_hex": "763133"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3134"
+            }
+          ],
+          "key_hex": "6b3134",
+          "offset": 14,
+          "timestamp_ms": 1793142261140,
+          "value_hex": "763134"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3135"
+            }
+          ],
+          "key_hex": "6b3135",
+          "offset": 15,
+          "timestamp_ms": 1793142261140,
+          "value_hex": "763135"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3136"
+            }
+          ],
+          "key_hex": "6b3136",
+          "offset": 16,
+          "timestamp_ms": 1793142261140,
+          "value_hex": "763136"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3137"
+            }
+          ],
+          "key_hex": "6b3137",
+          "offset": 17,
+          "timestamp_ms": 1793142261140,
+          "value_hex": "763137"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3138"
+            }
+          ],
+          "key_hex": "6b3138",
+          "offset": 18,
+          "timestamp_ms": 1793142261140,
+          "value_hex": "763138"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3139"
+            }
+          ],
+          "key_hex": "6b3139",
+          "offset": 19,
+          "timestamp_ms": 1793142261140,
+          "value_hex": "763139"
+        }
+      ]
+    },
+    {
+      "aborted": [],
+      "error": null,
+      "fetch_offset": 0,
+      "name": "codec_zstd",
+      "records": [
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "30"
+            }
+          ],
+          "key_hex": "6b30",
+          "offset": 0,
+          "timestamp_ms": 1793142264551,
+          "value_hex": "7630"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "31"
+            }
+          ],
+          "key_hex": "6b31",
+          "offset": 1,
+          "timestamp_ms": 1793142264551,
+          "value_hex": "7631"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "32"
+            }
+          ],
+          "key_hex": "6b32",
+          "offset": 2,
+          "timestamp_ms": 1793142264551,
+          "value_hex": "7632"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "33"
+            }
+          ],
+          "key_hex": "6b33",
+          "offset": 3,
+          "timestamp_ms": 1793142264551,
+          "value_hex": "7633"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "34"
+            }
+          ],
+          "key_hex": "6b34",
+          "offset": 4,
+          "timestamp_ms": 1793142264551,
+          "value_hex": "7634"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "35"
+            }
+          ],
+          "key_hex": "6b35",
+          "offset": 5,
+          "timestamp_ms": 1793142264551,
+          "value_hex": "7635"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "36"
+            }
+          ],
+          "key_hex": "6b36",
+          "offset": 6,
+          "timestamp_ms": 1793142264551,
+          "value_hex": "7636"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "37"
+            }
+          ],
+          "key_hex": "6b37",
+          "offset": 7,
+          "timestamp_ms": 1793142264551,
+          "value_hex": "7637"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "38"
+            }
+          ],
+          "key_hex": "6b38",
+          "offset": 8,
+          "timestamp_ms": 1793142264551,
+          "value_hex": "7638"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "39"
+            }
+          ],
+          "key_hex": "6b39",
+          "offset": 9,
+          "timestamp_ms": 1793142264551,
+          "value_hex": "7639"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3130"
+            }
+          ],
+          "key_hex": "6b3130",
+          "offset": 10,
+          "timestamp_ms": 1793142264655,
+          "value_hex": "763130"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3131"
+            }
+          ],
+          "key_hex": "6b3131",
+          "offset": 11,
+          "timestamp_ms": 1793142264655,
+          "value_hex": "763131"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3132"
+            }
+          ],
+          "key_hex": "6b3132",
+          "offset": 12,
+          "timestamp_ms": 1793142264655,
+          "value_hex": "763132"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3133"
+            }
+          ],
+          "key_hex": "6b3133",
+          "offset": 13,
+          "timestamp_ms": 1793142264655,
+          "value_hex": "763133"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3134"
+            }
+          ],
+          "key_hex": "6b3134",
+          "offset": 14,
+          "timestamp_ms": 1793142264655,
+          "value_hex": "763134"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3135"
+            }
+          ],
+          "key_hex": "6b3135",
+          "offset": 15,
+          "timestamp_ms": 1793142264655,
+          "value_hex": "763135"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3136"
+            }
+          ],
+          "key_hex": "6b3136",
+          "offset": 16,
+          "timestamp_ms": 1793142264655,
+          "value_hex": "763136"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3137"
+            }
+          ],
+          "key_hex": "6b3137",
+          "offset": 17,
+          "timestamp_ms": 1793142264655,
+          "value_hex": "763137"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3138"
+            }
+          ],
+          "key_hex": "6b3138",
+          "offset": 18,
+          "timestamp_ms": 1793142264655,
+          "value_hex": "763138"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3139"
+            }
+          ],
+          "key_hex": "6b3139",
+          "offset": 19,
+          "timestamp_ms": 1793142264655,
+          "value_hex": "763139"
+        }
+      ]
+    },
+    {
+      "aborted": [],
+      "error": null,
+      "fetch_offset": 0,
+      "name": "log_append_time",
+      "records": [
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "30"
+            }
+          ],
+          "key_hex": "6b30",
+          "offset": 0,
+          "timestamp_ms": 1793142268106,
+          "value_hex": "7630"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "31"
+            }
+          ],
+          "key_hex": "6b31",
+          "offset": 1,
+          "timestamp_ms": 1793142268106,
+          "value_hex": "7631"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "32"
+            }
+          ],
+          "key_hex": "6b32",
+          "offset": 2,
+          "timestamp_ms": 1793142268106,
+          "value_hex": "7632"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "33"
+            }
+          ],
+          "key_hex": "6b33",
+          "offset": 3,
+          "timestamp_ms": 1793142268106,
+          "value_hex": "7633"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "34"
+            }
+          ],
+          "key_hex": "6b34",
+          "offset": 4,
+          "timestamp_ms": 1793142268106,
+          "value_hex": "7634"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "35"
+            }
+          ],
+          "key_hex": "6b35",
+          "offset": 5,
+          "timestamp_ms": 1793142268106,
+          "value_hex": "7635"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "36"
+            }
+          ],
+          "key_hex": "6b36",
+          "offset": 6,
+          "timestamp_ms": 1793142268106,
+          "value_hex": "7636"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "37"
+            }
+          ],
+          "key_hex": "6b37",
+          "offset": 7,
+          "timestamp_ms": 1793142268106,
+          "value_hex": "7637"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "38"
+            }
+          ],
+          "key_hex": "6b38",
+          "offset": 8,
+          "timestamp_ms": 1793142268106,
+          "value_hex": "7638"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "39"
+            }
+          ],
+          "key_hex": "6b39",
+          "offset": 9,
+          "timestamp_ms": 1793142268106,
+          "value_hex": "7639"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3130"
+            }
+          ],
+          "key_hex": "6b3130",
+          "offset": 10,
+          "timestamp_ms": 1793142268209,
+          "value_hex": "763130"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3131"
+            }
+          ],
+          "key_hex": "6b3131",
+          "offset": 11,
+          "timestamp_ms": 1793142268209,
+          "value_hex": "763131"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3132"
+            }
+          ],
+          "key_hex": "6b3132",
+          "offset": 12,
+          "timestamp_ms": 1793142268209,
+          "value_hex": "763132"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3133"
+            }
+          ],
+          "key_hex": "6b3133",
+          "offset": 13,
+          "timestamp_ms": 1793142268209,
+          "value_hex": "763133"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3134"
+            }
+          ],
+          "key_hex": "6b3134",
+          "offset": 14,
+          "timestamp_ms": 1793142268209,
+          "value_hex": "763134"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3135"
+            }
+          ],
+          "key_hex": "6b3135",
+          "offset": 15,
+          "timestamp_ms": 1793142268209,
+          "value_hex": "763135"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3136"
+            }
+          ],
+          "key_hex": "6b3136",
+          "offset": 16,
+          "timestamp_ms": 1793142268209,
+          "value_hex": "763136"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3137"
+            }
+          ],
+          "key_hex": "6b3137",
+          "offset": 17,
+          "timestamp_ms": 1793142268209,
+          "value_hex": "763137"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3138"
+            }
+          ],
+          "key_hex": "6b3138",
+          "offset": 18,
+          "timestamp_ms": 1793142268209,
+          "value_hex": "763138"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3139"
+            }
+          ],
+          "key_hex": "6b3139",
+          "offset": 19,
+          "timestamp_ms": 1793142268209,
+          "value_hex": "763139"
+        }
+      ]
+    },
+    {
+      "aborted": [],
+      "error": null,
+      "fetch_offset": 3,
+      "name": "fetch_inside_a_batch",
+      "records": [
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "33"
+            }
+          ],
+          "key_hex": "6b33",
+          "offset": 3,
+          "timestamp_ms": 1793142271602,
+          "value_hex": "7633"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "34"
+            }
+          ],
+          "key_hex": "6b34",
+          "offset": 4,
+          "timestamp_ms": 1793142271602,
+          "value_hex": "7634"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "35"
+            }
+          ],
+          "key_hex": "6b35",
+          "offset": 5,
+          "timestamp_ms": 1793142271602,
+          "value_hex": "7635"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "36"
+            }
+          ],
+          "key_hex": "6b36",
+          "offset": 6,
+          "timestamp_ms": 1793142271602,
+          "value_hex": "7636"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "37"
+            }
+          ],
+          "key_hex": "6b37",
+          "offset": 7,
+          "timestamp_ms": 1793142271602,
+          "value_hex": "7637"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "38"
+            }
+          ],
+          "key_hex": "6b38",
+          "offset": 8,
+          "timestamp_ms": 1793142271602,
+          "value_hex": "7638"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "39"
+            }
+          ],
+          "key_hex": "6b39",
+          "offset": 9,
+          "timestamp_ms": 1793142271602,
+          "value_hex": "7639"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3130"
+            }
+          ],
+          "key_hex": "6b3130",
+          "offset": 10,
+          "timestamp_ms": 1793142271704,
+          "value_hex": "763130"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3131"
+            }
+          ],
+          "key_hex": "6b3131",
+          "offset": 11,
+          "timestamp_ms": 1793142271704,
+          "value_hex": "763131"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3132"
+            }
+          ],
+          "key_hex": "6b3132",
+          "offset": 12,
+          "timestamp_ms": 1793142271704,
+          "value_hex": "763132"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3133"
+            }
+          ],
+          "key_hex": "6b3133",
+          "offset": 13,
+          "timestamp_ms": 1793142271704,
+          "value_hex": "763133"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3134"
+            }
+          ],
+          "key_hex": "6b3134",
+          "offset": 14,
+          "timestamp_ms": 1793142271704,
+          "value_hex": "763134"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3135"
+            }
+          ],
+          "key_hex": "6b3135",
+          "offset": 15,
+          "timestamp_ms": 1793142271704,
+          "value_hex": "763135"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3136"
+            }
+          ],
+          "key_hex": "6b3136",
+          "offset": 16,
+          "timestamp_ms": 1793142271704,
+          "value_hex": "763136"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3137"
+            }
+          ],
+          "key_hex": "6b3137",
+          "offset": 17,
+          "timestamp_ms": 1793142271704,
+          "value_hex": "763137"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3138"
+            }
+          ],
+          "key_hex": "6b3138",
+          "offset": 18,
+          "timestamp_ms": 1793142271704,
+          "value_hex": "763138"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "3139"
+            }
+          ],
+          "key_hex": "6b3139",
+          "offset": 19,
+          "timestamp_ms": 1793142271704,
+          "value_hex": "763139"
+        }
+      ]
+    },
+    {
+      "aborted": [],
+      "error": null,
+      "fetch_offset": 0,
+      "name": "headers_and_nulls",
+      "records": [
+        {
+          "headers": [
+            {
+              "key": "a",
+              "value_hex": "31"
+            },
+            {
+              "key": "a",
+              "value_hex": null
+            },
+            {
+              "key": "b",
+              "value_hex": ""
+            }
+          ],
+          "key_hex": "6b",
+          "offset": 0,
+          "timestamp_ms": 1793142275131,
+          "value_hex": "76"
+        },
+        {
+          "headers": [],
+          "key_hex": null,
+          "offset": 1,
+          "timestamp_ms": 1793142275131,
+          "value_hex": "6e6f206b6579"
+        },
+        {
+          "headers": [],
+          "key_hex": "6e6f2076616c7565",
+          "offset": 2,
+          "timestamp_ms": 1793142275131,
+          "value_hex": null
+        },
+        {
+          "headers": [],
+          "key_hex": "656d707479",
+          "offset": 3,
+          "timestamp_ms": 1793142275131,
+          "value_hex": ""
+        }
+      ]
+    },
+    {
+      "aborted": [],
+      "error": null,
+      "fetch_offset": 0,
+      "name": "committed_transaction",
+      "records": [
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "30"
+            }
+          ],
+          "key_hex": "6b30",
+          "offset": 0,
+          "timestamp_ms": 1793142278626,
+          "value_hex": "7630"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "31"
+            }
+          ],
+          "key_hex": "6b31",
+          "offset": 1,
+          "timestamp_ms": 1793142278626,
+          "value_hex": "7631"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "32"
+            }
+          ],
+          "key_hex": "6b32",
+          "offset": 2,
+          "timestamp_ms": 1793142278626,
+          "value_hex": "7632"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "33"
+            }
+          ],
+          "key_hex": "6b33",
+          "offset": 3,
+          "timestamp_ms": 1793142278626,
+          "value_hex": "7633"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "34"
+            }
+          ],
+          "key_hex": "6b34",
+          "offset": 4,
+          "timestamp_ms": 1793142278626,
+          "value_hex": "7634"
+        }
+      ]
+    },
+    {
+      "aborted": [
+        {
+          "first_offset": 0,
+          "producer_id": 5
+        }
+      ],
+      "error": null,
+      "fetch_offset": 0,
+      "name": "aborted_transaction",
+      "records": [
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "35"
+            }
+          ],
+          "key_hex": "6b35",
+          "offset": 6,
+          "timestamp_ms": 1793142282223,
+          "value_hex": "7635"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "36"
+            }
+          ],
+          "key_hex": "6b36",
+          "offset": 7,
+          "timestamp_ms": 1793142282223,
+          "value_hex": "7636"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "37"
+            }
+          ],
+          "key_hex": "6b37",
+          "offset": 8,
+          "timestamp_ms": 1793142282223,
+          "value_hex": "7637"
+        }
+      ]
+    },
+    {
+      "aborted": [
+        {
+          "first_offset": 1,
+          "producer_id": 7
+        }
+      ],
+      "error": null,
+      "fetch_offset": 0,
+      "name": "interleaved_producers",
+      "records": [
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "30"
+            }
+          ],
+          "key_hex": "6b30",
+          "offset": 0,
+          "timestamp_ms": 1793142286202,
+          "value_hex": "7630"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "32"
+            }
+          ],
+          "key_hex": "6b32",
+          "offset": 2,
+          "timestamp_ms": 1793142286411,
+          "value_hex": "7632"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "34"
+            }
+          ],
+          "key_hex": "6b34",
+          "offset": 4,
+          "timestamp_ms": 1793142286613,
+          "value_hex": "7634"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "36"
+            }
+          ],
+          "key_hex": "6b36",
+          "offset": 8,
+          "timestamp_ms": 1793142286824,
+          "value_hex": "7636"
+        },
+        {
+          "headers": [
+            {
+              "key": "i",
+              "value_hex": "37"
+            }
+          ],
+          "key_hex": "6b37",
+          "offset": 9,
+          "timestamp_ms": 1793142286824,
+          "value_hex": "7637"
+        }
+      ]
+    }
+  ],
+  "kafka": "apache/kafka:3.9.1"
+}

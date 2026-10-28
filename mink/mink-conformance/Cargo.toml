@@ -1,0 +1,39 @@
+[package]
+name = "mink-conformance"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Checks Mink against independent implementations: the conformance fixtures and the generator that writes them, the services tests run against, and end to end tests with Apache Kafka and DuckDB"
+repository.workspace = true
+publish = false
+
+[dependencies]
+mink-core = { workspace = true }
+mink-iceberg = { workspace = true }
+mink-schema = { workspace = true }
+mink-store = { workspace = true }
+
+anyhow = { workspace = true }
+bytes = { workspace = true }
+clap = { workspace = true }
+hex = { workspace = true }
+iceberg = { workspace = true }
+kafka-protocol = { workspace = true }
+rdkafka = { workspace = true, features = ["libz", "zstd"] }
+reqwest = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true, features = ["net", "process"] }
+uuid = { workspace = true }
+
+[dev-dependencies]
+mink-kafka = { workspace = true }
+mink-metrics = { workspace = true }
+mink-server = { workspace = true }
+
+fastrand = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

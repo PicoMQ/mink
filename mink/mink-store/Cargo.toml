@@ -20,6 +20,8 @@ thiserror = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+mink-conformance = { workspace = true }
+
 proptest = { workspace = true }
 tokio = { workspace = true }
 

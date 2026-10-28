@@ -1,0 +1,27 @@
+{
+  "manifests": [
+    {
+      "added_files_count": 2,
+      "added_rows_count": 150,
+      "added_snapshot_id": 1,
+      "content": "data",
+      "deleted_files_count": 0,
+      "deleted_rows_count": 0,
+      "existing_files_count": 0,
+      "existing_rows_count": 0,
+      "manifest_length": 4257,
+      "manifest_path": "s3://warehouse/orders/metadata/1-e1-m0.avro",
+      "min_sequence_number": 1,
+      "partition_spec_id": 0,
+      "partitions": [
+        {
+          "contains_nan": false,
+          "contains_null": false,
+          "lower_bound": "00000000",
+          "upper_bound": "01000000"
+        }
+      ],
+      "sequence_number": 1
+    }
+  ]
+}

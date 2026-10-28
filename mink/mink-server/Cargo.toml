@@ -39,6 +39,8 @@ tracing = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+mink-conformance = { workspace = true }
+
 rdkafka = { workspace = true }
 
 figment = { workspace = true, features = ["test"] }

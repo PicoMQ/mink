@@ -2546,6 +2546,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "libz-sys"
+version = "1.1.31"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ff20308ecabd635a2dc1dd5834a86c462cca20efba1d5d3ddab1f8aea3455cb2"
+dependencies = [
+ "cc",
+ "libc",
+ "pkg-config",
+ "vcpkg",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2803,6 +2815,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "mink-conformance"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "clap",
+ "fastrand",
+ "hex",
+ "iceberg",
+ "kafka-protocol",
+ "mink-core",
+ "mink-iceberg",
+ "mink-kafka",
+ "mink-metrics",
+ "mink-schema",
+ "mink-server",
+ "mink-store",
+ "rdkafka",
+ "reqwest 0.13.5",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "mink-core"
 version = "0.1.0"
 dependencies = [
@@ -2827,6 +2866,7 @@ dependencies = [
  "bytes",
  "hex",
  "iceberg",
+ "mink-conformance",
  "mink-core",
  "mink-schema",
  "parquet",
@@ -2846,6 +2886,7 @@ dependencies = [
  "bytes",
  "crc32c",
  "kafka-protocol",
+ "mink-conformance",
  "mink-core",
  "mink-metrics",
  "proptest",
@@ -2895,6 +2936,7 @@ dependencies = [
  "hex",
  "iceberg",
  "iceberg-catalog-rest",
+ "mink-conformance",
  "mink-core",
  "mink-iceberg",
  "mink-kafka",
@@ -2924,6 +2966,7 @@ dependencies = [
  "bytes",
  "hex",
  "iceberg",
+ "mink-conformance",
  "mink-core",
  "mink-schema",
  "proptest",
@@ -3792,8 +3835,10 @@ checksum = "e234cf318915c1059d4921ef7f75616b5219b10b46e9f3a511a15eb4b56a3f77"
 dependencies = [
  "cmake",
  "libc",
+ "libz-sys",
  "num_enum",
  "pkg-config",
+ "zstd-sys",
 ]
 
 [[package]]

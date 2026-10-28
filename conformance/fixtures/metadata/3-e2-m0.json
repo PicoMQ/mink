@@ -1,0 +1,70 @@
+{
+  "content": "data",
+  "entries": [
+    {
+      "file_format": "parquet",
+      "file_path": "s3://warehouse/orders/data/p=0/200-250.t0.s0.v1.parquet",
+      "file_sequence_number": null,
+      "file_size_in_bytes": 5000,
+      "lower_bounds": {
+        "1": "00000000",
+        "2": "c800000000000000"
+      },
+      "nan_value_counts": {},
+      "null_value_counts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "7": 0,
+        "8": 0,
+        "9": 0
+      },
+      "partition": {
+        "_kafka_partition": 0
+      },
+      "record_count": 50,
+      "sequence_number": 3,
+      "snapshot_id": 3,
+      "status": "added",
+      "upper_bounds": {
+        "1": "00000000",
+        "2": "f900000000000000"
+      }
+    },
+    {
+      "file_format": "parquet",
+      "file_path": "s3://warehouse/orders/data/p=1/50-80.t0.s0.v1.parquet",
+      "file_sequence_number": null,
+      "file_size_in_bytes": 3000,
+      "lower_bounds": {
+        "1": "01000000",
+        "2": "3200000000000000"
+      },
+      "nan_value_counts": {},
+      "null_value_counts": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "7": 0,
+        "8": 0,
+        "9": 0
+      },
+      "partition": {
+        "_kafka_partition": 1
+      },
+      "record_count": 30,
+      "sequence_number": 3,
+      "snapshot_id": 3,
+      "status": "added",
+      "upper_bounds": {
+        "1": "01000000",
+        "2": "4f00000000000000"
+      }
+    }
+  ],
+  "format_version": 2,
+  "partition_spec_id": 0,
+  "schema_id": 0
+}

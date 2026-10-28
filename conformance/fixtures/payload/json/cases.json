@@ -1,0 +1,1077 @@
+{
+  "registry": [
+    {
+      "id": 63,
+      "format": "json",
+      "definition": "{\"type\":\"object\",\"title\":\"Types\",\"definitions\":{\"Point\":{\"type\":\"object\",\"properties\":{\"x\":{\"type\":\"integer\"},\"y\":{\"type\":\"integer\"}}},\"Node\":{\"type\":\"object\",\"properties\":{\"value\":{\"type\":\"integer\"},\"children\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/definitions/Node\"}}}}},\"properties\":{\"b\":{\"type\":\"boolean\"},\"i\":{\"type\":\"integer\"},\"d\":{\"type\":\"number\"},\"s\":{\"type\":\"string\"},\"ts\":{\"type\":\"string\",\"format\":\"date-time\"},\"dt\":{\"type\":\"string\",\"format\":\"date\"},\"u\":{\"type\":\"string\",\"format\":\"uuid\"},\"e\":{\"enum\":[\"RED\",\"GREEN\"]},\"opt\":{\"type\":[\"string\",\"null\"]},\"arr\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}},\"m\":{\"type\":\"object\",\"additionalProperties\":{\"type\":\"integer\"}},\"nested\":{\"type\":\"object\",\"properties\":{\"x\":{\"type\":\"integer\"},\"y\":{\"type\":\"string\"}}},\"choice\":{\"oneOf\":[{\"type\":\"integer\"},{\"type\":\"string\"}]},\"pair\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"integer\"},{\"type\":\"string\"}]},\"point\":{\"$ref\":\"#/definitions/Point\"},\"tree\":{\"$ref\":\"#/definitions/Node\"}}}",
+      "references": [],
+      "subjects": [
+        "payload-308facf0-types-value",
+        "payload-780757eb-types-value",
+        "payload-c972b159-types-value"
+      ]
+    },
+    {
+      "id": 64,
+      "format": "json",
+      "definition": "{\"type\":\"object\",\"title\":\"Order\",\"properties\":{\"id\":{\"type\":\"integer\"},\"amount\":{\"type\":\"number\"},\"status\":{\"type\":\"string\"},\"legacy\":{\"type\":\"integer\"}}}",
+      "references": [],
+      "subjects": [
+        "payload-308facf0-evolution-value",
+        "payload-780757eb-evolution-value",
+        "payload-c972b159-evolution-value"
+      ]
+    },
+    {
+      "id": 65,
+      "format": "json",
+      "definition": "{\"type\":\"object\",\"title\":\"Order\",\"properties\":{\"id\":{\"type\":\"integer\"},\"amount\":{\"type\":\"number\"},\"status\":{\"type\":\"string\"},\"legacy\":{\"type\":\"integer\"},\"currency\":{\"type\":[\"string\",\"null\"]}}}",
+      "references": [],
+      "subjects": [
+        "payload-308facf0-evolution-value",
+        "payload-780757eb-evolution-value",
+        "payload-c972b159-evolution-value"
+      ]
+    },
+    {
+      "id": 66,
+      "format": "json",
+      "definition": "{\"type\":\"object\",\"title\":\"Order\",\"properties\":{\"id\":{\"type\":\"integer\"},\"amount\":{\"type\":\"number\"},\"status\":{\"type\":\"string\"},\"legacy\":{\"type\":\"string\"}}}",
+      "references": [],
+      "subjects": [
+        "payload-308facf0-evolution-value",
+        "payload-780757eb-evolution-value",
+        "payload-c972b159-evolution-value"
+      ]
+    },
+    {
+      "id": 67,
+      "format": "json",
+      "definition": "{\"type\":\"object\",\"title\":\"Point\",\"properties\":{\"x\":{\"type\":\"integer\"}}}",
+      "references": [],
+      "subjects": [
+        "payload-308facf0-references-point",
+        "payload-780757eb-references-point",
+        "payload-c972b159-references-point"
+      ]
+    },
+    {
+      "id": 69,
+      "format": "json",
+      "definition": "{\"type\":\"object\",\"title\":\"Wire\",\"properties\":{\"n\":{\"type\":\"integer\"}}}",
+      "references": [],
+      "subjects": [
+        "payload-308facf0-wire-value",
+        "payload-780757eb-wire-value",
+        "payload-c972b159-wire-value"
+      ]
+    },
+    {
+      "id": 70,
+      "format": "json",
+      "definition": "{\"type\":\"object\",\"title\":\"Elsewhere\",\"properties\":{\"n\":{\"type\":\"integer\"},\"e\":{\"type\":\"string\"}}}",
+      "references": [],
+      "subjects": [
+        "payload-308facf0-wire-elsewhere",
+        "payload-780757eb-wire-elsewhere",
+        "payload-c972b159-wire-elsewhere"
+      ]
+    },
+    {
+      "id": 91,
+      "format": "json",
+      "definition": "{\"type\":\"object\",\"title\":\"Deep0\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep1\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep2\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep3\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep4\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep5\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep6\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep7\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep8\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep9\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep10\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep11\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep12\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep13\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep14\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep15\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep16\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep17\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep18\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep19\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep20\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep21\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep22\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep23\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep24\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep25\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep26\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep27\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep28\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep29\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep30\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep31\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep32\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep33\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep34\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep35\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep36\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep37\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep38\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep39\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep40\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep41\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep42\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep43\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep44\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep45\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep46\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep47\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep48\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep49\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep50\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep51\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep52\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep53\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep54\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep55\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep56\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep57\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep58\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep59\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep60\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep61\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep62\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep63\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep64\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep65\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep66\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep67\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep68\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep69\",\"properties\":{\"next\":{\"type\":\"object\",\"title\":\"Deep70\",\"properties\":{\"next\":{\"type\":\"integer\"}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}",
+      "references": [],
+      "subjects": [
+        "payload-780757eb-deep-value",
+        "payload-c972b159-deep-value"
+      ]
+    },
+    {
+      "id": 513,
+      "format": "json",
+      "definition": "{\"type\":\"object\",\"title\":\"Main\",\"properties\":{\"p\":{\"$ref\":\"point780757eb.json\"}}}",
+      "references": [
+        {
+          "name": "point780757eb.json",
+          "id": 67
+        }
+      ],
+      "subjects": [
+        "payload-780757eb-references-value"
+      ]
+    },
+    {
+      "id": 2147483647,
+      "missing": true
+    }
+  ],
+  "guids": [
+    {
+      "guid": "00000000-0000-0000-0000-000000000000",
+      "id": null
+    },
+    {
+      "guid": "0615cb71-950e-7c27-7270-4612dcfd5327",
+      "id": 65
+    },
+    {
+      "guid": "2475588f-4deb-f34b-9392-7ff6c341a653",
+      "id": 513
+    },
+    {
+      "guid": "3ca87b0b-a4bb-f243-9299-b5e293e4999d",
+      "id": 69
+    },
+    {
+      "guid": "45823637-c2f1-48cb-d04b-31490d2eb8ea",
+      "id": 67
+    },
+    {
+      "guid": "8de3f33a-4dee-f5ae-910c-224f14de52c9",
+      "id": 91
+    },
+    {
+      "guid": "931f85de-cca5-4cc0-f72a-c6a391c86b63",
+      "id": 64
+    },
+    {
+      "guid": "aff83abe-45c6-b207-2f06-1272141f4032",
+      "id": 63
+    },
+    {
+      "guid": "cb09dbfc-3f94-31e0-4d28-3407dc5269c8",
+      "id": 70
+    },
+    {
+      "guid": "d720d970-a4a3-0b55-b9dc-4ca7fe62e97d",
+      "id": 66
+    }
+  ],
+  "cases": [
+    {
+      "name": "types",
+      "topic": "payload-780757eb-types",
+      "merges": [
+        {
+          "part": "value",
+          "id": 63,
+          "table": {
+            "type": "struct",
+            "schema-id": 1,
+            "fields": [
+              {
+                "id": 1,
+                "name": "_kafka_partition",
+                "required": true,
+                "type": "int"
+              },
+              {
+                "id": 2,
+                "name": "_kafka_offset",
+                "required": true,
+                "type": "long"
+              },
+              {
+                "id": 3,
+                "name": "_kafka_timestamp",
+                "required": true,
+                "type": "timestamptz"
+              },
+              {
+                "id": 4,
+                "name": "_kafka_key",
+                "required": false,
+                "type": "binary"
+              },
+              {
+                "id": 5,
+                "name": "_kafka_headers",
+                "required": true,
+                "type": {
+                  "type": "list",
+                  "element-id": 6,
+                  "element-required": true,
+                  "element": {
+                    "type": "struct",
+                    "fields": [
+                      {
+                        "id": 7,
+                        "name": "key",
+                        "required": true,
+                        "type": "string"
+                      },
+                      {
+                        "id": 8,
+                        "name": "value",
+                        "required": false,
+                        "type": "binary"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "id": 9,
+                "name": "_kafka_value",
+                "required": false,
+                "type": "binary"
+              },
+              {
+                "id": 10,
+                "name": "b",
+                "required": false,
+                "type": "boolean"
+              },
+              {
+                "id": 11,
+                "name": "i",
+                "required": false,
+                "type": "long"
+              },
+              {
+                "id": 12,
+                "name": "d",
+                "required": false,
+                "type": "double"
+              },
+              {
+                "id": 13,
+                "name": "s",
+                "required": false,
+                "type": "string"
+              },
+              {
+                "id": 14,
+                "name": "ts",
+                "required": false,
+                "type": "timestamptz"
+              },
+              {
+                "id": 15,
+                "name": "dt",
+                "required": false,
+                "type": "date"
+              },
+              {
+                "id": 16,
+                "name": "u",
+                "required": false,
+                "type": "uuid"
+              },
+              {
+                "id": 17,
+                "name": "e",
+                "required": false,
+                "type": "string"
+              },
+              {
+                "id": 18,
+                "name": "opt",
+                "required": false,
+                "type": "string"
+              },
+              {
+                "id": 19,
+                "name": "arr",
+                "required": false,
+                "type": {
+                  "type": "list",
+                  "element-id": 26,
+                  "element-required": false,
+                  "element": "long"
+                }
+              },
+              {
+                "id": 20,
+                "name": "m",
+                "required": false,
+                "type": {
+                  "type": "map",
+                  "key-id": 27,
+                  "key": "string",
+                  "value-id": 28,
+                  "value-required": false,
+                  "value": "long"
+                }
+              },
+              {
+                "id": 21,
+                "name": "nested",
+                "required": false,
+                "type": {
+                  "type": "struct",
+                  "fields": [
+                    {
+                      "id": 29,
+                      "name": "x",
+                      "required": false,
+                      "type": "long"
+                    },
+                    {
+                      "id": 30,
+                      "name": "y",
+                      "required": false,
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              {
+                "id": 22,
+                "name": "choice",
+                "required": false,
+                "type": "string"
+              },
+              {
+                "id": 23,
+                "name": "pair",
+                "required": false,
+                "type": "string"
+              },
+              {
+                "id": 24,
+                "name": "point",
+                "required": false,
+                "type": {
+                  "type": "struct",
+                  "fields": [
+                    {
+                      "id": 31,
+                      "name": "x",
+                      "required": false,
+                      "type": "long"
+                    },
+                    {
+                      "id": 32,
+                      "name": "y",
+                      "required": false,
+                      "type": "long"
+                    }
+                  ]
+                }
+              },
+              {
+                "id": 25,
+                "name": "tree",
+                "required": false,
+                "type": {
+                  "type": "struct",
+                  "fields": [
+                    {
+                      "id": 33,
+                      "name": "value",
+                      "required": false,
+                      "type": "long"
+                    },
+                    {
+                      "id": 34,
+                      "name": "children",
+                      "required": false,
+                      "type": {
+                        "type": "list",
+                        "element-id": 35,
+                        "element-required": false,
+                        "element": "string"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "records": [
+        {
+          "key": null,
+          "value": "000000003f7b2262223a747275652c2269223a2d372c2264223a322e352c2273223a2268c3a96c6c6f222c227473223a22323032362d31302d32385431323a30303a30302e3132333435365a222c226474223a22323032362d31302d3238222c2275223a2266383164346661652d376465632d313164302d613736352d303061306339316536626636222c2265223a22475245454e222c226f7074223a6e756c6c2c22617272223a5b312c325d2c226d223a7b2262223a322c2261223a317d2c226e6573746564223a7b2278223a352c2279223a22776879227d2c2263686f696365223a34322c2270616972223a5b312c2261225d2c22706f696e74223a7b2278223a312c2279223a327d2c2274726565223a7b2276616c7565223a312c226368696c6472656e223a5b7b2276616c7565223a322c226368696c6472656e223a5b5d7d5d7d7d",
+          "headers": [],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": null,
+            "b": true,
+            "i": -7,
+            "d": 2.5,
+            "s": "héllo",
+            "ts": 1793188800123456,
+            "dt": 20754,
+            "u": "f81d4fae-7dec-11d0-a765-00a0c91e6bf6",
+            "e": "GREEN",
+            "opt": null,
+            "arr": [
+              1,
+              2
+            ],
+            "m": [
+              [
+                "a",
+                1
+              ],
+              [
+                "b",
+                2
+              ]
+            ],
+            "nested": {
+              "x": 5,
+              "y": "why"
+            },
+            "choice": "42",
+            "pair": "[1,\"a\"]",
+            "point": {
+              "x": 1,
+              "y": 2
+            },
+            "tree": {
+              "value": 1,
+              "children": [
+                "{\"children\":[],\"value\":2}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "evolution",
+      "topic": "payload-780757eb-evolution",
+      "merges": [
+        {
+          "part": "value",
+          "id": 64,
+          "table": {
+            "type": "struct",
+            "schema-id": 1,
+            "fields": [
+              {
+                "id": 1,
+                "name": "_kafka_partition",
+                "required": true,
+                "type": "int"
+              },
+              {
+                "id": 2,
+                "name": "_kafka_offset",
+                "required": true,
+                "type": "long"
+              },
+              {
+                "id": 3,
+                "name": "_kafka_timestamp",
+                "required": true,
+                "type": "timestamptz"
+              },
+              {
+                "id": 4,
+                "name": "_kafka_key",
+                "required": false,
+                "type": "binary"
+              },
+              {
+                "id": 5,
+                "name": "_kafka_headers",
+                "required": true,
+                "type": {
+                  "type": "list",
+                  "element-id": 6,
+                  "element-required": true,
+                  "element": {
+                    "type": "struct",
+                    "fields": [
+                      {
+                        "id": 7,
+                        "name": "key",
+                        "required": true,
+                        "type": "string"
+                      },
+                      {
+                        "id": 8,
+                        "name": "value",
+                        "required": false,
+                        "type": "binary"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "id": 9,
+                "name": "_kafka_value",
+                "required": false,
+                "type": "binary"
+              },
+              {
+                "id": 10,
+                "name": "id",
+                "required": false,
+                "type": "long"
+              },
+              {
+                "id": 11,
+                "name": "amount",
+                "required": false,
+                "type": "double"
+              },
+              {
+                "id": 12,
+                "name": "status",
+                "required": false,
+                "type": "string"
+              },
+              {
+                "id": 13,
+                "name": "legacy",
+                "required": false,
+                "type": "long"
+              }
+            ]
+          }
+        },
+        {
+          "part": "value",
+          "id": 65,
+          "table": {
+            "type": "struct",
+            "schema-id": 2,
+            "fields": [
+              {
+                "id": 1,
+                "name": "_kafka_partition",
+                "required": true,
+                "type": "int"
+              },
+              {
+                "id": 2,
+                "name": "_kafka_offset",
+                "required": true,
+                "type": "long"
+              },
+              {
+                "id": 3,
+                "name": "_kafka_timestamp",
+                "required": true,
+                "type": "timestamptz"
+              },
+              {
+                "id": 4,
+                "name": "_kafka_key",
+                "required": false,
+                "type": "binary"
+              },
+              {
+                "id": 5,
+                "name": "_kafka_headers",
+                "required": true,
+                "type": {
+                  "type": "list",
+                  "element-id": 6,
+                  "element-required": true,
+                  "element": {
+                    "type": "struct",
+                    "fields": [
+                      {
+                        "id": 7,
+                        "name": "key",
+                        "required": true,
+                        "type": "string"
+                      },
+                      {
+                        "id": 8,
+                        "name": "value",
+                        "required": false,
+                        "type": "binary"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "id": 9,
+                "name": "_kafka_value",
+                "required": false,
+                "type": "binary"
+              },
+              {
+                "id": 10,
+                "name": "id",
+                "required": false,
+                "type": "long"
+              },
+              {
+                "id": 11,
+                "name": "amount",
+                "required": false,
+                "type": "double"
+              },
+              {
+                "id": 12,
+                "name": "status",
+                "required": false,
+                "type": "string"
+              },
+              {
+                "id": 13,
+                "name": "legacy",
+                "required": false,
+                "type": "long"
+              },
+              {
+                "id": 14,
+                "name": "currency",
+                "required": false,
+                "type": "string"
+              }
+            ]
+          }
+        },
+        {
+          "part": "value",
+          "id": 66,
+          "table": {
+            "type": "struct",
+            "schema-id": 3,
+            "fields": [
+              {
+                "id": 1,
+                "name": "_kafka_partition",
+                "required": true,
+                "type": "int"
+              },
+              {
+                "id": 2,
+                "name": "_kafka_offset",
+                "required": true,
+                "type": "long"
+              },
+              {
+                "id": 3,
+                "name": "_kafka_timestamp",
+                "required": true,
+                "type": "timestamptz"
+              },
+              {
+                "id": 4,
+                "name": "_kafka_key",
+                "required": false,
+                "type": "binary"
+              },
+              {
+                "id": 5,
+                "name": "_kafka_headers",
+                "required": true,
+                "type": {
+                  "type": "list",
+                  "element-id": 6,
+                  "element-required": true,
+                  "element": {
+                    "type": "struct",
+                    "fields": [
+                      {
+                        "id": 7,
+                        "name": "key",
+                        "required": true,
+                        "type": "string"
+                      },
+                      {
+                        "id": 8,
+                        "name": "value",
+                        "required": false,
+                        "type": "binary"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "id": 9,
+                "name": "_kafka_value",
+                "required": false,
+                "type": "binary"
+              },
+              {
+                "id": 10,
+                "name": "id",
+                "required": false,
+                "type": "long"
+              },
+              {
+                "id": 11,
+                "name": "amount",
+                "required": false,
+                "type": "double"
+              },
+              {
+                "id": 12,
+                "name": "status",
+                "required": false,
+                "type": "string"
+              },
+              {
+                "id": 13,
+                "name": "legacy_s2",
+                "required": false,
+                "type": "long"
+              },
+              {
+                "id": 14,
+                "name": "currency",
+                "required": false,
+                "type": "string"
+              },
+              {
+                "id": 15,
+                "name": "legacy",
+                "required": false,
+                "type": "string"
+              }
+            ]
+          }
+        }
+      ],
+      "records": [
+        {
+          "key": null,
+          "value": "00000000407b226964223a312c22616d6f756e74223a312e352c22737461747573223a226e6577222c226c6567616379223a377d",
+          "headers": [],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": null,
+            "id": 1,
+            "amount": 1.5,
+            "status": "new",
+            "legacy_s2": 7,
+            "currency": null,
+            "legacy": null
+          }
+        },
+        {
+          "key": null,
+          "value": "00000000417b226964223a322c22616d6f756e74223a322e32352c22737461747573223a2270616964222c226c6567616379223a382c2263757272656e6379223a22455552227d",
+          "headers": [],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": null,
+            "id": 2,
+            "amount": 2.25,
+            "status": "paid",
+            "legacy_s2": 8,
+            "currency": "EUR",
+            "legacy": null
+          }
+        },
+        {
+          "key": null,
+          "value": "00000000427b226964223a332c22616d6f756e74223a332e352c22737461747573223a2273656e74222c226c6567616379223a2278227d",
+          "headers": [],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": null,
+            "id": 3,
+            "amount": 3.5,
+            "status": "sent",
+            "legacy_s2": null,
+            "currency": null,
+            "legacy": "x"
+          }
+        }
+      ]
+    },
+    {
+      "name": "references",
+      "topic": "payload-780757eb-references",
+      "merges": [
+        {
+          "part": "value",
+          "id": 67,
+          "rejection": "not_accepted"
+        },
+        {
+          "part": "value",
+          "id": 513,
+          "table": {
+            "type": "struct",
+            "schema-id": 1,
+            "fields": [
+              {
+                "id": 1,
+                "name": "_kafka_partition",
+                "required": true,
+                "type": "int"
+              },
+              {
+                "id": 2,
+                "name": "_kafka_offset",
+                "required": true,
+                "type": "long"
+              },
+              {
+                "id": 3,
+                "name": "_kafka_timestamp",
+                "required": true,
+                "type": "timestamptz"
+              },
+              {
+                "id": 4,
+                "name": "_kafka_key",
+                "required": false,
+                "type": "binary"
+              },
+              {
+                "id": 5,
+                "name": "_kafka_headers",
+                "required": true,
+                "type": {
+                  "type": "list",
+                  "element-id": 6,
+                  "element-required": true,
+                  "element": {
+                    "type": "struct",
+                    "fields": [
+                      {
+                        "id": 7,
+                        "name": "key",
+                        "required": true,
+                        "type": "string"
+                      },
+                      {
+                        "id": 8,
+                        "name": "value",
+                        "required": false,
+                        "type": "binary"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "id": 9,
+                "name": "_kafka_value",
+                "required": false,
+                "type": "binary"
+              },
+              {
+                "id": 10,
+                "name": "p",
+                "required": false,
+                "type": {
+                  "type": "struct",
+                  "fields": [
+                    {
+                      "id": 11,
+                      "name": "x",
+                      "required": false,
+                      "type": "long"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "records": [
+        {
+          "key": null,
+          "value": "00000002017b2270223a7b2278223a357d7d",
+          "headers": [],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": null,
+            "p": {
+              "x": 5
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "wire",
+      "topic": "payload-780757eb-wire",
+      "merges": [
+        {
+          "part": "value",
+          "id": 69,
+          "table": {
+            "type": "struct",
+            "schema-id": 1,
+            "fields": [
+              {
+                "id": 1,
+                "name": "_kafka_partition",
+                "required": true,
+                "type": "int"
+              },
+              {
+                "id": 2,
+                "name": "_kafka_offset",
+                "required": true,
+                "type": "long"
+              },
+              {
+                "id": 3,
+                "name": "_kafka_timestamp",
+                "required": true,
+                "type": "timestamptz"
+              },
+              {
+                "id": 4,
+                "name": "_kafka_key",
+                "required": false,
+                "type": "binary"
+              },
+              {
+                "id": 5,
+                "name": "_kafka_headers",
+                "required": true,
+                "type": {
+                  "type": "list",
+                  "element-id": 6,
+                  "element-required": true,
+                  "element": {
+                    "type": "struct",
+                    "fields": [
+                      {
+                        "id": 7,
+                        "name": "key",
+                        "required": true,
+                        "type": "string"
+                      },
+                      {
+                        "id": 8,
+                        "name": "value",
+                        "required": false,
+                        "type": "binary"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "id": 9,
+                "name": "_kafka_value",
+                "required": false,
+                "type": "binary"
+              },
+              {
+                "id": 10,
+                "name": "n",
+                "required": false,
+                "type": "long"
+              }
+            ]
+          }
+        },
+        {
+          "part": "value",
+          "id": 70,
+          "rejection": "not_accepted"
+        }
+      ],
+      "records": [
+        {
+          "key": null,
+          "value": "00000000457b226e223a317d",
+          "headers": [],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": null,
+            "n": 1
+          }
+        },
+        {
+          "key": null,
+          "value": "7b226e223a327d",
+          "headers": [
+            [
+              "__value_schema_id",
+              "013ca87b0ba4bbf2439299b5e293e4999d"
+            ]
+          ],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": null,
+            "n": 2
+          }
+        },
+        {
+          "key": null,
+          "value": "6e6f206d616769632062797465",
+          "headers": [],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": "6e6f206d616769632062797465",
+            "n": null
+          }
+        },
+        {
+          "key": null,
+          "value": "00000000457b226e223a333030",
+          "headers": [],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": "00000000457b226e223a333030",
+            "n": null
+          }
+        },
+        {
+          "key": null,
+          "value": "007fffffff02",
+          "headers": [],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": "007fffffff02",
+            "n": null
+          }
+        },
+        {
+          "key": null,
+          "value": "02",
+          "headers": [
+            [
+              "__value_schema_id",
+              "0100000000000000000000000000000000"
+            ]
+          ],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": "02",
+            "n": null
+          }
+        },
+        {
+          "key": null,
+          "value": "00000000467b226e223a347d",
+          "headers": [],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": "00000000467b226e223a347d",
+            "n": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "deep",
+      "topic": "payload-780757eb-deep",
+      "merges": [
+        {
+          "part": "value",
+          "id": 91,
+          "rejection": "unsupported"
+        }
+      ],
+      "records": [
+        {
+          "key": null,
+          "value": "000000005b7b7d",
+          "headers": [],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": "000000005b7b7d"
+          }
+        }
+      ]
+    }
+  ]
+}

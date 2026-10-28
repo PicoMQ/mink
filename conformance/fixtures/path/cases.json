@@ -1,0 +1,238 @@
+{
+  "warehouse": "s3://mink/kafka",
+  "files": [
+    {
+      "name": "basic",
+      "topic": "orders",
+      "partition": 0,
+      "start_offset": 0,
+      "end_offset": 10,
+      "spec_id": 0,
+      "bucket": 498108,
+      "schema_id": 0,
+      "parts": null,
+      "version": 1,
+      "path": "s3://mink/kafka/orders/data/p=0/0-10.t0_498108.s0.v1.parquet"
+    },
+    {
+      "name": "dotted_topic",
+      "topic": "orders.v2",
+      "partition": 3,
+      "start_offset": 1200000,
+      "end_offset": 1400000,
+      "spec_id": 0,
+      "bucket": 499260,
+      "schema_id": 2,
+      "parts": null,
+      "version": 1,
+      "path": "s3://mink/kafka/orders.v2/data/p=3/1200000-1400000.t0_499260.s2.v1.parquet"
+    },
+    {
+      "name": "underscore_and_dash",
+      "topic": "a_b-c",
+      "partition": 12,
+      "start_offset": 100,
+      "end_offset": 200,
+      "spec_id": 1,
+      "bucket": null,
+      "schema_id": 1,
+      "parts": null,
+      "version": 1,
+      "path": "s3://mink/kafka/a_b-c/data/p=12/100-200.t1.s1.v1.parquet"
+    },
+    {
+      "name": "max_values",
+      "topic": "t",
+      "partition": 2147483647,
+      "start_offset": 9223372036854775806,
+      "end_offset": 9223372036854775807,
+      "spec_id": 2147483647,
+      "bucket": 2147483647,
+      "schema_id": 2147483647,
+      "parts": null,
+      "version": 1,
+      "path": "s3://mink/kafka/t/data/p=2147483647/9223372036854775806-9223372036854775807.t2147483647_2147483647.s2147483647.v1.parquet"
+    },
+    {
+      "name": "negative_bucket",
+      "topic": "orders",
+      "partition": 0,
+      "start_offset": 0,
+      "end_offset": 10,
+      "spec_id": 0,
+      "bucket": -1,
+      "schema_id": 0,
+      "parts": null,
+      "version": 1,
+      "path": "s3://mink/kafka/orders/data/p=0/0-10.t0_-1.s0.v1.parquet"
+    },
+    {
+      "name": "assembled",
+      "topic": "orders",
+      "partition": 1,
+      "start_offset": 100,
+      "end_offset": 400,
+      "spec_id": 0,
+      "bucket": 498108,
+      "schema_id": 3,
+      "parts": [
+        [
+          100,
+          200
+        ],
+        [
+          250,
+          300
+        ],
+        [
+          300,
+          400
+        ]
+      ],
+      "version": 1,
+      "path": "s3://mink/kafka/orders/data/p=1/100-400.t0_498108.s3.ad5877796d2130096.v1.parquet"
+    }
+  ],
+  "rejected": [
+    {
+      "name": "reversed_range",
+      "path": "s3://mink/kafka/orders/data/p=0/10-0.t0_498108.s0.v1.parquet"
+    },
+    {
+      "name": "empty_range",
+      "path": "s3://mink/kafka/orders/data/p=0/5-5.t0_498108.s0.v1.parquet"
+    },
+    {
+      "name": "negative_partition",
+      "path": "s3://mink/kafka/orders/data/p=-1/0-10.t0_498108.s0.v1.parquet"
+    },
+    {
+      "name": "negative_schema",
+      "path": "s3://mink/kafka/orders/data/p=0/0-10.t0_498108.s-1.v1.parquet"
+    },
+    {
+      "name": "leading_zero_partition",
+      "path": "s3://mink/kafka/orders/data/p=03/0-10.t0_498108.s0.v1.parquet"
+    },
+    {
+      "name": "plus_sign_partition",
+      "path": "s3://mink/kafka/orders/data/p=+3/0-10.t0_498108.s0.v1.parquet"
+    },
+    {
+      "name": "leading_zero_offset",
+      "path": "s3://mink/kafka/orders/data/p=0/007-10.t0_498108.s0.v1.parquet"
+    },
+    {
+      "name": "leading_zero_version",
+      "path": "s3://mink/kafka/orders/data/p=0/0-10.t0_498108.s0.v01.parquet"
+    },
+    {
+      "name": "unknown_version",
+      "path": "s3://mink/kafka/orders/data/p=0/0-10.t0_498108.s0.v2.parquet"
+    },
+    {
+      "name": "version_zero",
+      "path": "s3://mink/kafka/orders/data/p=0/0-10.t0_498108.s0.v0.parquet"
+    },
+    {
+      "name": "version_overflow",
+      "path": "s3://mink/kafka/orders/data/p=0/0-10.t0_498108.s0.v65536.parquet"
+    },
+    {
+      "name": "offset_overflow",
+      "path": "s3://mink/kafka/orders/data/p=0/0-9223372036854775808.t0_498108.s0.v1.parquet"
+    },
+    {
+      "name": "missing_schema",
+      "path": "s3://mink/kafka/orders/data/p=0/0-10.t0_498108.v1.parquet"
+    },
+    {
+      "name": "missing_version",
+      "path": "s3://mink/kafka/orders/data/p=0/0-10.t0_498108.s0.parquet"
+    },
+    {
+      "name": "wrong_schema_letter",
+      "path": "s3://mink/kafka/orders/data/p=0/0-10.t0_498108.x0.v1.parquet"
+    },
+    {
+      "name": "wrong_version_letter",
+      "path": "s3://mink/kafka/orders/data/p=0/0-10.t0_498108.s0.l1.parquet"
+    },
+    {
+      "name": "wrong_extension",
+      "path": "s3://mink/kafka/orders/data/p=0/0-10.t0_498108.s0.v1.avro"
+    },
+    {
+      "name": "metadata_directory",
+      "path": "s3://mink/kafka/orders/metadata/p=0/0-10.t0_498108.s0.v1.parquet"
+    },
+    {
+      "name": "missing_partition_directory",
+      "path": "s3://mink/kafka/orders/data/0-10.t0_498108.s0.v1.parquet"
+    },
+    {
+      "name": "extra_directory",
+      "path": "s3://mink/kafka/orders/data/p=0/x/0-10.t0_498108.s0.v1.parquet"
+    },
+    {
+      "name": "illegal_topic_character",
+      "path": "s3://mink/kafka/ord@rs/data/p=0/0-10.t0_498108.s0.v1.parquet"
+    },
+    {
+      "name": "dot_topic",
+      "path": "s3://mink/kafka/./data/p=0/0-10.t0_498108.s0.v1.parquet"
+    },
+    {
+      "name": "double_slash",
+      "path": "s3://mink/kafka//orders/data/p=0/0-10.t0_498108.s0.v1.parquet"
+    },
+    {
+      "name": "other_warehouse",
+      "path": "s3://other/kafka/orders/data/p=0/0-10.t0_498108.s0.v1.parquet"
+    },
+    {
+      "name": "warehouse_prefix_only",
+      "path": "s3://mink/kafkaorders/data/p=0/0-10.t0_498108.s0.v1.parquet"
+    },
+    {
+      "name": "missing_time",
+      "path": "s3://mink/kafka/orders/data/p=0/0-10.s0.v1.parquet"
+    },
+    {
+      "name": "negative_spec",
+      "path": "s3://mink/kafka/orders/data/p=0/0-10.t-1_5.s0.v1.parquet"
+    },
+    {
+      "name": "leading_zero_bucket",
+      "path": "s3://mink/kafka/orders/data/p=0/0-10.t0_05.s0.v1.parquet"
+    },
+    {
+      "name": "plus_sign_bucket",
+      "path": "s3://mink/kafka/orders/data/p=0/0-10.t0_+5.s0.v1.parquet"
+    },
+    {
+      "name": "negative_zero_bucket",
+      "path": "s3://mink/kafka/orders/data/p=0/0-10.t0_-0.s0.v1.parquet"
+    },
+    {
+      "name": "empty_bucket",
+      "path": "s3://mink/kafka/orders/data/p=0/0-10.t0_.s0.v1.parquet"
+    },
+    {
+      "name": "bucket_overflow",
+      "path": "s3://mink/kafka/orders/data/p=0/0-10.t0_2147483648.s0.v1.parquet"
+    },
+    {
+      "name": "uppercase_assembly",
+      "path": "s3://mink/kafka/orders/data/p=0/0-10.t0_5.s0.aABCDEF0123456789.v1.parquet"
+    },
+    {
+      "name": "short_assembly",
+      "path": "s3://mink/kafka/orders/data/p=0/0-10.t0_5.s0.a0123456789abcde.v1.parquet"
+    },
+    {
+      "name": "assembly_before_schema",
+      "path": "s3://mink/kafka/orders/data/p=0/0-10.t0_5.a0123456789abcdef.s0.v1.parquet"
+    }
+  ]
+}

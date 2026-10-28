@@ -1,0 +1,403 @@
+{
+  "format_version": 2,
+  "steps": [
+    {
+      "added": [
+        {
+          "file": "s3://warehouse/orders/data/p=0/0-100.t0.s0.v1.parquet",
+          "stats": {
+            "bytes": 10000,
+            "first_timestamp_ms": 0,
+            "lower": {
+              "1": "00000000",
+              "2": "0000000000000000"
+            },
+            "nans": {},
+            "nulls": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "7": 0,
+              "8": 0,
+              "9": 0
+            },
+            "records": 100,
+            "upper": {
+              "1": "00000000",
+              "2": "6300000000000000"
+            }
+          }
+        },
+        {
+          "file": "s3://warehouse/orders/data/p=1/0-50.t0.s0.v1.parquet",
+          "stats": {
+            "bytes": 5000,
+            "first_timestamp_ms": 0,
+            "lower": {
+              "1": "01000000",
+              "2": "0000000000000000"
+            },
+            "nans": {},
+            "nulls": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "7": 0,
+              "8": 0,
+              "9": 0
+            },
+            "records": 50,
+            "upper": {
+              "1": "01000000",
+              "2": "3100000000000000"
+            }
+          }
+        }
+      ],
+      "expire_through": null,
+      "objects": [
+        {
+          "kind": "manifest",
+          "path": "s3://warehouse/orders/metadata/1-e1-m0.avro"
+        },
+        {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-1-e1.avro"
+        },
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v1-e1.metadata.json"
+        }
+      ],
+      "released": [],
+      "snapshot": {
+        "epoch": 1,
+        "id": 1,
+        "offsets": [
+          {
+            "end_offset": 100,
+            "partition": 0,
+            "start_offset": 0
+          },
+          {
+            "end_offset": 50,
+            "partition": 1,
+            "start_offset": 0
+          }
+        ],
+        "timestamp_ms": 1793000060000
+      }
+    },
+    {
+      "added": [
+        {
+          "file": "s3://warehouse/orders/data/p=0/100-200.t0.s0.v1.parquet",
+          "stats": {
+            "bytes": 10000,
+            "first_timestamp_ms": 0,
+            "lower": {
+              "1": "00000000",
+              "2": "6400000000000000"
+            },
+            "nans": {},
+            "nulls": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "7": 0,
+              "8": 0,
+              "9": 0
+            },
+            "records": 100,
+            "upper": {
+              "1": "00000000",
+              "2": "c700000000000000"
+            }
+          }
+        }
+      ],
+      "expire_through": null,
+      "objects": [
+        {
+          "kind": "manifest",
+          "path": "s3://warehouse/orders/metadata/2-e1-m0.avro"
+        },
+        {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-2-e1.avro"
+        },
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v2-e1.metadata.json"
+        }
+      ],
+      "released": [
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v1-e1.metadata.json"
+        },
+        {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-1-e1.avro"
+        }
+      ],
+      "snapshot": {
+        "epoch": 1,
+        "id": 2,
+        "offsets": [
+          {
+            "end_offset": 200,
+            "partition": 0,
+            "start_offset": 0
+          },
+          {
+            "end_offset": 50,
+            "partition": 1,
+            "start_offset": 0
+          }
+        ],
+        "timestamp_ms": 1793000120000
+      }
+    },
+    {
+      "added": [
+        {
+          "file": "s3://warehouse/orders/data/p=0/200-250.t0.s0.v1.parquet",
+          "stats": {
+            "bytes": 5000,
+            "first_timestamp_ms": 0,
+            "lower": {
+              "1": "00000000",
+              "2": "c800000000000000"
+            },
+            "nans": {},
+            "nulls": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "7": 0,
+              "8": 0,
+              "9": 0
+            },
+            "records": 50,
+            "upper": {
+              "1": "00000000",
+              "2": "f900000000000000"
+            }
+          }
+        },
+        {
+          "file": "s3://warehouse/orders/data/p=1/50-80.t0.s0.v1.parquet",
+          "stats": {
+            "bytes": 3000,
+            "first_timestamp_ms": 0,
+            "lower": {
+              "1": "01000000",
+              "2": "3200000000000000"
+            },
+            "nans": {},
+            "nulls": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "7": 0,
+              "8": 0,
+              "9": 0
+            },
+            "records": 30,
+            "upper": {
+              "1": "01000000",
+              "2": "4f00000000000000"
+            }
+          }
+        }
+      ],
+      "expire_through": null,
+      "objects": [
+        {
+          "kind": "manifest",
+          "path": "s3://warehouse/orders/metadata/3-e2-m0.avro"
+        },
+        {
+          "kind": "manifest",
+          "path": "s3://warehouse/orders/metadata/3-e2-m1.avro"
+        },
+        {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-3-e2.avro"
+        },
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v3-e2.metadata.json"
+        }
+      ],
+      "released": [
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v2-e1.metadata.json"
+        },
+        {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-2-e1.avro"
+        },
+        {
+          "kind": "manifest",
+          "path": "s3://warehouse/orders/metadata/1-e1-m0.avro"
+        }
+      ],
+      "snapshot": {
+        "epoch": 2,
+        "id": 3,
+        "offsets": [
+          {
+            "end_offset": 250,
+            "partition": 0,
+            "start_offset": 100
+          },
+          {
+            "end_offset": 80,
+            "partition": 1,
+            "start_offset": 0
+          }
+        ],
+        "timestamp_ms": 1793000180000
+      }
+    },
+    {
+      "added": [],
+      "expire_through": 1,
+      "objects": [
+        {
+          "kind": "manifest",
+          "path": "s3://warehouse/orders/metadata/4-e2-m0.avro"
+        },
+        {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-4-e2.avro"
+        },
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v4-e2.metadata.json"
+        }
+      ],
+      "released": [
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v3-e2.metadata.json"
+        },
+        {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-3-e2.avro"
+        },
+        {
+          "kind": "manifest",
+          "path": "s3://warehouse/orders/metadata/2-e1-m0.avro"
+        }
+      ],
+      "snapshot": {
+        "epoch": 2,
+        "id": 4,
+        "offsets": [
+          {
+            "end_offset": 250,
+            "partition": 0,
+            "start_offset": 200
+          },
+          {
+            "end_offset": 80,
+            "partition": 1,
+            "start_offset": 0
+          }
+        ],
+        "timestamp_ms": 1793000240000
+      }
+    },
+    {
+      "added": [
+        {
+          "file": "s3://warehouse/orders/data/p=0/250-300.t0.s0.v1.parquet",
+          "stats": {
+            "bytes": 5000,
+            "first_timestamp_ms": 0,
+            "lower": {
+              "1": "00000000",
+              "2": "fa00000000000000"
+            },
+            "nans": {},
+            "nulls": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 0,
+              "7": 0,
+              "8": 0,
+              "9": 0
+            },
+            "records": 50,
+            "upper": {
+              "1": "00000000",
+              "2": "2b01000000000000"
+            }
+          }
+        }
+      ],
+      "expire_through": null,
+      "objects": [
+        {
+          "kind": "manifest",
+          "path": "s3://warehouse/orders/metadata/5-e2-m0.avro"
+        },
+        {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-5-e2.avro"
+        },
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v5-e2.metadata.json"
+        }
+      ],
+      "released": [
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v4-e2.metadata.json"
+        },
+        {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-4-e2.avro"
+        },
+        {
+          "kind": "manifest",
+          "path": "s3://warehouse/orders/metadata/4-e2-m0.avro"
+        }
+      ],
+      "snapshot": {
+        "epoch": 2,
+        "id": 5,
+        "offsets": [
+          {
+            "end_offset": 300,
+            "partition": 0,
+            "start_offset": 200
+          },
+          {
+            "end_offset": 80,
+            "partition": 1,
+            "start_offset": 0
+          }
+        ],
+        "timestamp_ms": 1793000300000
+      }
+    }
+  ],
+  "topic": {
+    "name": "orders",
+    "partition_count": 2,
+    "uuid": "00000000-0000-0000-0000-000000000001"
+  },
+  "warehouse": "s3://warehouse"
+}

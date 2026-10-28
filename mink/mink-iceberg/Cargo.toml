@@ -24,6 +24,7 @@ uuid = { workspace = true }
 
 [dev-dependencies]
 arrow-select = { workspace = true }
+mink-conformance = { workspace = true }
 
 hex = { workspace = true }
 proptest = { workspace = true }

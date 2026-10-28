@@ -1,0 +1,28 @@
+{
+  "type": "struct",
+  "schema-id": 0,
+  "fields": [
+    { "id": 1, "name": "_kafka_partition", "required": true, "type": "int" },
+    { "id": 2, "name": "_kafka_offset", "required": true, "type": "long" },
+    { "id": 3, "name": "_kafka_timestamp", "required": true, "type": "timestamptz" },
+    { "id": 4, "name": "_kafka_key", "required": false, "type": "binary" },
+    {
+      "id": 5,
+      "name": "_kafka_headers",
+      "required": true,
+      "type": {
+        "type": "list",
+        "element-id": 6,
+        "element-required": true,
+        "element": {
+          "type": "struct",
+          "fields": [
+            { "id": 7, "name": "key", "required": true, "type": "string" },
+            { "id": 8, "name": "value", "required": false, "type": "binary" }
+          ]
+        }
+      }
+    },
+    { "id": 9, "name": "_kafka_value", "required": false, "type": "binary" }
+  ]
+}

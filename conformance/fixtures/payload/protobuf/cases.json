@@ -1,0 +1,1118 @@
+{
+  "registry": [
+    {
+      "id": 504,
+      "format": "protobuf",
+      "definition": "syntax = \"proto3\";\npackage fixtures.typesb786d031;\n\nimport \"google/protobuf/struct.proto\";\nimport \"google/protobuf/timestamp.proto\";\nimport \"google/protobuf/wrappers.proto\";\n\nmessage Types {\n  bool b = 1 [json_name = \"b\"];\n  int32 i = 2 [json_name = \"i\"];\n  int64 l = 3 [json_name = \"l\"];\n  uint32 u32 = 4 [json_name = \"u32\"];\n  uint64 u64 = 5 [json_name = \"u64\"];\n  sint32 s32 = 6 [json_name = \"s32\"];\n  fixed64 f64 = 7 [json_name = \"f64\"];\n  float f = 8 [json_name = \"f\"];\n  double d = 9 [json_name = \"d\"];\n  string s = 10 [json_name = \"s\"];\n  bytes by = 11 [json_name = \"by\"];\n  .fixtures.typesb786d031.Color color = 12 [json_name = \"color\"];\n  .fixtures.typesb786d031.Inner inner = 13 [json_name = \"inner\"];\n  repeated int32 list = 14 [json_name = \"list\"];\n  repeated .fixtures.typesb786d031.Types.CountsEntry counts = 15 [json_name = \"counts\"];\n  optional string maybe = 18 [json_name = \"maybe\"];\n  .google.protobuf.Timestamp at = 19 [json_name = \"at\"];\n  .google.protobuf.Int64Value wrapped = 20 [json_name = \"wrapped\"];\n  .google.protobuf.Struct extra = 21 [json_name = \"extra\"];\n  .fixtures.typesb786d031.Node tree = 22 [json_name = \"tree\"];\n\n  oneof choice {\n    string text = 16 [json_name = \"text\"];\n    int32 number = 17 [json_name = \"number\"];\n  }\n\n  message CountsEntry {\n    option map_entry = true;\n  \n    string key = 1 [json_name = \"key\"];\n    int64 value = 2 [json_name = \"value\"];\n  }\n}\nmessage Inner {\n  int32 x = 1 [json_name = \"x\"];\n  string y = 2 [json_name = \"y\"];\n}\nmessage Node {\n  int32 value = 1 [json_name = \"value\"];\n  repeated .fixtures.typesb786d031.Node children = 2 [json_name = \"children\"];\n}\nenum Color {\n  RED = 0;\n  GREEN = 1;\n}\n",
+      "references": [],
+      "subjects": [
+        "payload-b786d031-types-value"
+      ]
+    },
+    {
+      "id": 505,
+      "format": "protobuf",
+      "definition": "syntax = \"proto3\";\npackage fixtures.orderb786d031;\n\nmessage Order {\n  int64 id = 1 [json_name = \"id\"];\n  float amount = 2 [json_name = \"amount\"];\n  string status = 3 [json_name = \"status\"];\n  int32 legacy = 4 [json_name = \"legacy\"];\n}\n",
+      "references": [],
+      "subjects": [
+        "payload-b786d031-evolution-value"
+      ]
+    },
+    {
+      "id": 506,
+      "format": "protobuf",
+      "definition": "syntax = \"proto3\";\npackage fixtures.orderb786d031;\n\nmessage Order {\n  int64 id = 1 [json_name = \"id\"];\n  double amount = 2 [json_name = \"amount\"];\n  string status = 3 [json_name = \"status\"];\n  int32 legacy = 4 [json_name = \"legacy\"];\n  optional string currency = 5 [json_name = \"currency\"];\n}\n",
+      "references": [],
+      "subjects": [
+        "payload-b786d031-evolution-value"
+      ]
+    },
+    {
+      "id": 507,
+      "format": "protobuf",
+      "definition": "syntax = \"proto3\";\npackage fixtures.orderb786d031;\n\nmessage Order {\n  int64 id = 1 [json_name = \"id\"];\n  double amount = 2 [json_name = \"amount\"];\n  string state = 3 [json_name = \"state\"];\n  string legacy = 4 [json_name = \"legacy\"];\n}\n",
+      "references": [],
+      "subjects": [
+        "payload-b786d031-evolution-value"
+      ]
+    },
+    {
+      "id": 508,
+      "format": "protobuf",
+      "definition": "syntax = \"proto3\";\npackage fixtures.depb786d031;\n\nmessage Dep {\n  int64 x = 1 [json_name = \"x\"];\n}\n",
+      "references": [],
+      "subjects": [
+        "depb786d031.proto"
+      ]
+    },
+    {
+      "id": 509,
+      "format": "protobuf",
+      "definition": "syntax = \"proto3\";\npackage fixtures.mainb786d031;\n\nimport \"depb786d031.proto\";\n\nmessage Main {\n  .fixtures.depb786d031.Dep d = 1 [json_name = \"d\"];\n}\n",
+      "references": [
+        {
+          "name": "depb786d031.proto",
+          "id": 508
+        }
+      ],
+      "subjects": [
+        "payload-b786d031-references-value"
+      ]
+    },
+    {
+      "id": 510,
+      "format": "protobuf",
+      "definition": "syntax = \"proto3\";\npackage fixtures.wireb786d031;\n\nmessage First {\n  int32 n = 1 [json_name = \"n\"];\n}\nmessage Second {\n  string s = 1 [json_name = \"s\"];\n}\n",
+      "references": [],
+      "subjects": [
+        "payload-b786d031-wire-value"
+      ]
+    },
+    {
+      "id": 511,
+      "format": "protobuf",
+      "definition": "syntax = \"proto3\";\npackage fixtures.elsewhereb786d031;\n\nmessage Elsewhere {\n  int32 n = 1 [json_name = \"n\"];\n}\n",
+      "references": [],
+      "subjects": [
+        "payload-b786d031-wire-elsewhere"
+      ]
+    },
+    {
+      "id": 512,
+      "format": "protobuf",
+      "definition": "syntax = \"proto3\";\npackage fixtures.deepb786d031;\n\nmessage Deep0 {\n  .fixtures.deepb786d031.Deep1 next = 1 [json_name = \"next\"];\n}\nmessage Deep1 {\n  .fixtures.deepb786d031.Deep2 next = 1 [json_name = \"next\"];\n}\nmessage Deep2 {\n  .fixtures.deepb786d031.Deep3 next = 1 [json_name = \"next\"];\n}\nmessage Deep3 {\n  .fixtures.deepb786d031.Deep4 next = 1 [json_name = \"next\"];\n}\nmessage Deep4 {\n  .fixtures.deepb786d031.Deep5 next = 1 [json_name = \"next\"];\n}\nmessage Deep5 {\n  .fixtures.deepb786d031.Deep6 next = 1 [json_name = \"next\"];\n}\nmessage Deep6 {\n  .fixtures.deepb786d031.Deep7 next = 1 [json_name = \"next\"];\n}\nmessage Deep7 {\n  .fixtures.deepb786d031.Deep8 next = 1 [json_name = \"next\"];\n}\nmessage Deep8 {\n  .fixtures.deepb786d031.Deep9 next = 1 [json_name = \"next\"];\n}\nmessage Deep9 {\n  .fixtures.deepb786d031.Deep10 next = 1 [json_name = \"next\"];\n}\nmessage Deep10 {\n  .fixtures.deepb786d031.Deep11 next = 1 [json_name = \"next\"];\n}\nmessage Deep11 {\n  .fixtures.deepb786d031.Deep12 next = 1 [json_name = \"next\"];\n}\nmessage Deep12 {\n  .fixtures.deepb786d031.Deep13 next = 1 [json_name = \"next\"];\n}\nmessage Deep13 {\n  .fixtures.deepb786d031.Deep14 next = 1 [json_name = \"next\"];\n}\nmessage Deep14 {\n  .fixtures.deepb786d031.Deep15 next = 1 [json_name = \"next\"];\n}\nmessage Deep15 {\n  .fixtures.deepb786d031.Deep16 next = 1 [json_name = \"next\"];\n}\nmessage Deep16 {\n  .fixtures.deepb786d031.Deep17 next = 1 [json_name = \"next\"];\n}\nmessage Deep17 {\n  .fixtures.deepb786d031.Deep18 next = 1 [json_name = \"next\"];\n}\nmessage Deep18 {\n  .fixtures.deepb786d031.Deep19 next = 1 [json_name = \"next\"];\n}\nmessage Deep19 {\n  .fixtures.deepb786d031.Deep20 next = 1 [json_name = \"next\"];\n}\nmessage Deep20 {\n  .fixtures.deepb786d031.Deep21 next = 1 [json_name = \"next\"];\n}\nmessage Deep21 {\n  .fixtures.deepb786d031.Deep22 next = 1 [json_name = \"next\"];\n}\nmessage Deep22 {\n  .fixtures.deepb786d031.Deep23 next = 1 [json_name = \"next\"];\n}\nmessage Deep23 {\n  .fixtures.deepb786d031.Deep24 next = 1 [json_name = \"next\"];\n}\nmessage Deep24 {\n  .fixtures.deepb786d031.Deep25 next = 1 [json_name = \"next\"];\n}\nmessage Deep25 {\n  .fixtures.deepb786d031.Deep26 next = 1 [json_name = \"next\"];\n}\nmessage Deep26 {\n  .fixtures.deepb786d031.Deep27 next = 1 [json_name = \"next\"];\n}\nmessage Deep27 {\n  .fixtures.deepb786d031.Deep28 next = 1 [json_name = \"next\"];\n}\nmessage Deep28 {\n  .fixtures.deepb786d031.Deep29 next = 1 [json_name = \"next\"];\n}\nmessage Deep29 {\n  .fixtures.deepb786d031.Deep30 next = 1 [json_name = \"next\"];\n}\nmessage Deep30 {\n  .fixtures.deepb786d031.Deep31 next = 1 [json_name = \"next\"];\n}\nmessage Deep31 {\n  .fixtures.deepb786d031.Deep32 next = 1 [json_name = \"next\"];\n}\nmessage Deep32 {\n  .fixtures.deepb786d031.Deep33 next = 1 [json_name = \"next\"];\n}\nmessage Deep33 {\n  .fixtures.deepb786d031.Deep34 next = 1 [json_name = \"next\"];\n}\nmessage Deep34 {\n  .fixtures.deepb786d031.Deep35 next = 1 [json_name = \"next\"];\n}\nmessage Deep35 {\n  .fixtures.deepb786d031.Deep36 next = 1 [json_name = \"next\"];\n}\nmessage Deep36 {\n  .fixtures.deepb786d031.Deep37 next = 1 [json_name = \"next\"];\n}\nmessage Deep37 {\n  .fixtures.deepb786d031.Deep38 next = 1 [json_name = \"next\"];\n}\nmessage Deep38 {\n  .fixtures.deepb786d031.Deep39 next = 1 [json_name = \"next\"];\n}\nmessage Deep39 {\n  .fixtures.deepb786d031.Deep40 next = 1 [json_name = \"next\"];\n}\nmessage Deep40 {\n  .fixtures.deepb786d031.Deep41 next = 1 [json_name = \"next\"];\n}\nmessage Deep41 {\n  .fixtures.deepb786d031.Deep42 next = 1 [json_name = \"next\"];\n}\nmessage Deep42 {\n  .fixtures.deepb786d031.Deep43 next = 1 [json_name = \"next\"];\n}\nmessage Deep43 {\n  .fixtures.deepb786d031.Deep44 next = 1 [json_name = \"next\"];\n}\nmessage Deep44 {\n  .fixtures.deepb786d031.Deep45 next = 1 [json_name = \"next\"];\n}\nmessage Deep45 {\n  .fixtures.deepb786d031.Deep46 next = 1 [json_name = \"next\"];\n}\nmessage Deep46 {\n  .fixtures.deepb786d031.Deep47 next = 1 [json_name = \"next\"];\n}\nmessage Deep47 {\n  .fixtures.deepb786d031.Deep48 next = 1 [json_name = \"next\"];\n}\nmessage Deep48 {\n  .fixtures.deepb786d031.Deep49 next = 1 [json_name = \"next\"];\n}\nmessage Deep49 {\n  .fixtures.deepb786d031.Deep50 next = 1 [json_name = \"next\"];\n}\nmessage Deep50 {\n  .fixtures.deepb786d031.Deep51 next = 1 [json_name = \"next\"];\n}\nmessage Deep51 {\n  .fixtures.deepb786d031.Deep52 next = 1 [json_name = \"next\"];\n}\nmessage Deep52 {\n  .fixtures.deepb786d031.Deep53 next = 1 [json_name = \"next\"];\n}\nmessage Deep53 {\n  .fixtures.deepb786d031.Deep54 next = 1 [json_name = \"next\"];\n}\nmessage Deep54 {\n  .fixtures.deepb786d031.Deep55 next = 1 [json_name = \"next\"];\n}\nmessage Deep55 {\n  .fixtures.deepb786d031.Deep56 next = 1 [json_name = \"next\"];\n}\nmessage Deep56 {\n  .fixtures.deepb786d031.Deep57 next = 1 [json_name = \"next\"];\n}\nmessage Deep57 {\n  .fixtures.deepb786d031.Deep58 next = 1 [json_name = \"next\"];\n}\nmessage Deep58 {\n  .fixtures.deepb786d031.Deep59 next = 1 [json_name = \"next\"];\n}\nmessage Deep59 {\n  .fixtures.deepb786d031.Deep60 next = 1 [json_name = \"next\"];\n}\nmessage Deep60 {\n  .fixtures.deepb786d031.Deep61 next = 1 [json_name = \"next\"];\n}\nmessage Deep61 {\n  .fixtures.deepb786d031.Deep62 next = 1 [json_name = \"next\"];\n}\nmessage Deep62 {\n  .fixtures.deepb786d031.Deep63 next = 1 [json_name = \"next\"];\n}\nmessage Deep63 {\n  .fixtures.deepb786d031.Deep64 next = 1 [json_name = \"next\"];\n}\nmessage Deep64 {\n  .fixtures.deepb786d031.Deep65 next = 1 [json_name = \"next\"];\n}\nmessage Deep65 {\n  .fixtures.deepb786d031.Deep66 next = 1 [json_name = \"next\"];\n}\nmessage Deep66 {\n  .fixtures.deepb786d031.Deep67 next = 1 [json_name = \"next\"];\n}\nmessage Deep67 {\n  .fixtures.deepb786d031.Deep68 next = 1 [json_name = \"next\"];\n}\nmessage Deep68 {\n  .fixtures.deepb786d031.Deep69 next = 1 [json_name = \"next\"];\n}\nmessage Deep69 {\n  .fixtures.deepb786d031.Deep70 next = 1 [json_name = \"next\"];\n}\nmessage Deep70 {\n  int64 n = 1 [json_name = \"n\"];\n}\n",
+      "references": [],
+      "subjects": [
+        "payload-b786d031-deep-value"
+      ]
+    },
+    {
+      "id": 2147483647,
+      "missing": true
+    }
+  ],
+  "guids": [
+    {
+      "guid": "00000000-0000-0000-0000-000000000000",
+      "id": null
+    },
+    {
+      "guid": "0aee118f-fa9a-5591-8257-8346134b6545",
+      "id": 511
+    },
+    {
+      "guid": "1fa770d6-3ae3-a235-3ab1-19680fa96415",
+      "id": 506
+    },
+    {
+      "guid": "604c20de-abec-11ee-c653-718e9aa4f494",
+      "id": 505
+    },
+    {
+      "guid": "8c035e15-f318-30c3-a560-500c2926ce05",
+      "id": 512
+    },
+    {
+      "guid": "9481b707-5092-8338-686a-ef55710c04f6",
+      "id": 509
+    },
+    {
+      "guid": "a691f33a-0cc8-d328-5154-a46b0a1e1dcc",
+      "id": 507
+    },
+    {
+      "guid": "cc0d4c76-1e1b-0d7c-b40b-8695b7eb68be",
+      "id": 504
+    },
+    {
+      "guid": "fff81636-34d4-0328-6dbc-d227737b578b",
+      "id": 510
+    }
+  ],
+  "cases": [
+    {
+      "name": "types",
+      "topic": "payload-b786d031-types",
+      "merges": [
+        {
+          "part": "value",
+          "id": 504,
+          "table": {
+            "type": "struct",
+            "schema-id": 1,
+            "fields": [
+              {
+                "id": 1,
+                "name": "_kafka_partition",
+                "required": true,
+                "type": "int"
+              },
+              {
+                "id": 2,
+                "name": "_kafka_offset",
+                "required": true,
+                "type": "long"
+              },
+              {
+                "id": 3,
+                "name": "_kafka_timestamp",
+                "required": true,
+                "type": "timestamptz"
+              },
+              {
+                "id": 4,
+                "name": "_kafka_key",
+                "required": false,
+                "type": "binary"
+              },
+              {
+                "id": 5,
+                "name": "_kafka_headers",
+                "required": true,
+                "type": {
+                  "type": "list",
+                  "element-id": 6,
+                  "element-required": true,
+                  "element": {
+                    "type": "struct",
+                    "fields": [
+                      {
+                        "id": 7,
+                        "name": "key",
+                        "required": true,
+                        "type": "string"
+                      },
+                      {
+                        "id": 8,
+                        "name": "value",
+                        "required": false,
+                        "type": "binary"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "id": 9,
+                "name": "_kafka_value",
+                "required": false,
+                "type": "binary"
+              },
+              {
+                "id": 10,
+                "name": "b",
+                "required": false,
+                "type": "boolean"
+              },
+              {
+                "id": 11,
+                "name": "i",
+                "required": false,
+                "type": "int"
+              },
+              {
+                "id": 12,
+                "name": "l",
+                "required": false,
+                "type": "long"
+              },
+              {
+                "id": 13,
+                "name": "u32",
+                "required": false,
+                "type": "long"
+              },
+              {
+                "id": 14,
+                "name": "u64",
+                "required": false,
+                "type": "decimal(20, 0)"
+              },
+              {
+                "id": 15,
+                "name": "s32",
+                "required": false,
+                "type": "int"
+              },
+              {
+                "id": 16,
+                "name": "f64",
+                "required": false,
+                "type": "decimal(20, 0)"
+              },
+              {
+                "id": 17,
+                "name": "f",
+                "required": false,
+                "type": "float"
+              },
+              {
+                "id": 18,
+                "name": "d",
+                "required": false,
+                "type": "double"
+              },
+              {
+                "id": 19,
+                "name": "s",
+                "required": false,
+                "type": "string"
+              },
+              {
+                "id": 20,
+                "name": "by",
+                "required": false,
+                "type": "binary"
+              },
+              {
+                "id": 21,
+                "name": "color",
+                "required": false,
+                "type": "string"
+              },
+              {
+                "id": 22,
+                "name": "inner",
+                "required": false,
+                "type": {
+                  "type": "struct",
+                  "fields": [
+                    {
+                      "id": 32,
+                      "name": "x",
+                      "required": false,
+                      "type": "int"
+                    },
+                    {
+                      "id": 33,
+                      "name": "y",
+                      "required": false,
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              {
+                "id": 23,
+                "name": "list",
+                "required": false,
+                "type": {
+                  "type": "list",
+                  "element-id": 34,
+                  "element-required": false,
+                  "element": "int"
+                }
+              },
+              {
+                "id": 24,
+                "name": "counts",
+                "required": false,
+                "type": {
+                  "type": "map",
+                  "key-id": 35,
+                  "key": "string",
+                  "value-id": 36,
+                  "value-required": false,
+                  "value": "long"
+                }
+              },
+              {
+                "id": 25,
+                "name": "text",
+                "required": false,
+                "type": "string"
+              },
+              {
+                "id": 26,
+                "name": "number",
+                "required": false,
+                "type": "int"
+              },
+              {
+                "id": 27,
+                "name": "maybe",
+                "required": false,
+                "type": "string"
+              },
+              {
+                "id": 28,
+                "name": "at",
+                "required": false,
+                "type": "timestamptz"
+              },
+              {
+                "id": 29,
+                "name": "wrapped",
+                "required": false,
+                "type": "long"
+              },
+              {
+                "id": 30,
+                "name": "extra",
+                "required": false,
+                "type": "string"
+              },
+              {
+                "id": 31,
+                "name": "tree",
+                "required": false,
+                "type": {
+                  "type": "struct",
+                  "fields": [
+                    {
+                      "id": 37,
+                      "name": "value",
+                      "required": false,
+                      "type": "int"
+                    },
+                    {
+                      "id": 38,
+                      "name": "children",
+                      "required": false,
+                      "type": {
+                        "type": "list",
+                        "element-id": 39,
+                        "element-required": false,
+                        "element": "string"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "records": [
+        {
+          "key": null,
+          "value": "00000001f800080110fbffffffffffffffff0118cb89ec8ff7232080d0acf30e28ffffffffffffffffff013005390700000000000000450000c03f4900000000000002c0520668c3a96c6c6f5a0200ff60016a070805120377687972030102037a050a016210027a050a0161100182010663686f73656e9a010b08c0c787d706108094ef3aa20102082aaa011a0a0e0a016e120911000000000000f03f0a080a016b12031a0176b20106080112020802",
+          "headers": [],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": null,
+            "b": true,
+            "i": -5,
+            "l": 1234567890123,
+            "u32": 4000000000,
+            "u64": "18446744073709551615",
+            "s32": -3,
+            "f64": "7",
+            "f": 1.5,
+            "d": -2.25,
+            "s": "héllo",
+            "by": "00ff",
+            "color": "GREEN",
+            "inner": {
+              "x": 5,
+              "y": "why"
+            },
+            "list": [
+              1,
+              2,
+              3
+            ],
+            "counts": [
+              [
+                "a",
+                1
+              ],
+              [
+                "b",
+                2
+              ]
+            ],
+            "text": "chosen",
+            "number": null,
+            "maybe": null,
+            "at": 1793188800123456,
+            "wrapped": 42,
+            "extra": "{\"k\":\"v\",\"n\":1.0}",
+            "tree": {
+              "value": 1,
+              "children": [
+                "{\"value\":2}"
+              ]
+            }
+          }
+        },
+        {
+          "key": null,
+          "value": "00000001f800880107",
+          "headers": [],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": null,
+            "b": false,
+            "i": 0,
+            "l": 0,
+            "u32": 0,
+            "u64": "0",
+            "s32": 0,
+            "f64": "0",
+            "f": 0.0,
+            "d": 0.0,
+            "s": "",
+            "by": "",
+            "color": "RED",
+            "inner": null,
+            "list": [],
+            "counts": [],
+            "text": null,
+            "number": 7,
+            "maybe": null,
+            "at": null,
+            "wrapped": null,
+            "extra": null,
+            "tree": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "evolution",
+      "topic": "payload-b786d031-evolution",
+      "merges": [
+        {
+          "part": "value",
+          "id": 505,
+          "table": {
+            "type": "struct",
+            "schema-id": 1,
+            "fields": [
+              {
+                "id": 1,
+                "name": "_kafka_partition",
+                "required": true,
+                "type": "int"
+              },
+              {
+                "id": 2,
+                "name": "_kafka_offset",
+                "required": true,
+                "type": "long"
+              },
+              {
+                "id": 3,
+                "name": "_kafka_timestamp",
+                "required": true,
+                "type": "timestamptz"
+              },
+              {
+                "id": 4,
+                "name": "_kafka_key",
+                "required": false,
+                "type": "binary"
+              },
+              {
+                "id": 5,
+                "name": "_kafka_headers",
+                "required": true,
+                "type": {
+                  "type": "list",
+                  "element-id": 6,
+                  "element-required": true,
+                  "element": {
+                    "type": "struct",
+                    "fields": [
+                      {
+                        "id": 7,
+                        "name": "key",
+                        "required": true,
+                        "type": "string"
+                      },
+                      {
+                        "id": 8,
+                        "name": "value",
+                        "required": false,
+                        "type": "binary"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "id": 9,
+                "name": "_kafka_value",
+                "required": false,
+                "type": "binary"
+              },
+              {
+                "id": 10,
+                "name": "id",
+                "required": false,
+                "type": "long"
+              },
+              {
+                "id": 11,
+                "name": "amount",
+                "required": false,
+                "type": "float"
+              },
+              {
+                "id": 12,
+                "name": "status",
+                "required": false,
+                "type": "string"
+              },
+              {
+                "id": 13,
+                "name": "legacy",
+                "required": false,
+                "type": "int"
+              }
+            ]
+          }
+        },
+        {
+          "part": "value",
+          "id": 506,
+          "table": {
+            "type": "struct",
+            "schema-id": 2,
+            "fields": [
+              {
+                "id": 1,
+                "name": "_kafka_partition",
+                "required": true,
+                "type": "int"
+              },
+              {
+                "id": 2,
+                "name": "_kafka_offset",
+                "required": true,
+                "type": "long"
+              },
+              {
+                "id": 3,
+                "name": "_kafka_timestamp",
+                "required": true,
+                "type": "timestamptz"
+              },
+              {
+                "id": 4,
+                "name": "_kafka_key",
+                "required": false,
+                "type": "binary"
+              },
+              {
+                "id": 5,
+                "name": "_kafka_headers",
+                "required": true,
+                "type": {
+                  "type": "list",
+                  "element-id": 6,
+                  "element-required": true,
+                  "element": {
+                    "type": "struct",
+                    "fields": [
+                      {
+                        "id": 7,
+                        "name": "key",
+                        "required": true,
+                        "type": "string"
+                      },
+                      {
+                        "id": 8,
+                        "name": "value",
+                        "required": false,
+                        "type": "binary"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "id": 9,
+                "name": "_kafka_value",
+                "required": false,
+                "type": "binary"
+              },
+              {
+                "id": 10,
+                "name": "id",
+                "required": false,
+                "type": "long"
+              },
+              {
+                "id": 11,
+                "name": "amount",
+                "required": false,
+                "type": "double"
+              },
+              {
+                "id": 12,
+                "name": "status",
+                "required": false,
+                "type": "string"
+              },
+              {
+                "id": 13,
+                "name": "legacy",
+                "required": false,
+                "type": "int"
+              },
+              {
+                "id": 14,
+                "name": "currency",
+                "required": false,
+                "type": "string"
+              }
+            ]
+          }
+        },
+        {
+          "part": "value",
+          "id": 507,
+          "table": {
+            "type": "struct",
+            "schema-id": 3,
+            "fields": [
+              {
+                "id": 1,
+                "name": "_kafka_partition",
+                "required": true,
+                "type": "int"
+              },
+              {
+                "id": 2,
+                "name": "_kafka_offset",
+                "required": true,
+                "type": "long"
+              },
+              {
+                "id": 3,
+                "name": "_kafka_timestamp",
+                "required": true,
+                "type": "timestamptz"
+              },
+              {
+                "id": 4,
+                "name": "_kafka_key",
+                "required": false,
+                "type": "binary"
+              },
+              {
+                "id": 5,
+                "name": "_kafka_headers",
+                "required": true,
+                "type": {
+                  "type": "list",
+                  "element-id": 6,
+                  "element-required": true,
+                  "element": {
+                    "type": "struct",
+                    "fields": [
+                      {
+                        "id": 7,
+                        "name": "key",
+                        "required": true,
+                        "type": "string"
+                      },
+                      {
+                        "id": 8,
+                        "name": "value",
+                        "required": false,
+                        "type": "binary"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "id": 9,
+                "name": "_kafka_value",
+                "required": false,
+                "type": "binary"
+              },
+              {
+                "id": 10,
+                "name": "id",
+                "required": false,
+                "type": "long"
+              },
+              {
+                "id": 11,
+                "name": "amount",
+                "required": false,
+                "type": "double"
+              },
+              {
+                "id": 12,
+                "name": "state",
+                "required": false,
+                "type": "string"
+              },
+              {
+                "id": 13,
+                "name": "legacy_s2",
+                "required": false,
+                "type": "int"
+              },
+              {
+                "id": 14,
+                "name": "currency",
+                "required": false,
+                "type": "string"
+              },
+              {
+                "id": 15,
+                "name": "legacy",
+                "required": false,
+                "type": "string"
+              }
+            ]
+          }
+        }
+      ],
+      "records": [
+        {
+          "key": null,
+          "value": "00000001f9000801150000c03f1a036e65772007",
+          "headers": [],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": null,
+            "id": 1,
+            "amount": 1.5,
+            "state": "new",
+            "legacy_s2": 7,
+            "currency": null,
+            "legacy": null
+          }
+        },
+        {
+          "key": null,
+          "value": "00000001fa0008021100000000000002401a047061696420082a03455552",
+          "headers": [],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": null,
+            "id": 2,
+            "amount": 2.25,
+            "state": "paid",
+            "legacy_s2": 8,
+            "currency": "EUR",
+            "legacy": null
+          }
+        },
+        {
+          "key": null,
+          "value": "00000001fb000803110000000000000c401a0473656e74220178",
+          "headers": [],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": null,
+            "id": 3,
+            "amount": 3.5,
+            "state": "sent",
+            "legacy_s2": null,
+            "currency": null,
+            "legacy": "x"
+          }
+        }
+      ]
+    },
+    {
+      "name": "references",
+      "topic": "payload-b786d031-references",
+      "merges": [
+        {
+          "part": "value",
+          "id": 509,
+          "table": {
+            "type": "struct",
+            "schema-id": 1,
+            "fields": [
+              {
+                "id": 1,
+                "name": "_kafka_partition",
+                "required": true,
+                "type": "int"
+              },
+              {
+                "id": 2,
+                "name": "_kafka_offset",
+                "required": true,
+                "type": "long"
+              },
+              {
+                "id": 3,
+                "name": "_kafka_timestamp",
+                "required": true,
+                "type": "timestamptz"
+              },
+              {
+                "id": 4,
+                "name": "_kafka_key",
+                "required": false,
+                "type": "binary"
+              },
+              {
+                "id": 5,
+                "name": "_kafka_headers",
+                "required": true,
+                "type": {
+                  "type": "list",
+                  "element-id": 6,
+                  "element-required": true,
+                  "element": {
+                    "type": "struct",
+                    "fields": [
+                      {
+                        "id": 7,
+                        "name": "key",
+                        "required": true,
+                        "type": "string"
+                      },
+                      {
+                        "id": 8,
+                        "name": "value",
+                        "required": false,
+                        "type": "binary"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "id": 9,
+                "name": "_kafka_value",
+                "required": false,
+                "type": "binary"
+              },
+              {
+                "id": 10,
+                "name": "d",
+                "required": false,
+                "type": {
+                  "type": "struct",
+                  "fields": [
+                    {
+                      "id": 11,
+                      "name": "x",
+                      "required": false,
+                      "type": "long"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "records": [
+        {
+          "key": null,
+          "value": "00000001fd000a020805",
+          "headers": [],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": null,
+            "d": {
+              "x": 5
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "wire",
+      "topic": "payload-b786d031-wire",
+      "merges": [
+        {
+          "part": "value",
+          "id": 510,
+          "table": {
+            "type": "struct",
+            "schema-id": 1,
+            "fields": [
+              {
+                "id": 1,
+                "name": "_kafka_partition",
+                "required": true,
+                "type": "int"
+              },
+              {
+                "id": 2,
+                "name": "_kafka_offset",
+                "required": true,
+                "type": "long"
+              },
+              {
+                "id": 3,
+                "name": "_kafka_timestamp",
+                "required": true,
+                "type": "timestamptz"
+              },
+              {
+                "id": 4,
+                "name": "_kafka_key",
+                "required": false,
+                "type": "binary"
+              },
+              {
+                "id": 5,
+                "name": "_kafka_headers",
+                "required": true,
+                "type": {
+                  "type": "list",
+                  "element-id": 6,
+                  "element-required": true,
+                  "element": {
+                    "type": "struct",
+                    "fields": [
+                      {
+                        "id": 7,
+                        "name": "key",
+                        "required": true,
+                        "type": "string"
+                      },
+                      {
+                        "id": 8,
+                        "name": "value",
+                        "required": false,
+                        "type": "binary"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "id": 9,
+                "name": "_kafka_value",
+                "required": false,
+                "type": "binary"
+              },
+              {
+                "id": 10,
+                "name": "n",
+                "required": false,
+                "type": "int"
+              }
+            ]
+          }
+        },
+        {
+          "part": "value",
+          "id": 511,
+          "rejection": "not_accepted"
+        }
+      ],
+      "records": [
+        {
+          "key": null,
+          "value": "00000001fe000801",
+          "headers": [],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": null,
+            "n": 1
+          }
+        },
+        {
+          "key": null,
+          "value": "0802",
+          "headers": [
+            [
+              "__value_schema_id",
+              "01fff8163634d403286dbcd227737b578b00"
+            ]
+          ],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": null,
+            "n": 2
+          }
+        },
+        {
+          "key": null,
+          "value": "00000001fe02020a0178",
+          "headers": [],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": "00000001fe02020a0178",
+            "n": null
+          }
+        },
+        {
+          "key": null,
+          "value": "6e6f206d616769632062797465",
+          "headers": [],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": "6e6f206d616769632062797465",
+            "n": null
+          }
+        },
+        {
+          "key": null,
+          "value": "00000001fe0008ac",
+          "headers": [],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": "00000001fe0008ac",
+            "n": null
+          }
+        },
+        {
+          "key": null,
+          "value": "007fffffff02",
+          "headers": [],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": "007fffffff02",
+            "n": null
+          }
+        },
+        {
+          "key": null,
+          "value": "02",
+          "headers": [
+            [
+              "__value_schema_id",
+              "0100000000000000000000000000000000"
+            ]
+          ],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": "02",
+            "n": null
+          }
+        },
+        {
+          "key": null,
+          "value": "00000001ff000804",
+          "headers": [],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": "00000001ff000804",
+            "n": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "deep",
+      "topic": "payload-b786d031-deep",
+      "merges": [
+        {
+          "part": "value",
+          "id": 512,
+          "rejection": "unsupported"
+        }
+      ],
+      "records": [
+        {
+          "key": null,
+          "value": "000000020000",
+          "headers": [],
+          "row": {
+            "_kafka_key": null,
+            "_kafka_value": "000000020000"
+          }
+        }
+      ]
+    }
+  ]
+}
