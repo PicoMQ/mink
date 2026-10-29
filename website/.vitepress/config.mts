@@ -11,6 +11,15 @@ const docsSidebar = [
     ],
   },
   {
+    text: 'Why not',
+    collapsed: false,
+    items: [
+      { text: 'Apache Fluss', link: '/docs/why-not/fluss' },
+      { text: 'Table topics', link: '/docs/why-not/table-topics' },
+      { text: 'Connectors', link: '/docs/why-not/connectors' },
+    ],
+  },
+  {
     text: 'Design',
     collapsed: false,
     items: [
@@ -49,6 +58,7 @@ const docsSidebar = [
     text: 'Community',
     collapsed: true,
     items: [
+      { text: 'Roadmap', link: '/docs/roadmap' },
       { text: 'Contribute', link: '/docs/contribute' },
     ],
   },
