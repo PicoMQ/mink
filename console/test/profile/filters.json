@@ -1,0 +1,96 @@
+{
+    "total_bytes_written": 0,
+    "total_bytes_read": 0,
+    "result_set_size": 0,
+    "cumulative_rows_scanned": 0,
+    "cpu_time": 0.0,
+    "blocked_thread_time": 0.0,
+    "rows_returned": 0,
+    "system_peak_temp_dir_size": 0,
+    "cumulative_cardinality": 0,
+    "system_peak_buffer_memory": 0,
+    "extra_info": {},
+    "query_name": "",
+    "latency": 0.0,
+    "children": [
+        {
+            "total_bytes_written": 0,
+            "result_set_size": 0,
+            "operator_timing": 0.0,
+            "operator_rows_scanned": 0,
+            "cumulative_rows_scanned": 0,
+            "operator_cardinality": 0,
+            "operator_type": "EXPLAIN_ANALYZE",
+            "total_bytes_read": 0,
+            "operator_name": "EXPLAIN_ANALYZE",
+            "cpu_time": 0.0,
+            "extra_info": {},
+            "cumulative_cardinality": 0,
+            "children": [
+                {
+                    "cumulative_cardinality": 0,
+                    "extra_info": {
+                        "Projections": [
+                            "_kafka_partition",
+                            "_kafka_offset",
+                            "_kafka_timestamp",
+                            "_kafka_key",
+                            "_kafka_headers",
+                            "_kafka_value",
+                            "id",
+                            "item",
+                            "amount"
+                        ],
+                        "Estimated Cardinality": "240"
+                    },
+                    "operator_name": "PROJECTION",
+                    "cpu_time": 0.0,
+                    "cumulative_rows_scanned": 0,
+                    "operator_rows_scanned": 0,
+                    "operator_timing": 0.0,
+                    "result_set_size": 151072,
+                    "total_bytes_read": 0,
+                    "operator_type": "PROJECTION",
+                    "total_bytes_written": 0,
+                    "operator_cardinality": 200,
+                    "children": [
+                        {
+                            "total_bytes_written": 0,
+                            "result_set_size": 216608,
+                            "operator_timing": 0.010300001,
+                            "operator_rows_scanned": 1200,
+                            "cumulative_rows_scanned": 0,
+                            "operator_cardinality": 200,
+                            "operator_type": "TABLE_SCAN",
+                            "total_bytes_read": 0,
+                            "operator_name": "ICEBERG_SCAN ",
+                            "cpu_time": 0.0,
+                            "extra_info": {
+                                "Function": "ICEBERG_SCAN",
+                                "Projections": [
+                                    "_kafka_partition",
+                                    "id",
+                                    "_kafka_offset",
+                                    "_kafka_timestamp",
+                                    "_kafka_key",
+                                    "_kafka_headers",
+                                    "_kafka_value",
+                                    "item",
+                                    "amount"
+                                ],
+                                "Filters": [
+                                    "_kafka_partition=1",
+                                    "id<600"
+                                ],
+                                "Estimated Cardinality": "240",
+                                "Total Files Read": "2"
+                            },
+                            "cumulative_cardinality": 0,
+                            "children": []
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

@@ -1,0 +1,12 @@
+.range {
+  position: relative;
+  min-width: 8rem;
+  height: var(--space-2);
+  background: var(--color-surface-3);
+}
+
+.range-indexed {
+  position: absolute;
+  inset: 0 auto;
+  background: var(--color-series-1);
+}

@@ -1,0 +1,19 @@
+.prefix {
+  display: flex;
+  min-width: 0;
+  border: var(--line-strong);
+}
+
+.prefix-label {
+  padding: var(--space-2) var(--space-3);
+  border-right: var(--line-strong);
+  background: var(--color-surface-1);
+  color: var(--color-text-1);
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.prefix :is(input, select) {
+  border: 0;
+  background: var(--color-surface-0);
+}

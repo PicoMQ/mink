@@ -1,0 +1,8 @@
+.sql-editor {
+  flex: none;
+}
+
+.sql-error {
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+}

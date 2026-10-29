@@ -1,0 +1,16 @@
+.select {
+  display: flex;
+  position: relative;
+  align-items: center;
+  min-width: 0;
+}
+
+.select select {
+  padding-right: var(--space-6);
+}
+
+.select svg {
+  position: absolute;
+  right: var(--space-3);
+  pointer-events: none;
+}

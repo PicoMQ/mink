@@ -1,0 +1,27 @@
+.code {
+  margin: 0;
+  border: var(--line);
+}
+
+.code-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: var(--line);
+  background: var(--color-surface-1);
+}
+
+.code-label {
+  color: var(--color-text-2);
+  font-size: var(--text-sm);
+}
+
+.code-text {
+  margin: 0;
+  padding: var(--space-3);
+  overflow-x: auto;
+  color: var(--color-text-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}

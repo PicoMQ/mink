@@ -1,0 +1,112 @@
+{
+    "total_bytes_written": 0,
+    "total_bytes_read": 0,
+    "result_set_size": 0,
+    "cumulative_rows_scanned": 0,
+    "cpu_time": 0.0,
+    "blocked_thread_time": 0.0,
+    "rows_returned": 0,
+    "system_peak_temp_dir_size": 0,
+    "cumulative_cardinality": 0,
+    "system_peak_buffer_memory": 0,
+    "extra_info": {},
+    "query_name": "",
+    "latency": 0.0,
+    "children": [
+        {
+            "total_bytes_written": 0,
+            "result_set_size": 0,
+            "operator_timing": 0.0,
+            "operator_rows_scanned": 0,
+            "cumulative_rows_scanned": 0,
+            "operator_cardinality": 0,
+            "operator_type": "EXPLAIN_ANALYZE",
+            "total_bytes_read": 0,
+            "operator_name": "EXPLAIN_ANALYZE",
+            "cpu_time": 0.0,
+            "extra_info": {},
+            "cumulative_cardinality": 0,
+            "children": [
+                {
+                    "cumulative_cardinality": 0,
+                    "extra_info": {
+                        "Aggregates": "count_star()"
+                    },
+                    "operator_name": "UNGROUPED_AGGREGATE",
+                    "cpu_time": 0.0,
+                    "cumulative_rows_scanned": 0,
+                    "operator_rows_scanned": 0,
+                    "operator_timing": 0.0,
+                    "result_set_size": 8,
+                    "total_bytes_read": 0,
+                    "operator_type": "UNGROUPED_AGGREGATE",
+                    "total_bytes_written": 0,
+                    "operator_cardinality": 1,
+                    "children": [
+                        {
+                            "total_bytes_written": 0,
+                            "result_set_size": 80,
+                            "operator_timing": 0.006000000000000001,
+                            "operator_rows_scanned": 0,
+                            "cumulative_rows_scanned": 0,
+                            "operator_cardinality": 5,
+                            "operator_type": "HASH_JOIN",
+                            "total_bytes_read": 0,
+                            "operator_name": "HASH_JOIN",
+                            "cpu_time": 0.0,
+                            "extra_info": {
+                                "Join Type": "INNER",
+                                "Conditions": "_kafka_offset = _kafka_offset",
+                                "Estimated Cardinality": "240"
+                            },
+                            "cumulative_cardinality": 0,
+                            "children": [
+                                {
+                                    "cumulative_cardinality": 0,
+                                    "extra_info": {
+                                        "Function": "ICEBERG_SCAN",
+                                        "Projections": "_kafka_offset",
+                                        "Filters": "id<5",
+                                        "Estimated Cardinality": "240",
+                                        "Total Files Read": "1"
+                                    },
+                                    "operator_name": "ICEBERG_SCAN ",
+                                    "cpu_time": 0.0,
+                                    "cumulative_rows_scanned": 0,
+                                    "operator_rows_scanned": 1200,
+                                    "operator_timing": 0.0025,
+                                    "result_set_size": 40,
+                                    "total_bytes_read": 0,
+                                    "operator_type": "TABLE_SCAN",
+                                    "total_bytes_written": 0,
+                                    "operator_cardinality": 5,
+                                    "children": []
+                                },
+                                {
+                                    "cumulative_cardinality": 0,
+                                    "extra_info": {
+                                        "Function": "ICEBERG_SCAN",
+                                        "Projections": "_kafka_offset",
+                                        "Estimated Cardinality": "30",
+                                        "Total Files Read": "1"
+                                    },
+                                    "operator_name": "ICEBERG_SCAN ",
+                                    "cpu_time": 0.0,
+                                    "cumulative_rows_scanned": 0,
+                                    "operator_rows_scanned": 30,
+                                    "operator_timing": 0.0026,
+                                    "result_set_size": 240,
+                                    "total_bytes_read": 0,
+                                    "operator_type": "TABLE_SCAN",
+                                    "total_bytes_written": 0,
+                                    "operator_cardinality": 30,
+                                    "children": []
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

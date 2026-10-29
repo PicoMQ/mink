@@ -1,0 +1,30 @@
+.fields {
+  margin: 0;
+  padding: 0 0 0 var(--space-5);
+  list-style: none;
+}
+
+.fields-item {
+  padding: var(--space-1) 0;
+}
+
+.fields-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.fields-name {
+  color: var(--color-text-1);
+  font-family: var(--font-mono);
+}
+
+.fields-type {
+  color: var(--color-series-1);
+  font-family: var(--font-mono);
+}
+
+.fields-id {
+  color: var(--color-text-3);
+  font-size: var(--text-sm);
+}
