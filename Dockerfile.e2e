@@ -1,0 +1,39 @@
+# syntax=docker/dockerfile:1
+
+FROM rust:1.98.1-bookworm
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        cmake \
+        pkg-config \
+        python3 \
+        python3-venv \
+        unzip \
+ && rm -rf /var/lib/apt/lists/*
+
+ARG DUCKDB_VERSION=1.3.0
+RUN curl -fsSL -o /tmp/duckdb.zip \
+        "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/duckdb_cli-linux-$(dpkg --print-architecture).zip" \
+ && unzip -q /tmp/duckdb.zip -d /usr/local/bin \
+ && rm /tmp/duckdb.zip
+
+ARG PYICEBERG_VERSION=0.12.0
+ARG PYARROW_VERSION=26.0.0
+ARG DUCKDB_PYTHON_VERSION=2.0.0
+ARG DATASKETCHES_VERSION=5.2.0
+ARG PYSPARK_CLIENT_VERSION=4.1.4
+RUN python3 -m venv /opt/pyiceberg \
+ && /opt/pyiceberg/bin/pip install --no-cache-dir \
+        "pyiceberg==${PYICEBERG_VERSION}" \
+        "pyarrow==${PYARROW_VERSION}" \
+        "duckdb==${DUCKDB_PYTHON_VERSION}" \
+        "datasketches==${DATASKETCHES_VERSION}" \
+        "pyspark-client==${PYSPARK_CLIENT_VERSION}"
+
+WORKDIR /toolchain
+COPY rust-toolchain.toml .
+RUN rustup toolchain install
+
+WORKDIR /src

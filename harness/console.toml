@@ -1,0 +1,16 @@
+postgres = "postgres://mink:mink@postgres:5432/mink"
+kafka_bootstrap = ["kafka:9092"]
+catalog_address = "0.0.0.0:8181"
+s3_address = "0.0.0.0:9100"
+admin_address = "0.0.0.0:9180"
+admin_remote = true
+file_window = "5s"
+snapshot_interval = "5s"
+cache_dir = "/tmp/mink-cache"
+cache_disk_bytes = 1073741824
+
+[storage]
+endpoint = "http://rustfs:9000"
+
+[schema_registry]
+url = "http://schema-registry:8081"

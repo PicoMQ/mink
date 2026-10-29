@@ -1,0 +1,16 @@
+services:
+  trino:
+    image: trinodb/trino:484
+    container_name: mink-trino
+    environment:
+      CATALOG_MANAGEMENT: dynamic
+    healthcheck:
+      test: ["CMD", "/usr/lib/trino/bin/health-check"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+
+  runner:
+    environment:
+      TEST_TRINO: http://trino:8080

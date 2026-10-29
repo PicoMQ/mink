@@ -1,0 +1,41 @@
+services:
+  runner:
+    image: ${MINK_RUNNER_IMAGE:-mink-runner:local}
+    build:
+      context: ..
+      dockerfile: Dockerfile.e2e
+    profiles: ["runner"]
+    working_dir: /src
+    environment:
+      RUST_LOG: ${RUST_LOG:-info}
+      RUST_BACKTRACE: "1"
+      CARGO_TARGET_DIR: /target
+      CARGO_HOME: /cargo
+      CARGO_INCREMENTAL: ${CARGO_INCREMENTAL:-1}
+      CARGO_PROFILE_DEV_DEBUG: ${CARGO_PROFILE_DEV_DEBUG:-true}
+      CI: "1"
+      TEST_POSTGRES_URL: postgres://mink:mink@postgres:5432/mink
+      TEST_KAFKA_BOOTSTRAP: kafka:9092
+      TEST_S3_ENDPOINT: http://rustfs:9000
+      TEST_SCHEMA_REGISTRY: http://schema-registry:8081
+      TEST_DUCKDB: /usr/local/bin/duckdb
+      TEST_PYICEBERG: /opt/pyiceberg/bin/python
+      TEST_ENGINE_HOST: runner
+    volumes:
+      - ..:/src
+      - e2e-target:/target
+      - e2e-cargo:/cargo
+    entrypoint:
+      - sh
+      - -c
+      - exec cargo test --locked -p mink-conformance "$@"
+      - runner
+    command: ["--", "--nocapture"]
+
+volumes:
+  e2e-target:
+    name: mink-e2e-target
+    external: true
+  e2e-cargo:
+    name: mink-e2e-cargo
+    external: true

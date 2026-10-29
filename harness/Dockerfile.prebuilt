@@ -1,0 +1,11 @@
+# syntax=docker/dockerfile:1
+
+FROM ubuntu:24.04 AS base
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+FROM base AS mink
+COPY mink /usr/local/bin/mink
+ENTRYPOINT ["mink"]
+CMD ["serve"]

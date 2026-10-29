@@ -1,0 +1,28 @@
+services:
+  spark:
+    image: apache/spark:4.1.4
+    container_name: mink-spark
+    user: root
+    environment:
+      SPARK_NO_DAEMONIZE: "true"
+    command:
+      - /opt/spark/sbin/start-connect-server.sh
+      - --conf
+      - spark.jars.ivy=/ivy
+      - --packages
+      - org.apache.iceberg:iceberg-spark-runtime-4.1_2.13:1.12.0,org.apache.iceberg:iceberg-aws-bundle:1.12.0
+    volumes:
+      - spark-ivy:/ivy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/15002'"]
+      interval: 2s
+      timeout: 5s
+      retries: 150
+      start_period: 10s
+
+  runner:
+    environment:
+      TEST_SPARK: sc://spark:15002
+
+volumes:
+  spark-ivy:
