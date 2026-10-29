@@ -1,4 +1,5 @@
 use std::io;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use kafka_protocol::messages::BrokerId;
@@ -52,4 +53,14 @@ pub enum Error {
     MaxBytes(i32),
     #[error("max_wait {0:?} does not fit in 32-bit milliseconds")]
     MaxWait(Duration),
+    #[error("tls: {0}")]
+    Tls(#[from] tokio_rustls::rustls::Error),
+    #[error("cannot read the CA file {}: {reason}", path.display())]
+    CaFile { path: PathBuf, reason: String },
+    #[error("{0} has no valid TLS server name")]
+    ServerName(String),
+    #[error("authentication failed: {0}")]
+    Authentication(String),
+    #[error("scram: {0}")]
+    Scram(&'static str),
 }

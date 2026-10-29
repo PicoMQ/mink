@@ -4,8 +4,10 @@ A node reads its settings from the defaults, then a TOML file given with `-c`, t
 
 ```toml
 postgres = "postgres://mink:mink@db:5432/mink"
-kafka_bootstrap = ["kafka-1:9092", "kafka-2:9092"]
 warehouse = "s3://lake/mink"
+
+[kafka]
+bootstrap = ["kafka-1:9092", "kafka-2:9092"]
 
 [storage]
 endpoint = "https://s3.us-east-1.amazonaws.com"
@@ -22,7 +24,7 @@ Every setting has a variable: `MINK_` and its name in capitals. Lists and tables
 
 ```bash
 MINK_POSTGRES=postgres://mink:mink@db:5432/mink
-MINK_KAFKA_BOOTSTRAP='["kafka-1:9092", "kafka-2:9092"]'
+MINK_KAFKA='{bootstrap = ["kafka-1:9092", "kafka-2:9092"]}'
 MINK_SCHEMA_REGISTRY='{url = "http://registry:8081"}'
 ```
 
@@ -51,8 +53,12 @@ Durations are a number and a unit: `ms`, `s`, `m` or `h`. Sizes are bytes. Every
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| `postgres` | `postgres://mink:mink@localhost:5432/mink` | Postgres connection URL |
-| `kafka_bootstrap` | `["localhost:9092"]` | Kafka brokers to bootstrap from |
+| `postgres` | `postgres://mink:mink@localhost:5432/mink` | Postgres connection URL. TLS is set in the URL: `sslmode=verify-full` checks the server's certificate against `sslrootcert`, or the Mozilla CA certificates without it. `require` encrypts without checking the certificate. |
+| `kafka.bootstrap` | `["localhost:9092"]` | Kafka brokers to bootstrap from |
+| `kafka.tls` | none | TLS to the brokers, verified against the system's CA certificates. `{}` turns it on. |
+| `kafka.tls.ca` | none | A PEM file of more CA certificates to trust |
+| `kafka.sasl.mechanism` | none | `PLAIN`, `SCRAM-SHA-256` or `SCRAM-SHA-512`, as Kafka names them |
+| `kafka.sasl.username`, `kafka.sasl.password` | none | The SASL credentials |
 | `warehouse` | `s3://mink/warehouse` | Where Iceberg metadata lives, and the root of every table location |
 | `storage.endpoint` | `http://localhost:9000` | The S3-compatible store that holds the warehouse |
 | `storage.region` | `us-east-1` | Its region |

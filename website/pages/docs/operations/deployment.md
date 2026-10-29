@@ -33,7 +33,7 @@ With the [Quick start](/docs/quick-start) services running:
 docker run -d --name mink --network harness_default \
   -p 8181:8181 -p 9100:9100 -p 9180:9180 \
   -e MINK_POSTGRES=postgres://mink:mink@postgres:5432/mink \
-  -e MINK_KAFKA_BOOTSTRAP='["kafka:9092"]' \
+  -e MINK_KAFKA='{bootstrap = ["kafka:9092"]}' \
   -e MINK_STORAGE='{endpoint = "http://rustfs:9000"}' \
   -e MINK_SCHEMA_REGISTRY='{url = "http://schema-registry:8081"}' \
   -e MINK_CATALOG_ADDRESS=0.0.0.0:8181 \
@@ -63,7 +63,7 @@ x-mink: &mink
   image: ghcr.io/picomq/mink
   environment: &env
     MINK_POSTGRES: postgres://mink:mink@postgres:5432/mink
-    MINK_KAFKA_BOOTSTRAP: '["kafka:9092"]'
+    MINK_KAFKA: '{bootstrap = ["kafka:9092"]}'
     MINK_STORAGE: '{endpoint = "http://rustfs:9000"}'
     MINK_SCHEMA_REGISTRY: '{url = "http://schema-registry:8081"}'
     MINK_CATALOG_ADDRESS: 0.0.0.0:8181

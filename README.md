@@ -28,7 +28,8 @@ mink serve -c mink.toml
 
 ```toml
 # mink.toml
-kafka_bootstrap = ["localhost:29092"]
+[kafka]
+bootstrap = ["localhost:29092"]
 
 [schema_registry]
 url = "http://localhost:8081"

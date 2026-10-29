@@ -12,7 +12,7 @@ pub async fn add_table(
     topic: &str,
     granularity: Option<Granularity>,
 ) -> Result<Topic, Error> {
-    let kafka_config = mink_kafka::Config::new(config.kafka_bootstrap.clone())?;
+    let kafka_config = config.kafka.client_config()?;
     let kafka = Pool::new(kafka_config, Metrics::new());
     let granularity = granularity.unwrap_or(config.granularity);
 

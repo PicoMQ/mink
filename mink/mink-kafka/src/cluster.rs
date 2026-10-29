@@ -164,7 +164,7 @@ impl Cluster {
                 Err(error) => error,
             };
 
-            if !backoff.wait().await {
+            if !retriable(&error) || !backoff.wait().await {
                 return Err(error);
             }
         }
@@ -202,7 +202,8 @@ impl Cluster {
                     .ok_or(Error::UnknownBroker(broker))?;
                 let timeout = self.config.request_timeout();
                 let connection =
-                    Connection::connect(address, timeout, self.metrics.clone()).await?;
+                    Connection::connect(address, &self.config, timeout, self.metrics.clone())
+                        .await?;
 
                 Ok(entry.insert(connection))
             }
@@ -211,6 +212,7 @@ impl Cluster {
 
     async fn refresh_once(&mut self) -> Result<Listing, Error> {
         let mut errors = Vec::new();
+        let mut refused = None;
 
         let brokers: Vec<BrokerId> = self.brokers.keys().copied().collect();
         for broker in brokers {
@@ -221,13 +223,19 @@ impl Cluster {
 
             match metadata {
                 Ok(metadata) => return Ok(self.apply_metadata(metadata)),
-                Err(error) => errors.push(format!("broker {}: {error}", broker.0)),
+                Err(error) => {
+                    errors.push(format!("broker {}: {error}", broker.0));
+                    if !retriable(&error) {
+                        refused.get_or_insert(error);
+                    }
+                }
             }
         }
 
         for address in self.config.bootstrap().to_vec() {
             let timeout = self.config.request_timeout();
-            let connected = Connection::connect(&address, timeout, self.metrics.clone()).await;
+            let connected =
+                Connection::connect(&address, &self.config, timeout, self.metrics.clone()).await;
             let metadata = match connected {
                 Ok(mut connection) => connection.metadata().await,
                 Err(error) => Err(error),
@@ -235,11 +243,16 @@ impl Cluster {
 
             match metadata {
                 Ok(metadata) => return Ok(self.apply_metadata(metadata)),
-                Err(error) => errors.push(format!("{address}: {error}")),
+                Err(error) => {
+                    errors.push(format!("{address}: {error}"));
+                    if !retriable(&error) {
+                        refused.get_or_insert(error);
+                    }
+                }
             }
         }
 
-        Err(Error::Unreachable(errors))
+        Err(refused.unwrap_or(Error::Unreachable(errors)))
     }
 
     fn apply_metadata(&mut self, metadata: MetadataResponse) -> Listing {
@@ -300,7 +313,8 @@ mod tests {
         MetadataResponseBroker, MetadataResponsePartition, MetadataResponseTopic,
     };
     use kafka_protocol::messages::{
-        ApiKey, FetchRequest, FetchResponse, ListOffsetsRequest, ListOffsetsResponse, TopicName,
+        ApiKey, FetchRequest, FetchResponse, ListOffsetsRequest, ListOffsetsResponse,
+        SaslAuthenticateResponse, SaslHandshakeResponse, TopicName,
     };
     use kafka_protocol::protocol::{Decodable, StrBytes, decode_request_header_from_buffer};
     use kafka_protocol::records::{
@@ -309,8 +323,9 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
-    use crate::codes::LEADER_NOT_AVAILABLE;
+    use crate::codes::{LEADER_NOT_AVAILABLE, UNSUPPORTED_SASL_MECHANISM};
     use crate::connection::tests::{TIMEOUT, broker, frame};
+    use crate::sasl::{Mechanism, Sasl};
 
     const UNREACHABLE: &str = "127.0.0.1:1";
 
@@ -683,5 +698,71 @@ mod tests {
             fetch.max_bytes,
             fetch.topics[0].partitions[0].partition_max_bytes
         );
+    }
+
+    #[tokio::test]
+    async fn an_authentication_failure_ends_connect_without_retrying() {
+        let address = broker(|key, version, correlation, _| {
+            let refused = SaslHandshakeResponse::default()
+                .with_error_code(UNSUPPORTED_SASL_MECHANISM)
+                .with_mechanisms(vec![StrBytes::from_static_str("PLAIN")]);
+
+            (key == ApiKey::SaslHandshake).then(|| frame(correlation, key, version, &refused))
+        })
+        .await;
+        let sasl = Sasl::new(Mechanism::ScramSha512, "mink".to_owned(), "mink".to_owned());
+        let config = Config::new(vec![address]).unwrap().with_sasl(sasl);
+        let started = std::time::Instant::now();
+
+        let connected = Cluster::connect(config, Metrics::new()).await;
+
+        assert!(
+            matches!(&connected, Err(Error::Authentication(message)) if message.contains("only PLAIN")),
+            "{:?}",
+            connected.err()
+        );
+        assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    #[tokio::test]
+    async fn a_broker_that_refuses_does_not_stop_the_next_from_being_tried() {
+        let refusing = broker(|key, version, correlation, _| {
+            let refused = SaslHandshakeResponse::default()
+                .with_error_code(UNSUPPORTED_SASL_MECHANISM)
+                .with_mechanisms(vec![StrBytes::from_static_str("PLAIN")]);
+
+            (key == ApiKey::SaslHandshake).then(|| frame(correlation, key, version, &refused))
+        })
+        .await;
+        let accepting = broker(|key, version, correlation, _| match key {
+            ApiKey::SaslHandshake => Some(frame(
+                correlation,
+                key,
+                version,
+                &SaslHandshakeResponse::default(),
+            )),
+            ApiKey::SaslAuthenticate => Some(frame(
+                correlation,
+                key,
+                version,
+                &SaslAuthenticateResponse::default(),
+            )),
+            ApiKey::Metadata => Some(frame(
+                correlation,
+                key,
+                version,
+                &MetadataResponse::default(),
+            )),
+            _ => None,
+        })
+        .await;
+        let sasl = Sasl::new(Mechanism::Plain, "mink".to_owned(), "mink".to_owned());
+        let config = Config::new(vec![refusing, accepting])
+            .unwrap()
+            .with_sasl(sasl);
+
+        let connected = Cluster::connect(config, Metrics::new()).await;
+
+        assert!(connected.is_ok(), "{:?}", connected.err());
     }
 }

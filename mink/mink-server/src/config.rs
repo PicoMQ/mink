@@ -6,6 +6,7 @@ use std::time::Duration;
 use figment::Figment;
 use figment::providers::{Env, Format, Serialized, Toml};
 use mink_core::{Granularity, Role};
+use mink_kafka::Mechanism;
 use nestor::DiskAdmission;
 use serde::{Deserialize, Serialize};
 
@@ -25,7 +26,7 @@ pub struct Config {
     pub(crate) duckdb_extensions: Option<String>,
     #[serde(with = "roles")]
     pub(crate) roles: Vec<Role>,
-    pub(crate) kafka_bootstrap: Vec<String>,
+    pub(crate) kafka: Kafka,
     pub(crate) warehouse: String,
     pub(crate) storage: Storage,
     pub(crate) schema_registry: Option<SchemaRegistry>,
@@ -60,6 +61,29 @@ pub struct Config {
     pub(crate) assembled_bytes: u64,
     #[serde(with = "duration")]
     pub(crate) statistics_interval: Duration,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Kafka {
+    pub(crate) bootstrap: Vec<String>,
+    pub(crate) tls: Option<Tls>,
+    pub(crate) sasl: Option<Sasl>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Sasl {
+    #[serde(with = "mechanism")]
+    pub(crate) mechanism: Mechanism,
+    pub(crate) username: String,
+    pub(crate) password: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Tls {
+    pub(crate) ca: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -119,7 +143,11 @@ impl Default for Config {
             duckdb_engine: None,
             duckdb_extensions: None,
             roles: Role::ALL.to_vec(),
-            kafka_bootstrap: vec!["localhost:9092".to_owned()],
+            kafka: Kafka {
+                bootstrap: vec!["localhost:9092".to_owned()],
+                tls: None,
+                sasl: None,
+            },
             warehouse: "s3://mink/warehouse".to_owned(),
             storage: Storage {
                 endpoint: "http://localhost:9000".to_owned(),
@@ -188,7 +216,24 @@ impl Config {
             ("s3_address", self.s3_address.to_string()),
             ("s3_endpoint", self.s3_endpoint.clone()),
             ("roles", roles.join(",")),
-            ("kafka_bootstrap", self.kafka_bootstrap.join(",")),
+            ("kafka_bootstrap", self.kafka.bootstrap.join(",")),
+            (
+                "kafka_tls",
+                self.kafka.tls.as_ref().map_or("none".to_owned(), |tls| {
+                    tls.ca
+                        .as_ref()
+                        .map_or("system CA certificates".to_owned(), |ca| {
+                            ca.display().to_string()
+                        })
+                }),
+            ),
+            (
+                "kafka_sasl",
+                self.kafka
+                    .sasl
+                    .as_ref()
+                    .map_or("none".to_owned(), |sasl| sasl.mechanism.name().to_owned()),
+            ),
             ("warehouse", self.warehouse.clone()),
             ("storage", self.storage.endpoint.clone()),
             (
@@ -262,6 +307,25 @@ impl Config {
     }
 }
 
+impl Kafka {
+    pub(crate) fn client_config(&self) -> Result<mink_kafka::Config, mink_kafka::Error> {
+        let mut config = mink_kafka::Config::new(self.bootstrap.clone())?;
+
+        if let Some(tls) = &self.tls {
+            config = config.with_tls(tls.ca.as_deref())?;
+        }
+        if let Some(sasl) = &self.sasl {
+            config = config.with_sasl(mink_kafka::Sasl::new(
+                sasl.mechanism,
+                sasl.username.clone(),
+                sasl.password.clone(),
+            ));
+        }
+
+        Ok(config)
+    }
+}
+
 fn redact(url: &str) -> String {
     let Some((scheme, rest)) = url.split_once("://") else {
         return url.to_owned();
@@ -330,6 +394,30 @@ mod roles {
             .iter()
             .map(|name| super::parse_role(name).map_err(de::Error::custom))
             .collect()
+    }
+}
+
+mod mechanism {
+    use mink_kafka::Mechanism;
+    use serde::{Deserialize, Deserializer, Serializer, de};
+
+    pub(super) fn serialize<S: Serializer>(
+        mechanism: &Mechanism,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(mechanism.name())
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Mechanism, D::Error> {
+        let name = String::deserialize(deserializer)?;
+
+        Mechanism::from_name(&name).ok_or_else(|| {
+            de::Error::custom(format!(
+                "{name:?} is not a SASL mechanism: PLAIN, SCRAM-SHA-256 or SCRAM-SHA-512"
+            ))
+        })
     }
 }
 
@@ -461,6 +549,62 @@ mod tests {
             ));
             Ok(())
         });
+    }
+
+    #[test]
+    fn kafka_loads_tls_and_sasl_by_kafka_mechanism_names() {
+        figment::Jail::expect_with(|jail| {
+            jail.create_file(
+                "mink.toml",
+                r#"
+                [kafka]
+                bootstrap = ["b-1.msk:9096"]
+                tls = {}
+                sasl = { mechanism = "SCRAM-SHA-512", username = "mink", password = "secret" }
+                "#,
+            )?;
+            jail.create_file(
+                "lower.toml",
+                "[kafka]\nbootstrap = [\"b-1:9096\"]\nsasl = { mechanism = \"scram-sha-512\", username = \"a\", password = \"b\" }",
+            )?;
+
+            let config = Config::load(Some(Path::new("mink.toml"))).unwrap();
+            let lower = Config::load(Some(Path::new("lower.toml")));
+
+            assert_eq!(config.kafka.bootstrap, ["b-1.msk:9096"]);
+            assert_eq!(config.kafka.tls, Some(Tls { ca: None }));
+            assert_eq!(
+                config.kafka.sasl.as_ref().map(|sasl| sasl.mechanism),
+                Some(Mechanism::ScramSha512)
+            );
+            assert!(
+                matches!(&lower, Err(ConfigError::Load(error)) if error.to_string().contains("not a SASL mechanism")),
+                "{lower:?}"
+            );
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn describe_shows_kafka_security_without_the_password() {
+        let config = Config {
+            kafka: Kafka {
+                bootstrap: vec!["b-1:9096".to_owned()],
+                tls: Some(Tls { ca: None }),
+                sasl: Some(Sasl {
+                    mechanism: Mechanism::Plain,
+                    username: "key".to_owned(),
+                    password: "hunter2".to_owned(),
+                }),
+            },
+            ..Config::default()
+        };
+
+        let described = config.describe();
+
+        assert_eq!(described["kafka_tls"], "system CA certificates");
+        assert_eq!(described["kafka_sasl"], "PLAIN");
+        assert!(described.values().all(|value| !value.contains("hunter2")));
     }
 
     #[test]

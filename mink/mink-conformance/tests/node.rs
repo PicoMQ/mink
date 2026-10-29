@@ -117,13 +117,15 @@ async fn start(env: &TestEnv, roles: &[Role], settings: &str) -> TestNode {
         advertised_address = "http://{host}:{s3_port}"
         admin_address = "127.0.0.1:{admin_port}"
         roles = [{roles}]
-        kafka_bootstrap = ["{bootstrap}"]
         file_window = "200ms"
         snapshot_interval = "200ms"
         lease_ttl = "3s"
         cache_dir = "{cache_dir}"
         cache_disk_bytes = 268435456
         {settings}
+
+        [kafka]
+        bootstrap = ["{bootstrap}"]
 
         [storage]
         endpoint = "{s3}"

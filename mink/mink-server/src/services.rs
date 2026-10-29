@@ -32,7 +32,7 @@ impl Services {
     pub(crate) async fn new(config: Config, warehouse: Warehouse) -> Result<Arc<Services>, Error> {
         let metrics = Metrics::new();
         let store = Store::connect(&config.postgres).await?;
-        let kafka_config = mink_kafka::Config::new(config.kafka_bootstrap.clone())?;
+        let kafka_config = config.kafka.client_config()?;
         let kafka = Pool::new(kafka_config, metrics.clone());
         let registry = config
             .schema_registry

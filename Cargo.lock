@@ -2883,15 +2883,21 @@ name = "mink-kafka"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.23.1",
  "bytes",
  "crc32c",
+ "getrandom 0.3.4",
+ "hmac",
  "kafka-protocol",
  "mink-conformance",
  "mink-core",
  "mink-metrics",
  "proptest",
+ "rustls-platform-verifier",
+ "sha2 0.11.1",
  "thiserror",
  "tokio",
+ "tokio-rustls",
  "uuid",
 ]
 
@@ -4072,6 +4078,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf"
 dependencies = [
  "aws-lc-rs",
+ "log",
  "once_cell",
  "rustls-pki-types",
  "rustls-webpki",
@@ -4575,6 +4582,7 @@ dependencies = [
  "log",
  "memchr",
  "percent-encoding",
+ "rustls",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -4585,6 +4593,7 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+ "webpki-roots",
 ]
 
 [[package]]
@@ -5518,6 +5527,15 @@ name = "webpki-root-certs"
 version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e49d0e65abc00c142e8f9428da991da9f1a250c39be97459901eb12b9b49f62a"
+dependencies = [
+ "rustls-pki-types",
+]
+
+[[package]]
+name = "webpki-roots"
+version = "1.0.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f5f280bbb2b287bc8e7de7e3852945a0ff50d1bbcb5ed42b6c7a568c546df171"
 dependencies = [
  "rustls-pki-types",
 ]

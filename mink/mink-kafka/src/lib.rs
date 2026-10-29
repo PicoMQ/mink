@@ -7,6 +7,9 @@ mod error;
 mod listing;
 mod pool;
 mod retry;
+mod sasl;
+mod scram;
+mod tls;
 mod transaction;
 
 pub use cluster::Cluster;
@@ -14,3 +17,4 @@ pub use config::Config;
 pub use error::Error;
 pub use listing::Listing;
 pub use pool::{Pool, PooledCluster};
+pub use sasl::{Mechanism, Sasl};

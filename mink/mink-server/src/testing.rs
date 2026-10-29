@@ -7,6 +7,7 @@ use mink_core::{Granularity, Partition, Scope, Topic};
 use mink_store::Lease;
 use uuid::Uuid;
 
+use crate::config::Kafka;
 use crate::services::Services;
 use crate::warehouse::Warehouse;
 use crate::{Config, Node, Role};
@@ -27,7 +28,11 @@ pub(crate) async fn config(roles: &[Role]) -> Option<Config> {
         s3_address: SocketAddr::from(([127, 0, 0, 1], 0)),
         admin_address: SocketAddr::from(([127, 0, 0, 1], 0)),
         roles: roles.to_vec(),
-        kafka_bootstrap: vec![kafka_bootstrap],
+        kafka: Kafka {
+            bootstrap: vec![kafka_bootstrap],
+            tls: None,
+            sasl: None,
+        },
         granularity: Granularity::None,
         ..Config::default()
     })

@@ -65,7 +65,12 @@ pub(crate) fn retriable(error: &Error) -> bool {
         | Error::InvalidHeaderKey { .. }
         | Error::EmptyBootstrap
         | Error::MaxBytes(_)
-        | Error::MaxWait(_) => false,
+        | Error::MaxWait(_)
+        | Error::Tls(_)
+        | Error::CaFile { .. }
+        | Error::ServerName(_)
+        | Error::Authentication(_)
+        | Error::Scram(_) => false,
     }
 }
 
