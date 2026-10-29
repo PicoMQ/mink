@@ -1,0 +1,42 @@
+name: e2e
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: free runner disk
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+      - uses: docker/setup-buildx-action@v3
+      - name: build runner image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.e2e
+          tags: mink-runner:local
+          load: true
+          cache-from: type=gha,scope=mink-runner
+          cache-to: type=gha,scope=mink-runner,mode=max
+      - name: restore runner cargo cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/e2e-cache
+          key: e2e-cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: e2e-cargo-${{ runner.os }}-
+      - name: bind runner volumes to the cache
+        run: |
+          mkdir -p /tmp/e2e-cache/target /tmp/e2e-cache/cargo
+          docker volume create --driver local --opt type=none --opt o=bind --opt device=/tmp/e2e-cache/target mink-e2e-target
+          docker volume create --driver local --opt type=none --opt o=bind --opt device=/tmp/e2e-cache/cargo mink-e2e-cargo
+      - run: SKIP_BUILD=1 scripts/e2e.sh
+        env:
+          CARGO_INCREMENTAL: "0"
+          CARGO_PROFILE_DEV_DEBUG: line-tables-only

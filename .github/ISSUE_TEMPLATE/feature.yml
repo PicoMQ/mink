@@ -1,0 +1,43 @@
+name: Feature request
+description: Propose a feature or enhancement.
+title: "[feature] "
+labels: ["enhancement"]
+type: Feature
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What you want and the problem it solves.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Catalog (Iceberg REST)
+        - S3 endpoint
+        - Indexer
+        - Kafka client
+        - Schemas (Schema Registry)
+        - Metadata (Postgres)
+        - Cache
+        - CLI
+        - Docs
+        - Other
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Rough shape, constraints, open questions. Optional.
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I can open a PR for this
