@@ -1,5 +1,6 @@
 package mink.tpch;
 
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -42,13 +43,15 @@ final class Dataset implements AutoCloseable {
             }
             """;
 
-    record Row(String key, String json) {}
+    record Row(String key, String json, long timestampMs) {}
 
     private final Connection duckdb;
 
     Dataset() throws SQLException {
         var settings = new Properties();
         settings.setProperty("jdbc_stream_results", "true");
+        settings.setProperty("memory_limit", "512MB");
+        settings.setProperty("temp_directory", Path.of(System.getProperty("java.io.tmpdir"), "duckdb").toString());
 
         duckdb = DriverManager.getConnection("jdbc:duckdb:", settings);
     }
@@ -70,11 +73,14 @@ final class Dataset implements AutoCloseable {
     }
 
     void rows(Consumer<Row> sink) throws SQLException {
-        var sql = "SELECT l_orderkey || '-' || l_linenumber, to_json(%1$s)::VARCHAR FROM %1$s".formatted(REFERENCE);
+        var sql = """
+                SELECT l_orderkey || '-' || l_linenumber, to_json(%1$s)::VARCHAR, epoch_ms(l_shipdate)
+                FROM %1$s ORDER BY l_shipdate
+                """.formatted(REFERENCE);
 
         try (var statement = duckdb.createStatement(); var results = statement.executeQuery(sql)) {
             while (results.next()) {
-                sink.accept(new Row(results.getString(1), results.getString(2)));
+                sink.accept(new Row(results.getString(1), results.getString(2), results.getLong(3)));
             }
         }
     }

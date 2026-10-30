@@ -200,12 +200,14 @@ EOF
 | Step | What it does |
 | --- | --- |
 | Generate | Builds `lineitem` at the given scale with DuckDB |
-| Create | Creates a `lineitem` topic, which must not exist yet, and adds it as a table |
-| Produce | Writes every row with the registry's own serializer: Confluent's JSON Schema serializer or AWS's Glue serializer |
+| Create | Creates a `lineitem` topic with 2 partitions and unlimited retention, which must not exist yet, and adds it as a table with `month` granularity |
+| Produce | Writes the rows in `l_shipdate` order with the registry's own serializer: Confluent's JSON Schema serializer or AWS's Glue serializer. Each record's Kafka timestamp is its ship date. |
 | Wait | Waits until the catalog's current snapshot holds every row |
 | Check | Runs TPC-H Q1 and Q6 through Mink and on DuckDB's own copy, and fails if they differ |
 
 The table exists from the start. The console and engines show it fill as records are committed.
+
+Retention is unlimited. Kafka's time retention compares record timestamps with the current time, and these are from 1992 to 1998.
 
 Prices are `double` in Mink and in DuckDB's copy. Sums agree to a relative 1e-9.
 
@@ -231,7 +233,17 @@ With `create_schema_registry = "confluent"`, the registry arguments are `conflue
 | Mink | A node's admin URL. The tool reaches the catalog at `/catalog` and the S3 endpoint at `/s3` under it. |
 | Scale | TPC-H scale, `0.5` by default |
 
-At scale `0.5` it loads 2,999,671 rows and ends with `Q1: match` and `Q6: match`, each followed by its result rows. Through Glue on the default stack the run takes about 27 minutes, most of it producing.
+At scale `0.5` it loads 2,999,671 rows and ends with `Q1: match` and `Q6: match`, each followed by its result rows. Through Glue on the default stack the run takes about 25 minutes, most of it producing.
+
+While it loads, the indexer writes about one file per day per partition. Assembly then merges each partition's month into one file, 168 files in all. Filters on the ship date read only the matching months:
+
+| Filter | Data files read |
+| --- | --- |
+| `l_shipdate` in January 1995 | 2 of 168 |
+| `_kafka_timestamp` in January 1995 | 2 |
+| `l_shipdate` in 1994, as in Q6 | 24 |
+| `_kafka_partition = 1` | 84 |
+| `l_orderkey BETWEEN 100000 AND 101000` | 166 |
 
 ## Query from EMR Serverless
 

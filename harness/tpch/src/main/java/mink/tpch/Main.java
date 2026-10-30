@@ -8,7 +8,8 @@ import java.nio.file.Path;
 import java.util.Properties;
 
 public final class Main {
-    private static final int PARTITIONS = 6;
+    private static final int PARTITIONS = 2;
+    private static final String GRANULARITY = "month";
     private static final double DEFAULT_SCALE = 0.5;
 
     public static void main(String[] arguments) throws Exception {
@@ -28,7 +29,7 @@ public final class Main {
 
             var topic = new Topic(kafka, Dataset.TABLE);
             topic.create(PARTITIONS);
-            mink.addTable(Dataset.TABLE);
+            mink.addTable(Dataset.TABLE, GRANULARITY);
 
             topic.write(dataset, registry, rows);
             mink.awaitServed(Dataset.TABLE, rows);

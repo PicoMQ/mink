@@ -15,8 +15,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 record Mink(URI address, String warehouse, String namespace) {
     private static final HttpClient HTTP = HttpClient.newHttpClient();
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final Duration ADDED_WITHIN = Duration.ofSeconds(30);
+    private static final Duration ADD_POLL = Duration.ofSeconds(1);
     private static final Duration SERVED_WITHIN = Duration.ofMinutes(30);
-    private static final Duration POLL = Duration.ofSeconds(10);
+    private static final Duration SERVED_POLL = Duration.ofSeconds(10);
+
+    private interface Attempt {
+        boolean done() throws IOException, InterruptedException;
+    }
 
     static Mink at(URI address) throws IOException, InterruptedException {
         var uri = address.resolve("/admin/cluster");
@@ -33,32 +39,31 @@ record Mink(URI address, String warehouse, String namespace) {
         return address.resolve("/s3");
     }
 
-    void addTable(String topic) throws IOException, InterruptedException {
-        var body = JSON.createObjectNode().put("topic", topic).toString();
+    void addTable(String topic, String granularity) throws IOException, InterruptedException {
+        var body = JSON.createObjectNode().put("topic", topic).put("granularity", granularity).toString();
         var request = HttpRequest.newBuilder(address.resolve("/admin/tables"))
                 .header("content-type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
 
-        var response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() != 201) {
-            throw new IOException("adding table " + topic + " answered " + response.statusCode() + ": " + response.body());
-        }
+        until(ADDED_WITHIN, ADD_POLL, "table " + topic + " added", () -> {
+            var response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+
+            return switch (response.statusCode()) {
+                case 201 -> true;
+                case 502 -> false;
+                default -> throw new IOException("adding table " + topic + " answered " + response.statusCode() + ": " + response.body());
+            };
+        });
     }
 
     void awaitServed(String table, long rows) throws IOException, InterruptedException {
-        var deadline = Instant.now().plus(SERVED_WITHIN);
-
-        while (Instant.now().isBefore(deadline)) {
+        until(SERVED_WITHIN, SERVED_POLL, table + " served in full", () -> {
             var served = served(table);
             System.out.printf("served %,d of %,d%n", served, rows);
-            if (served >= rows) {
-                return;
-            }
-            Thread.sleep(POLL);
-        }
 
-        throw new IOException(table + " was not served in full within " + SERVED_WITHIN);
+            return served >= rows;
+        });
     }
 
     private long served(String table) throws IOException, InterruptedException {
@@ -87,5 +92,19 @@ record Mink(URI address, String warehouse, String namespace) {
             case 404 -> Optional.empty();
             default -> throw new IOException(uri + " answered " + response.statusCode() + ": " + response.body());
         };
+    }
+
+    private static void until(Duration within, Duration poll, String goal, Attempt attempt)
+            throws IOException, InterruptedException {
+        var deadline = Instant.now().plus(within);
+
+        while (Instant.now().isBefore(deadline)) {
+            if (attempt.done()) {
+                return;
+            }
+            Thread.sleep(poll);
+        }
+
+        throw new IOException(goal + " did not happen within " + within);
     }
 }

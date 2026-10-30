@@ -39,6 +39,8 @@ pub enum Error {
     NotIndexing(String),
     #[error("Kafka has no topic {0}")]
     NoSuchTopic(String),
+    #[error("Kafka reports topic {0} as unavailable")]
+    TopicUnavailable(String),
     #[error("the schema registry is unavailable: {0}")]
     RegistryUnavailable(String),
     #[error("the schema registry answered unexpectedly: {0}")]
