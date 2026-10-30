@@ -18,8 +18,14 @@ pub(super) fn bytes(data: Option<&[u8]>) -> Value {
         return Value::Null;
     };
 
-    let (text, encoding, shown) = match std::str::from_utf8(data) {
-        Ok(text) => {
+    let readable = std::str::from_utf8(data).ok().filter(|text| {
+        !text
+            .chars()
+            .any(|char| char.is_control() && !matches!(char, '\t' | '\n' | '\r'))
+    });
+
+    let (text, encoding, shown) = match readable {
+        Some(text) => {
             let end = (0..=text.len().min(SHOWN_BYTES))
                 .rev()
                 .find(|end| text.is_char_boundary(*end))
@@ -27,7 +33,7 @@ pub(super) fn bytes(data: Option<&[u8]>) -> Value {
 
             (text[..end].to_owned(), "utf8", end)
         }
-        Err(_) => {
+        None => {
             let end = data.len().min(SHOWN_BYTES);
 
             (STANDARD.encode(&data[..end]), "base64", end)
@@ -240,7 +246,7 @@ mod tests {
     }
 
     #[test]
-    fn bytes_show_as_text_or_base64_and_at_most_4_kib() {
+    fn bytes_show_as_readable_text_or_base64_and_at_most_4_kib() {
         let long = vec![b'a'; 5000];
 
         assert_eq!(bytes(None), Value::Null);
@@ -249,8 +255,16 @@ mod tests {
             json!({"data": "hi", "encoding": "utf8", "bytes": 2, "truncated": false})
         );
         assert_eq!(
+            bytes(Some(b"a\tb\r\n")),
+            json!({"data": "a\tb\r\n", "encoding": "utf8", "bytes": 5, "truncated": false})
+        );
+        assert_eq!(
             bytes(Some(&[0xff, 0x00])),
             json!({"data": "/wA=", "encoding": "base64", "bytes": 2, "truncated": false})
+        );
+        assert_eq!(
+            bytes(Some(&[0, 0, 0, 0, 4, b'{', b'}'])),
+            json!({"data": "AAAAAAR7fQ==", "encoding": "base64", "bytes": 7, "truncated": false})
         );
         assert_eq!(bytes(Some(&long))["truncated"], json!(true));
         assert_eq!(bytes(Some(&long))["data"].as_str().unwrap().len(), 4096);

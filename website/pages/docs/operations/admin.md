@@ -59,7 +59,7 @@ Every node with the `admin` role serves the admin API, the [console](/docs/opera
 | Field | Value |
 | --- | --- |
 | `offset`, `timestampAtMs` | The record's offset and timestamp |
-| `key`, `value` | `{data, encoding, bytes, truncated}`: UTF-8 text, or base64 for other bytes, at most 4 KiB |
+| `key`, `value` | `{data, encoding, bytes, truncated}`: UTF-8 text without control characters other than tab, newline and carriage return, or base64 for other bytes, at most 4 KiB |
 | `headers` | `{key, value}` for each header |
 | `row` | The record as the table reads it, field name to value |
 
