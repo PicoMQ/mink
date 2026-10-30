@@ -140,6 +140,55 @@ EOF
 
 Without a Schema Registry, each value stays one column of raw bytes.
 
+## Load TPC-H
+
+With `create_schema_registry = "confluent"`, `harness/tpch` loads TPC-H `lineitem` through the stack and checks the result.
+
+| Step | What it does |
+| --- | --- |
+| Generate | Builds `lineitem` at the given scale with DuckDB |
+| Produce | Writes every row to a new `lineitem` topic with Confluent's JSON Schema serializer. It stops if the topic already exists. |
+| Add | Adds the table and waits until the catalog's current snapshot holds every row |
+| Check | Runs TPC-H Q1 and Q6 through Mink and on DuckDB's own copy, and fails if they differ |
+
+Prices reach Mink as JSON numbers, so both sides compute in `double`, and sums must agree to a relative 1e-9.
+
+On the client, after writing the SCRAM credentials above:
+
+```bash
+dnf install -y git
+git clone https://github.com/PicoMQ/mink /opt/mink
+/opt/duckdb/bin/pip install "confluent-kafka[json,schemaregistry]"
+cat > /tmp/kafka.conf <<EOF
+bootstrap.servers=$BOOTSTRAP
+security.protocol=SASL_SSL
+sasl.mechanism=SCRAM-SHA-512
+sasl.username=$(echo "$CREDENTIALS" | jq -r .username)
+sasl.password=$(echo "$CREDENTIALS" | jq -r .password)
+EOF
+cd /opt/mink/harness
+/opt/duckdb/bin/python -m tpch /tmp/kafka.conf http://registry.mink.internal:8081 http://mink.internal:9180 0.5
+```
+
+| Argument | Value |
+| --- | --- |
+| Kafka config | librdkafka settings, one `key=value` per line |
+| Registry | The Schema Registry's URL |
+| Mink | A node's admin URL. The tool reaches the catalog at `/catalog` and the S3 endpoint at `/s3` under it. |
+| Scale | TPC-H scale, `0.5` by default |
+
+At scale `0.5` it loads 2,999,671 rows. On the default stack the run takes under 3 minutes and ends with:
+
+```
+Q1: match
+  ('A', 'F', 18865717.0, 27356549949.99022, 25988356900.45015, 27027321931.29773, 25.519179575692974, 37004.515160765695, 0.05000787256726366, 739276)
+  ('N', 'F', 499596.0, 723782156.1699986, 687811474.1020997, 715273529.1765115, 25.562627916496112, 37033.47094607034, 0.04980607859189346, 19544)
+  ('N', 'O', 37199539.0, 53930449285.55885, 51232634515.68791, 53284110856.877914, 25.501074211787675, 36970.46862613238, 0.05002897012766536, 1458744)
+  ('R', 'F', 18872497.0, 27345431033.920162, 25979800081.985565, 27018232810.785233, 25.51844400003786, 36975.12048861309, 0.04999893180166724, 739563)
+Q6: match
+  (59921824.551600054,)
+```
+
 ## Destroy
 
 ```bash
