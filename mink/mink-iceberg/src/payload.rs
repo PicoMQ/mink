@@ -39,7 +39,13 @@ impl FixtureTable {
             .map_or_else(|| binary_schema(), |step| &step.table)
     }
 
-    fn decode_glue(&mut self, fixture: &PayloadFixture, part: Part, version: Uuid, id: i32) {
+    fn insert_glue_decoder(
+        &mut self,
+        fixture: &PayloadFixture,
+        part: Part,
+        version: Uuid,
+        id: i32,
+    ) {
         let key = SchemaKey::Glue(version);
         let confluent = fixture.schema(id).and_then(|entry| entry.schema()).unwrap();
         let schema =
@@ -156,7 +162,7 @@ fn records(case: &PayloadCase) -> Vec<Record> {
         .collect()
 }
 
-fn glued(source: &Record, part: Part, bytes: &Bytes) -> Record {
+fn glue_record(source: &Record, part: Part, bytes: &Bytes) -> Record {
     let named = format!("__{}_schema_id", part.name());
     let headers = source
         .headers()
@@ -188,7 +194,7 @@ async fn assert_glue_rows(format: SchemaFormat) {
 
         let mut table = merge_fixture(&fixture, case).await;
         for record in &written {
-            table.decode_glue(
+            table.insert_glue_decoder(
                 &fixture,
                 record.part(),
                 record.version(),
@@ -199,7 +205,7 @@ async fn assert_glue_rows(format: SchemaFormat) {
             .iter()
             .map(|record| {
                 let source = case.records()[record.record()].record();
-                glued(source, record.part(), record.bytes())
+                glue_record(source, record.part(), record.bytes())
             })
             .collect();
         let schema = table.latest().clone();

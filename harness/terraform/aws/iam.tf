@@ -29,7 +29,7 @@ data "aws_iam_policy_document" "execution_secrets" {
     resources = concat(
       [aws_secretsmanager_secret.postgres.arn],
       aws_secretsmanager_secret.kafka[*].arn,
-      aws_secretsmanager_secret.registry[*].arn,
+      aws_secretsmanager_secret.registry_password[*].arn,
       aws_secretsmanager_secret.registry_kafka[*].arn,
     )
   }

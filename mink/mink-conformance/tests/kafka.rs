@@ -261,10 +261,10 @@ async fn reads_over_tls_and_sasl_match_a_read_committed_consumer() {
     let Some(bootstrap) = mink_conformance::service("TEST_KAFKA_BOOTSTRAP") else {
         return;
     };
-    let Some(ssl) = mink_conformance::service("TEST_KAFKA_SSL") else {
+    let Some(tls_address) = mink_conformance::service("TEST_KAFKA_TLS") else {
         return;
     };
-    let Some(sasl_ssl) = mink_conformance::service("TEST_KAFKA_SASL_SSL") else {
+    let Some(sasl_tls_address) = mink_conformance::service("TEST_KAFKA_SASL_TLS") else {
         return;
     };
     let Some(sasl_plaintext) = mink_conformance::service("TEST_KAFKA_SASL_PLAINTEXT") else {
@@ -286,18 +286,18 @@ async fn reads_over_tls_and_sasl_match_a_read_committed_consumer() {
     };
 
     let configs = [
-        ("SSL", tls(&ssl)),
+        ("TLS", tls(&tls_address)),
         (
-            "SASL_SSL PLAIN",
-            tls(&sasl_ssl).with_sasl(sasl(Mechanism::Plain)),
+            "SASL_TLS PLAIN",
+            tls(&sasl_tls_address).with_sasl(sasl(Mechanism::Plain)),
         ),
         (
-            "SASL_SSL SCRAM-SHA-256",
-            tls(&sasl_ssl).with_sasl(sasl(Mechanism::ScramSha256)),
+            "SASL_TLS SCRAM-SHA-256",
+            tls(&sasl_tls_address).with_sasl(sasl(Mechanism::ScramSha256)),
         ),
         (
-            "SASL_SSL SCRAM-SHA-512",
-            tls(&sasl_ssl).with_sasl(sasl(Mechanism::ScramSha512)),
+            "SASL_TLS SCRAM-SHA-512",
+            tls(&sasl_tls_address).with_sasl(sasl(Mechanism::ScramSha512)),
         ),
         (
             "SASL_PLAINTEXT SCRAM-SHA-512",
@@ -318,18 +318,18 @@ async fn reads_over_tls_and_sasl_match_a_read_committed_consumer() {
 
 #[tokio::test]
 async fn a_wrong_password_or_an_untrusted_certificate_is_refused() {
-    let Some(sasl_ssl) = mink_conformance::service("TEST_KAFKA_SASL_SSL") else {
+    let Some(sasl_tls_address) = mink_conformance::service("TEST_KAFKA_SASL_TLS") else {
         return;
     };
     let Some(ca) = mink_conformance::service("TEST_KAFKA_CA") else {
         return;
     };
     let wrong = Sasl::new(Mechanism::ScramSha512, USER.to_owned(), "wrong".to_owned());
-    let trusted = Config::new(vec![sasl_ssl.clone()])
+    let trusted = Config::new(vec![sasl_tls_address.clone()])
         .unwrap()
         .with_tls(Tls::new(Some(PathBuf::from(&ca))))
         .with_sasl(wrong);
-    let untrusted = Config::new(vec![sasl_ssl])
+    let untrusted = Config::new(vec![sasl_tls_address])
         .unwrap()
         .with_tls(Tls::new(None))
         .with_sasl(Sasl::new(

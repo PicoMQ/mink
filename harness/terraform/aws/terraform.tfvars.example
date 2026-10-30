@@ -1,9 +1,3 @@
-region     = "us-east-1"
-project    = "mink"
-node_count = 2
-domain     = "mink.internal"
-image      = "ghcr.io/picomq/mink:latest"
-
 # Existing VPC. Omit vpc_id and private_subnet_ids to create a network instead.
 # vpc_id = "vpc-xxxxxxxx"
 # private_subnet_ids = [
@@ -47,10 +41,3 @@ image      = "ghcr.io/picomq/mink:latest"
 
 # client            = true
 # create_repository = true
-# force_destroy     = false
-# db_multi_az       = true
-# db_instance_class = "db.t4g.micro"
-# msk_instance_type = "kafka.t3.small"
-# cpu_architecture  = "ARM64"
-# task_cpu          = 1024
-# task_memory       = 2048

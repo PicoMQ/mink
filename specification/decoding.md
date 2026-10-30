@@ -4,7 +4,7 @@ A record's key and value are its two parts. A part written with a schema from th
 
 ## Wire formats
 
-A part names its schema id in one of three ways: the two that Confluent's serializers write, and the one AWS Glue Schema Registry's serializers write. Mink looks for them in the table's order.
+A part names its schema id in one of three ways: the two that Confluent's serializers write, and the one AWS Glue Schema Registry's serializers write.
 
 | Format | Where | Bytes |
 | --- | --- | --- |
@@ -28,7 +28,7 @@ A Protobuf payload starts with the message type inside the schema. Mink decodes 
 1. A null part has no columns: its raw column is null and its typed columns are null.
 2. Find the schema id: the header GUID, the Glue prefix's version, or the Confluent prefix's id. A part with none is undecodable.
 3. Look up the topic's result for that schema id and part (`schema.md` Evolution). A rejected schema id leaves the part undecodable. A schema id the topic has not merged fails the build with `unmerged_schema`: the indexer and the tail merge first, so only a file no snapshot names can hit it, and a file is never built with a result that could still change.
-4. Decode the payload with that schema: Avro binary encoding with the schema as the writer schema, Protobuf with the message its framing names, JSON as UTF-8 JSON text. Bytes left over after an Avro or Protobuf payload, malformed bytes, a JSON value that is not valid JSON, a value nested deeper than 64 levels inside a recursive Avro type, a Protobuf timestamp beyond the range of microseconds, or a Protobuf well-known value with no JSON form (an `Any` whose type Mink cannot resolve) make the part undecodable.
+4. Decode the payload with that schema: Avro binary encoding with the schema as the writer schema, Protobuf as the file's first message, JSON as UTF-8 JSON text. Bytes left over after an Avro or Protobuf payload, malformed bytes, a JSON value that is not valid JSON, a value nested deeper than 64 levels inside a recursive Avro type, a Protobuf timestamp beyond the range of microseconds, or a Protobuf well-known value with no JSON form (an `Any` whose type Mink cannot resolve) make the part undecodable.
 5. Put every value of the decoded payload into the column whose field id the merge gave its writer path, so a record keeps filling the column its schema was merged into even after a later schema changes the field's type (`schema.md` Evolution rule 3). A value that does not fit its column's type, such as a JSON number with a fraction for a `long` column or a string that is not a `date`, makes the part undecodable.
 
 An undecodable part is never an error: the row keeps the part's raw bytes and leaves its typed columns null.
@@ -74,7 +74,7 @@ A decoded field whose column the file's schema does not have is left out.
 ## Conformance
 
 - `conformance/fixtures/payload/{avro,protobuf,json}/cases.json`: for each format, the registered schema versions, records as written by Confluent's serializers (both wire formats, and undecodable parts), and the row each record becomes. The fixtures are generated with Confluent's Python client against the compose registry, never by Mink: from `mink/mink-conformance`, `python -m payload http://localhost:8081 [avro|protobuf|json]`, with `confluent-kafka`, `grpcio-tools` and `protobuf` installed.
-- `conformance/fixtures/payload/glue/{avro,protobuf,json}.json`: the same records written again by AWS's Glue serializer, both uncompressed and with zlib, with each record's Glue schema version and the Confluent schema it came from. Records Glue cannot write are left out: schemas with references, and Avro values that are not records, enums, fixed or arrays. The fixtures are generated with AWS's Java serializer against a Glue registry, never by Mink: from `mink/mink-conformance/glue`, `mvn compile exec:java -Dexec.args=../../../conformance/fixtures`, with AWS credentials and `AWS_REGION` set.
+- `conformance/fixtures/payload/glue/{avro,protobuf,json}.json`: the same records written again by AWS's Glue serializer, both uncompressed and with zlib, with each record's Glue schema version and the Confluent schema it came from. Records Glue cannot write are left out: schemas with references, Avro values that are not records, enums, fixed or arrays, and Protobuf parts naming a message other than the first. The fixtures are generated with AWS's Java serializer against a Glue registry, never by Mink: from `mink/mink-conformance/glue`, `mvn compile exec:java -Dexec.args=../../../conformance/fixtures`, with AWS credentials and `AWS_REGION` set.
 - `mink-iceberg` `payload::avro_fixtures_decode_to_their_rows`, `payload::protobuf_fixtures_decode_to_their_rows` and `payload::json_fixtures_decode_to_their_rows`: Decoding a part, Rows and Values.
 - `mink-iceberg` `payload::avro_written_through_glue_decodes_to_the_same_rows`, `payload::protobuf_written_through_glue_decodes_to_the_same_rows` and `payload::json_written_through_glue_decodes_to_the_same_rows`: the Glue prefix, zlib and Glue's Protobuf message type give the rows the Confluent records give.
 - `mink-schema` `wire::tests::wire_formats_find_the_schema`: Wire formats, including the header rules and a header's leading bytes.

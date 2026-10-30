@@ -26,7 +26,7 @@ resource "aws_ecs_task_definition" "registry" {
   container_definitions = jsonencode([
     {
       name      = "registry"
-      image     = local.registry_image
+      image     = "confluentinc/cp-schema-registry:8.1.1"
       essential = true
       portMappings = [
         { containerPort = local.registry_port, hostPort = local.registry_port, protocol = "tcp" },
@@ -37,7 +37,7 @@ resource "aws_ecs_task_definition" "registry" {
         { name = "SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS", value = join(",", local.kafka.bootstrap) },
         { name = "SCHEMA_REGISTRY_KAFKASTORE_SECURITY_PROTOCOL", value = local.kafka_security_protocol },
         ],
-        local.kafka_sasl ? [
+        local.use_kafka_sasl ? [
           { name = "SCHEMA_REGISTRY_KAFKASTORE_SASL_MECHANISM", value = local.kafka.sasl.mechanism },
         ] : [],
         local.create_kafka ? [

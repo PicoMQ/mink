@@ -149,6 +149,10 @@ mod tests {
         {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
+        assert!(
+            Instant::now() < deadline,
+            "the abort marker was never written"
+        );
         drop(cluster);
         mink_conformance::produce_values(&bootstrap, name, 0, &["c", "d"]);
 

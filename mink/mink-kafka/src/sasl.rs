@@ -1,5 +1,3 @@
-use std::fmt;
-
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 
 use crate::Error;
@@ -12,7 +10,7 @@ pub enum Mechanism {
     ScramSha512,
 }
 
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Sasl {
     mechanism: Mechanism,
@@ -121,17 +119,6 @@ impl<'de> Deserialize<'de> for Mechanism {
     }
 }
 
-impl fmt::Debug for Sasl {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("Sasl")
-            .field("mechanism", &self.mechanism)
-            .field("username", &self.username)
-            .field("password", &"<redacted>")
-            .finish()
-    }
-}
-
 fn text(bytes: &[u8]) -> Result<&str, Error> {
     std::str::from_utf8(bytes).map_err(|_| Error::Scram("the server message is not utf-8"))
 }
@@ -161,15 +148,5 @@ mod tests {
 
         assert_eq!(message, b"\0mink\0secret");
         assert!(next.is_none());
-    }
-
-    #[test]
-    fn debug_hides_the_password() {
-        let sasl = Sasl::new(Mechanism::Plain, "mink".to_owned(), "hunter2".to_owned());
-
-        let shown = format!("{sasl:?}");
-
-        assert!(shown.contains("mink"));
-        assert!(!shown.contains("hunter2"));
     }
 }

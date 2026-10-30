@@ -61,7 +61,7 @@ resource "aws_secretsmanager_secret_version" "postgres" {
 }
 
 resource "aws_secretsmanager_secret" "kafka" {
-  count = local.kafka_sasl ? 1 : 0
+  count = local.use_kafka_sasl ? 1 : 0
 
   name_prefix             = "${var.project}-kafka-"
   recovery_window_in_days = var.force_destroy ? 0 : 7
@@ -72,32 +72,32 @@ resource "aws_secretsmanager_secret" "kafka" {
 }
 
 resource "aws_secretsmanager_secret_version" "kafka" {
-  count = local.kafka_sasl ? 1 : 0
+  count = local.use_kafka_sasl ? 1 : 0
 
   secret_id     = aws_secretsmanager_secret.kafka[0].id
   secret_string = local.kafka.sasl.password
 }
 
-resource "aws_secretsmanager_secret" "registry" {
-  count = local.registry_password ? 1 : 0
+resource "aws_secretsmanager_secret" "registry_password" {
+  count = local.use_registry_password ? 1 : 0
 
-  name_prefix             = "${var.project}-registry-"
+  name_prefix             = "${var.project}-registry-password-"
   recovery_window_in_days = var.force_destroy ? 0 : 7
 
   tags = {
-    Name = "${var.project}-registry"
+    Name = "${var.project}-registry-password"
   }
 }
 
-resource "aws_secretsmanager_secret_version" "registry" {
-  count = local.registry_password ? 1 : 0
+resource "aws_secretsmanager_secret_version" "registry_password" {
+  count = local.use_registry_password ? 1 : 0
 
-  secret_id     = aws_secretsmanager_secret.registry[0].id
+  secret_id     = aws_secretsmanager_secret.registry_password[0].id
   secret_string = local.registry.password
 }
 
 resource "aws_secretsmanager_secret" "registry_kafka" {
-  count = local.create_confluent_registry && local.kafka_sasl ? 1 : 0
+  count = local.create_confluent_registry && local.use_kafka_sasl ? 1 : 0
 
   name_prefix             = "${var.project}-registry-kafka-"
   recovery_window_in_days = var.force_destroy ? 0 : 7
@@ -108,7 +108,7 @@ resource "aws_secretsmanager_secret" "registry_kafka" {
 }
 
 resource "aws_secretsmanager_secret_version" "registry_kafka" {
-  count = local.create_confluent_registry && local.kafka_sasl ? 1 : 0
+  count = local.create_confluent_registry && local.use_kafka_sasl ? 1 : 0
 
   secret_id = aws_secretsmanager_secret.registry_kafka[0].id
   secret_string = join(" ", [

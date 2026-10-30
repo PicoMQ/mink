@@ -691,23 +691,30 @@ mod tests {
         );
     }
 
-    async fn refusing_broker() -> String {
-        broker(|key, version, correlation, _| {
+    async fn refusing_broker() -> (String, Arc<AtomicUsize>) {
+        let handshakes = Arc::new(AtomicUsize::new(0));
+        let counted = handshakes.clone();
+
+        let address = broker(move |key, version, correlation, _| {
             let refused = SaslHandshakeResponse::default()
                 .with_error_code(UNSUPPORTED_SASL_MECHANISM)
                 .with_mechanisms(vec![StrBytes::from_static_str("PLAIN")]);
 
-            (key == ApiKey::SaslHandshake).then(|| frame(correlation, key, version, &refused))
+            (key == ApiKey::SaslHandshake).then(|| {
+                counted.fetch_add(1, Ordering::SeqCst);
+                frame(correlation, key, version, &refused)
+            })
         })
-        .await
+        .await;
+
+        (address, handshakes)
     }
 
     #[tokio::test]
     async fn an_authentication_failure_ends_connect_without_retrying() {
-        let address = refusing_broker().await;
+        let (address, handshakes) = refusing_broker().await;
         let sasl = Sasl::new(Mechanism::ScramSha512, "mink".to_owned(), "mink".to_owned());
         let config = Config::new(vec![address]).unwrap().with_sasl(sasl);
-        let started = std::time::Instant::now();
 
         let connected = Cluster::connect(config, Metrics::new()).await;
 
@@ -716,12 +723,12 @@ mod tests {
             "{:?}",
             connected.err()
         );
-        assert!(started.elapsed() < Duration::from_secs(5));
+        assert_eq!(handshakes.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
     async fn a_broker_that_refuses_does_not_stop_the_next_from_being_tried() {
-        let refusing = refusing_broker().await;
+        let (refusing, _) = refusing_broker().await;
         let accepting = broker(|key, version, correlation, _| match key {
             ApiKey::SaslHandshake => Some(frame(
                 correlation,

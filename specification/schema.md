@@ -123,8 +123,6 @@ A schema id is rejected, and its parts are undecodable, when the topic cannot me
 | `reserved_name` | The schema would add a top-level value column with a reserved name |
 | `other_registry` | The schema id is the other registry type's: a Glue version with a Confluent registry, or a Confluent id or GUID with Glue |
 
-A registry can lag the producer that registered a schema, so Mink asks again after 1 and then 2 seconds before rejecting a schema id as `missing` or `not_accepted`.
-
 Columns are never dropped, so every file the topic ever wrote reads under the current schema. A topic merges each registry schema once, and two merges racing on one topic are serialized by Postgres.
 
 ## Errors

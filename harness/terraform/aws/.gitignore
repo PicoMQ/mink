@@ -5,7 +5,6 @@
 *.tfvars
 tfplan
 *.tfplan
-!terraform.tfvars.example
 backend.hcl
 crash.log
 crash.*.log

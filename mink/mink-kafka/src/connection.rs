@@ -386,7 +386,7 @@ pub(crate) mod tests {
     use tokio::net::TcpListener;
 
     use super::*;
-    use crate::connector::tests::plain;
+    use crate::connector::tests::plaintext;
 
     pub(crate) fn advertised(ranges: &[(ApiKey, i16, i16)]) -> ApiVersionsResponse {
         ApiVersionsResponse::default().with_api_keys(
@@ -526,7 +526,7 @@ pub(crate) mod tests {
             ))
         })
         .await;
-        let mut connection = plain(TIMEOUT)
+        let mut connection = plaintext(TIMEOUT)
             .connect(&address, Metrics::new())
             .await
             .unwrap();
@@ -551,7 +551,7 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn a_call_cancelled_mid_exchange_closes_the_connection() {
         let address = broker(|_, _, _, _| None).await;
-        let mut connection = plain(TIMEOUT)
+        let mut connection = plaintext(TIMEOUT)
             .connect(&address, Metrics::new())
             .await
             .unwrap();
@@ -568,7 +568,7 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn a_broker_that_never_answers_times_out_and_closes_the_connection() {
         let address = broker(|_, _, _, _| None).await;
-        let mut connection = plain(Duration::from_millis(100))
+        let mut connection = plaintext(Duration::from_millis(100))
             .connect(&address, Metrics::new())
             .await
             .unwrap();

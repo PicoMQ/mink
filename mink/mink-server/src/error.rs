@@ -43,8 +43,6 @@ pub enum Error {
     RegistryUnavailable(String),
     #[error("the schema registry answered unexpectedly: {0}")]
     RegistryResponse(String),
-    #[error("schema {0} belongs to another registry")]
-    ForeignSchemaKey(SchemaKey),
     #[error("registry schema {0} is not stored")]
     UnstoredRegistrySchema(SchemaKey),
     #[error("topic {topic} has no table schema {id}")]

@@ -697,10 +697,10 @@ mod tests {
     use iceberg::spec::NestedFieldRef;
     use proptest::prelude::*;
 
-    const KEY: SchemaKey = SchemaKey::Confluent(1);
-
     use super::*;
     use crate::binary_schema;
+
+    const KEY: SchemaKey = SchemaKey::Confluent(1);
 
     fn field(name: &str, payload_type: PayloadType) -> PayloadField {
         PayloadField::new(name, name, Vec::new(), payload_type)

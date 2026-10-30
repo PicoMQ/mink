@@ -57,9 +57,13 @@ impl Schemas {
     pub(crate) async fn file_schema(
         &self,
         topic: &str,
-        schema_id: i32,
+        table_schema_id: i32,
     ) -> Result<Option<FileSchema>, Error> {
-        let stored = self.store.schemas().table_schema(topic, schema_id).await?;
+        let stored = self
+            .store
+            .schemas()
+            .table_schema(topic, table_schema_id)
+            .await?;
         let Some(schema) = stored else {
             return Ok(None);
         };
@@ -67,12 +71,20 @@ impl Schemas {
         Ok(Some(self.typed(topic, schema).await?))
     }
 
-    pub(crate) async fn table_schema(&self, topic: &str, schema_id: i32) -> Result<Schema, Error> {
-        let stored = self.store.schemas().table_schema(topic, schema_id).await?;
+    pub(crate) async fn table_schema(
+        &self,
+        topic: &str,
+        table_schema_id: i32,
+    ) -> Result<Schema, Error> {
+        let stored = self
+            .store
+            .schemas()
+            .table_schema(topic, table_schema_id)
+            .await?;
 
         stored.ok_or_else(|| Error::UnknownTableSchema {
             topic: topic.to_owned(),
-            id: schema_id,
+            id: table_schema_id,
         })
     }
 

@@ -67,7 +67,7 @@ resource "aws_ecs_task_definition" "node" {
         { name = "MINK_CACHE_DISK_BYTES", value = tostring(10 * 1024 * 1024 * 1024) },
         ],
         local.kafka.tls ? [{ name = "MINK_KAFKA__TLS", value = "{}" }] : [],
-        local.kafka_sasl ? [
+        local.use_kafka_sasl ? [
           { name = "MINK_KAFKA__SASL__MECHANISM", value = local.kafka.sasl.mechanism },
           { name = "MINK_KAFKA__SASL__USERNAME", value = local.kafka.sasl.username },
         ] : [],
@@ -76,7 +76,7 @@ resource "aws_ecs_task_definition" "node" {
       secrets = concat(
         [{ name = "MINK_POSTGRES", valueFrom = aws_secretsmanager_secret.postgres.arn }],
         [for secret in aws_secretsmanager_secret.kafka : { name = "MINK_KAFKA__SASL__PASSWORD", valueFrom = secret.arn }],
-        [for secret in aws_secretsmanager_secret.registry : { name = "MINK_SCHEMA_REGISTRY__PASSWORD", valueFrom = secret.arn }],
+        [for secret in aws_secretsmanager_secret.registry_password : { name = "MINK_SCHEMA_REGISTRY__PASSWORD", valueFrom = secret.arn }],
       )
       mountPoints = [
         { sourceVolume = "certs", containerPath = dirname(local.rds_ca), readOnly = true },
@@ -151,7 +151,7 @@ resource "aws_ecs_service" "node" {
     aws_lb_listener_rule.node,
     aws_secretsmanager_secret_version.postgres,
     aws_secretsmanager_secret_version.kafka,
-    aws_secretsmanager_secret_version.registry,
+    aws_secretsmanager_secret_version.registry_password,
     aws_msk_single_scram_secret_association.this,
     aws_db_instance.this,
     aws_route.private_nat,

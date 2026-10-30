@@ -91,7 +91,7 @@ impl Registry for Glue {
 
     async fn schema(&self, key: SchemaKey) -> Result<RegistrySchema, Failure> {
         let SchemaKey::Glue(version) = key else {
-            return Err(Failure::Failed(Error::ForeignSchemaKey(key)));
+            return Err(Failure::Rejected(Rejection::OtherRegistry));
         };
 
         let output = self.version(version).await?;
@@ -107,7 +107,7 @@ impl Registry for Glue {
 
     async fn accepted(&self, topic: &str, _part: Part, key: SchemaKey) -> Result<bool, Failure> {
         let SchemaKey::Glue(version) = key else {
-            return Err(Failure::Failed(Error::ForeignSchemaKey(key)));
+            return Err(Failure::Rejected(Rejection::OtherRegistry));
         };
 
         let output = self.version(version).await?;

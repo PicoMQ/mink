@@ -31,9 +31,8 @@ locals {
     admin   = 9180
   }
 
-  registry_port  = 8081
-  registry_image = "confluentinc/cp-schema-registry:8.1.1"
-  alb_ports      = merge(local.ports, local.create_confluent_registry ? { registry = local.registry_port } : {})
+  registry_port = 8081
+  alb_ports     = merge(local.ports, local.create_confluent_registry ? { registry = local.registry_port } : {})
 
   node_ports = {
     for pair in setproduct(keys(local.nodes), ["s3", "admin"]) : "${pair[1]}-${pair[0]}" => {
@@ -55,9 +54,9 @@ locals {
     }
   } : var.kafka
 
-  kafka_sasl = nonsensitive(local.kafka.sasl != null)
+  use_kafka_sasl = nonsensitive(local.kafka.sasl != null)
 
-  kafka_security_protocol = "${local.kafka_sasl ? "SASL_" : ""}${local.kafka.tls ? "SSL" : "PLAINTEXT"}"
+  kafka_security_protocol = "${local.use_kafka_sasl ? "SASL_" : ""}${local.kafka.tls ? "SSL" : "PLAINTEXT"}"
   kafka_login_modules = {
     PLAIN           = "org.apache.kafka.common.security.plain.PlainLoginModule"
     "SCRAM-SHA-256" = "org.apache.kafka.common.security.scram.ScramLoginModule"
@@ -84,9 +83,9 @@ locals {
     var.schema_registry
   )
 
-  use_registry      = nonsensitive(local.registry != null)
-  registry_password = nonsensitive(try(local.registry.password, null) != null)
-  registry_settings = local.use_registry ? { for key, value in local.registry : key => value if value != null && key != "password" } : {}
+  use_registry          = nonsensitive(local.registry != null)
+  use_registry_password = nonsensitive(try(local.registry.password, null) != null)
+  registry_settings     = local.use_registry ? { for key, value in local.registry : key => value if value != null && key != "password" } : {}
 
   use_glue_registry    = nonsensitive(try(local.registry.type, null) == "glue")
   glue_registry_name   = local.use_glue_registry ? nonsensitive(local.registry.name) : null

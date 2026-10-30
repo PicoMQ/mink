@@ -14,7 +14,7 @@ import './schema.css'
 
 const MERGE_COLUMNS: Column<Merge>[] = [
   { name: 'part', header: 'Part', width: '7rem', cell: (merge) => merge.part },
-  { name: 'schema', header: 'Schema id', cell: (merge) => merge.schemaId },
+  { name: 'schemaId', header: 'Schema id', cell: (merge) => merge.schemaId },
   {
     name: 'registry',
     header: 'Registry schema',

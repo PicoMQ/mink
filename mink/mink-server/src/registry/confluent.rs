@@ -160,7 +160,7 @@ impl Registry for Confluent {
 
     async fn schema(&self, key: SchemaKey) -> Result<RegistrySchema, Failure> {
         let SchemaKey::Confluent(id) = key else {
-            return Err(Failure::Failed(Error::ForeignSchemaKey(key)));
+            return Err(Failure::Rejected(Rejection::OtherRegistry));
         };
 
         let Some(response) = self
@@ -199,7 +199,7 @@ impl Registry for Confluent {
 
     async fn accepted(&self, topic: &str, part: Part, key: SchemaKey) -> Result<bool, Failure> {
         let SchemaKey::Confluent(id) = key else {
-            return Err(Failure::Failed(Error::ForeignSchemaKey(key)));
+            return Err(Failure::Rejected(Rejection::OtherRegistry));
         };
         let subject = subject(topic, part);
 

@@ -85,7 +85,7 @@ pub(crate) mod tests {
     use crate::connection::tests::{TIMEOUT, broker, frame};
     use crate::sasl::Mechanism;
 
-    pub(crate) fn plain(timeout: Duration) -> Connector {
+    pub(crate) fn plaintext(timeout: Duration) -> Connector {
         Connector {
             tls: None,
             sasl: None,
@@ -117,7 +117,7 @@ pub(crate) mod tests {
                 "mink".to_owned(),
                 "mink".to_owned(),
             )),
-            ..plain(TIMEOUT)
+            ..plaintext(TIMEOUT)
         };
 
         let connection = connector.connect(&address, Metrics::new()).await.unwrap();
