@@ -10,7 +10,7 @@ The Terraform stack in `harness/terraform/aws` runs Mink on ECS Fargate. It crea
 | Kafka | MSK, one broker in each of the first three private subnets, SASL/SCRAM-SHA-512 over TLS on port 9096. The SCRAM user lives in Secrets Manager under its own KMS key. | `kafka`: bootstrap brokers, TLS and SASL. With TLS, the brokers' certificates must chain to a public CA, as Confluent Cloud's and MSK's do. |
 | Postgres | RDS PostgreSQL 17. Nodes connect with `sslmode=verify-full` against the RDS CA bundle. | `postgres_url`. For RDS, add `sslmode=verify-full&sslrootcert=/certs/rds.pem`: each node downloads the bundle there before it starts. |
 | Bucket | A private, encrypted bucket for the warehouse | `bucket`, in `region` |
-| Schema Registry | With `create_schema_registry = "confluent"`, Confluent Schema Registry on ECS, storing schemas in the stack's Kafka, at `registry.<domain>:8081`. With `"glue"`, an AWS Glue registry named `project`, which nodes read with their task role. | `schema_registry`: a Confluent URL and credentials, or a Glue registry's name and region |
+| Schema Registry | With `create_schema_registry = "confluent"`, Confluent Schema Registry on ECS, storing schemas in the stack's Kafka, at `registry.<domain>:8081`. With `"glue"`, an AWS Glue registry named after `project`, which nodes read with their task role. | `schema_registry`: a Confluent URL and credentials, or a Glue registry's name and region |
 | Nodes | `node_count` ECS services, one task each. They reach S3 with their task role. | |
 | Load balancer | An internal ALB on 8181 (catalog), 9100 (S3 endpoint) and 9180 (admin API and console), with a host name per node | |
 | DNS | A private Route 53 zone, `domain` (default `mink.internal`), for the ALB and each node | |
@@ -19,14 +19,59 @@ The Terraform stack in `harness/terraform/aws` runs Mink on ECS Fargate. It crea
 
 The Postgres URL and the Kafka and Schema Registry passwords reach the containers from Secrets Manager. Nothing in the stack accepts connections from the internet. The NAT gateway's address is for outbound traffic only.
 
-| Reaches | From |
-| --- | --- |
-| The ALB, and the Schema Registry through it on 8081 | `allowed_cidrs` (the VPC's range by default), nodes and the client |
-| Nodes | The ALB only |
-| The Schema Registry | The ALB only |
-| MSK | Nodes, the Schema Registry and the client |
-| RDS | Nodes only |
-| The client | Nothing. SSM Session Manager only. |
+<div class="mink-diagram">
+<svg viewBox="0 0 660 426" width="660" role="img" aria-label="allowed_cidrs reach the internal ALB on 8181, 9100, 9180 and 8081. The ALB reaches the nodes and the Schema Registry. Nodes reach the ALB, RDS on 5432 and MSK on 9096. The Schema Registry and the client reach MSK. The client reaches the ALB, and is reached only through SSM.">
+  <defs>
+    <marker id="aws-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0.5 L7.5 4 L0 7.5 Z" class="arrow"/>
+    </marker>
+  </defs>
+  <rect x="230" y="10" width="200" height="56" class="box"/>
+  <text x="330" y="34" text-anchor="middle" class="label">allowed_cidrs</text>
+  <text x="330" y="52" text-anchor="middle" class="sub">the VPC's range by default</text>
+  <rect x="470" y="10" width="160" height="56" class="box"/>
+  <text x="550" y="34" text-anchor="middle" class="label">SSM</text>
+  <text x="550" y="52" text-anchor="middle" class="sub">Session Manager</text>
+  <rect x="10" y="90" width="640" height="326" class="edge-soft"/>
+  <text x="22" y="108" class="sub">VPC, private subnets</text>
+  <rect x="230" y="110" width="200" height="56" class="box"/>
+  <text x="330" y="134" text-anchor="middle" class="label">ALB</text>
+  <text x="330" y="152" text-anchor="middle" class="sub">internal</text>
+  <rect x="470" y="110" width="160" height="56" class="box"/>
+  <text x="550" y="134" text-anchor="middle" class="label">client</text>
+  <text x="550" y="152" text-anchor="middle" class="sub">EC2, optional</text>
+  <rect x="30" y="230" width="160" height="56" class="box"/>
+  <text x="110" y="254" text-anchor="middle" class="label">Schema Registry</text>
+  <text x="110" y="272" text-anchor="middle" class="sub">Confluent, optional</text>
+  <rect x="230" y="230" width="200" height="56" class="box-accent"/>
+  <text x="330" y="254" text-anchor="middle" class="label">nodes</text>
+  <text x="330" y="272" text-anchor="middle" class="sub">ECS tasks</text>
+  <rect x="470" y="230" width="100" height="56" class="box"/>
+  <text x="520" y="254" text-anchor="middle" class="label">RDS</text>
+  <text x="520" y="272" text-anchor="middle" class="sub">Postgres</text>
+  <rect x="30" y="350" width="600" height="56" class="box"/>
+  <text x="330" y="374" text-anchor="middle" class="label">MSK</text>
+  <text x="330" y="392" text-anchor="middle" class="sub">SASL/SCRAM over TLS</text>
+  <path d="M330 66 L330 106" class="edge" marker-end="url(#aws-arrow)"/>
+  <path d="M550 66 L550 106" class="edge-soft" marker-end="url(#aws-arrow)"/>
+  <path d="M470 138 L434 138" class="edge" marker-end="url(#aws-arrow)"/>
+  <path d="M370 166 L370 226" class="edge" marker-end="url(#aws-arrow)"/>
+  <path d="M290 230 L290 170" class="edge" marker-end="url(#aws-arrow)"/>
+  <path d="M230 150 L110 150 L110 226" class="edge" marker-end="url(#aws-arrow)"/>
+  <path d="M430 258 L466 258" class="edge" marker-end="url(#aws-arrow)"/>
+  <path d="M110 286 L110 346" class="edge" marker-end="url(#aws-arrow)"/>
+  <path d="M330 286 L330 346" class="edge" marker-end="url(#aws-arrow)"/>
+  <path d="M610 166 L610 346" class="edge" marker-end="url(#aws-arrow)"/>
+  <text x="338" y="84" class="sub">8181, 9100, 9180, 8081</text>
+  <text x="378" y="200" class="sub">8181, 9100, 9180</text>
+  <text x="282" y="200" text-anchor="end" class="sub">forwards</text>
+  <text x="118" y="200" class="sub">8081</text>
+  <text x="448" y="250" text-anchor="middle" class="sub">5432</text>
+  <text x="118" y="322" class="sub">9096</text>
+  <text x="338" y="322" class="sub">9096</text>
+  <text x="602" y="322" text-anchor="end" class="sub">9096</text>
+</svg>
+</div>
 
 The catalog, the S3 endpoint and the admin API have no authentication. Anything that reaches the ALB reads every table. In a shared VPC, narrow `allowed_cidrs` to the networks that run engines.
 
@@ -37,7 +82,7 @@ An existing Kafka cluster or database in the VPC must accept connections from th
 - Terraform 1.15.8 or later
 - AWS credentials that can create the resources above
 - The [Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) for the AWS CLI, to reach the console and the client
-- The Mink image. The default, `ghcr.io/picomq/mink:latest`, is published with each release, for `arm64` and `amd64`. Before the first release, build it from source as shown below.
+- The Mink image, see [Deployment](/docs/operations/deployment#image)
 
 ## Apply
 
@@ -138,8 +183,6 @@ db.sql("SELECT _kafka_partition, _kafka_offset, CAST(_kafka_value AS VARCHAR) FR
 EOF
 ```
 
-Without a Schema Registry, each value stays one column of raw bytes.
-
 ## Load TPC-H
 
 With `create_schema_registry = "confluent"`, `harness/tpch` loads TPC-H `lineitem` through the stack and checks the result.
@@ -151,7 +194,7 @@ With `create_schema_registry = "confluent"`, `harness/tpch` loads TPC-H `lineite
 | Add | Adds the table and waits until the catalog's current snapshot holds every row |
 | Check | Runs TPC-H Q1 and Q6 through Mink and on DuckDB's own copy, and fails if they differ |
 
-Prices reach Mink as JSON numbers, so both sides compute in `double`, and sums must agree to a relative 1e-9.
+Both sides compute prices in `double`. Sums agree to a relative 1e-9.
 
 On the client, after writing the SCRAM credentials above:
 
@@ -177,17 +220,7 @@ cd /opt/mink/harness
 | Mink | A node's admin URL. The tool reaches the catalog at `/catalog` and the S3 endpoint at `/s3` under it. |
 | Scale | TPC-H scale, `0.5` by default |
 
-At scale `0.5` it loads 2,999,671 rows. On the default stack the run takes under 3 minutes and ends with:
-
-```
-Q1: match
-  ('A', 'F', 18865717.0, 27356549949.99022, 25988356900.45015, 27027321931.29773, 25.519179575692974, 37004.515160765695, 0.05000787256726366, 739276)
-  ('N', 'F', 499596.0, 723782156.1699986, 687811474.1020997, 715273529.1765115, 25.562627916496112, 37033.47094607034, 0.04980607859189346, 19544)
-  ('N', 'O', 37199539.0, 53930449285.55885, 51232634515.68791, 53284110856.877914, 25.501074211787675, 36970.46862613238, 0.05002897012766536, 1458744)
-  ('R', 'F', 18872497.0, 27345431033.920162, 25979800081.985565, 27018232810.785233, 25.51844400003786, 36975.12048861309, 0.04999893180166724, 739563)
-Q6: match
-  (59921824.551600054,)
-```
+At scale `0.5` it loads 2,999,671 rows. On the default stack the run takes under 3 minutes and ends with `Q1: match` and `Q6: match`, each followed by its result rows.
 
 ## Destroy
 

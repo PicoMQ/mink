@@ -62,11 +62,11 @@ Durations are a number and a unit: `ms`, `s`, `m` or `h`. Sizes are bytes. Every
 | `storage.endpoint` | none | An S3-compatible store such as RustFS or MinIO, addressed in path style. Without it, AWS S3 in `storage.region`. |
 | `storage.region` | `us-east-1` | The bucket's region |
 | `storage.credentials` | none | `{ access_key_id, secret_access_key }`. Without them, AWS's own sources: the `AWS_*` environment variables, web identity, the ECS task role, EKS Pod Identity, or the instance profile. |
-| `schema_registry.type` | none | `confluent`, for Confluent Schema Registry or a registry with its API, or `glue`, for AWS Glue Schema Registry. Without a registry, new records keep their raw bytes. |
+| `schema_registry.type` | none | `confluent`, for Confluent Schema Registry or a registry with its API, or `glue`, for AWS Glue Schema Registry. |
 | `schema_registry.url` | none | For `confluent`: the registry's URL |
 | `schema_registry.username`, `schema_registry.password` | none | For `confluent`: Basic authentication |
 | `schema_registry.name` | none | For `glue`: the registry's name. A record's schema must be a version of the schema named after its topic. |
-| `schema_registry.region` | none | For `glue`: the registry's region. Without it, the AWS SDK's own sources, such as `AWS_REGION`. Credentials come from the AWS SDK's default credential chain. |
+| `schema_registry.region` | none | For `glue`: the registry's region. Without it, the AWS SDK's own sources, such as `AWS_REGION`. Credentials come from AWS's own sources, as for `storage.credentials`. |
 | `namespace` | `kafka` | The catalog's one namespace |
 
 ## Indexing
@@ -75,7 +75,7 @@ Durations are a number and a unit: `ms`, `s`, `m` or `h`. Sizes are bytes. Every
 | --- | --- | --- |
 | `history` | `all` | How far backfill goes: `all`, `none`, or `{ since = "<RFC 3339 time>" }` |
 | `file_bytes` | `134217728` | A range of records becomes files when their key, value and header bytes reach this |
-| `file_window` | `60s` | Or when their timestamps span this, or its first record was read this long ago |
+| `file_window` | `60s` | A range ends when its timestamps span this, or its first record was read this long ago |
 | `backfill_offsets` | `100000` | Offsets per backfill chunk |
 | `retention_check` | `60s` | How often indexers check Kafka's earliest offsets |
 | `granularity` | `hour` | Time partitioning for tables added without one: `hour`, `day`, `month` or `none` |
@@ -110,5 +110,3 @@ Durations are a number and a unit: `ms`, `s`, `m` or `h`. Sizes are bytes. Every
 | --- | --- | --- |
 | `duckdb_engine` | none, jsDelivr | Base URL of the DuckDB-Wasm files the SQL page loads |
 | `duckdb_extensions` | none, DuckDB's own | DuckDB extension repository for the SQL page. A mirror holds `iceberg`, `httpfs`, `parquet`, `avro` and `json`. |
-
-The SQL page runs only DuckDB files whose hashes match the version the console was built with. See [Console](/docs/operations/console).

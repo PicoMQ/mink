@@ -9,7 +9,7 @@ scrape_configs:
       - targets: ['mink-1:9180', 'mink-2:9180']
 ```
 
-Scrape every node. Each counts only its own work. Label values come from fixed sets, so the number of series never grows with tables, partitions or files.
+Scrape every node. Each counts only its own work. Label values come from fixed sets. Series count does not grow with tables, partitions or files.
 
 ## Indexing and commits
 

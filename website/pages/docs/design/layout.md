@@ -1,6 +1,6 @@
 # Layout and pruning
 
-A table's data files are partitioned by time and carry min/max bounds per column. Engines use both to skip files a filter rules out. Once an hour has ended, its small files are assembled into larger ones.
+A table's data files are partitioned by time and carry min/max bounds per column. Engines use both to skip files a filter rules out. Once a time bucket has ended, its small files are assembled into larger ones. Tables with granularity `none` are not assembled.
 
 ## Time partitioning
 
@@ -71,7 +71,7 @@ A time bucket's files are assembled once the bucket ended `assembly_delay` ago, 
   <text x="540" y="56" text-anchor="middle" class="sub">file</text>
   <path d="M180 78 L180 86 L540 86 L540 78" class="edge-soft"/>
   <path d="M360 86 L360 140" class="edge" marker-end="url(#layout-arrow)"/>
-  <text x="370" y="118" class="sub">hour ended 10m ago</text>
+  <text x="370" y="118" class="sub">hour ended assembly_delay ago</text>
   <text x="20" y="170" class="sub">assembled</text>
   <rect x="140" y="144" width="440" height="52" class="box-accent"/>
   <path d="M228 144 L228 196" class="edge-soft"/>

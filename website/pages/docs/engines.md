@@ -11,7 +11,7 @@ Any engine with an Iceberg REST catalog connects to Mink with two addresses: the
 
 Mink's S3 endpoint accepts any access key and secret. Most S3 clients require one, so the snippets set both to `mink`.
 
-The addresses below are a node's defaults. Use `catalog_endpoint` and `s3_endpoint` as engines reach them.
+The addresses below are a node's defaults. Set `catalog_endpoint` and `s3_endpoint` to the addresses engines reach.
 
 ## DuckDB
 

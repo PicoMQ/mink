@@ -3,7 +3,7 @@
 Engines read a table in two steps: load it from the REST catalog, then read its objects from the S3 endpoint. Metadata objects come from the bucket. Data files are built from Kafka on the node that owns them, and cached there.
 
 <div class="mink-diagram">
-<svg viewBox="0 0 660 340" width="660" role="img" aria-label="An engine loads the table from the catalog, then reads metadata and data files from the S3 endpoint. The S3 endpoint reads metadata objects from the bucket and forwards data file reads to the owner node, which serves them from its cache or builds them from Kafka.">
+<svg viewBox="0 0 660 340" width="660" role="img" aria-label="An engine loads the table from the catalog, which reads the snapshot from Postgres, then reads metadata and data files from the S3 endpoint. The S3 endpoint reads metadata objects from the bucket and forwards data file reads to the owner node, which serves them from its cache or builds them from Kafka.">
   <defs>
     <marker id="reads-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0 0.5 L7.5 4 L0 7.5 Z" class="arrow"/>
@@ -18,6 +18,9 @@ Engines read a table in two steps: load it from the REST catalog, then read its 
   <rect x="220" y="146" width="180" height="56" class="box"/>
   <text x="310" y="170" text-anchor="middle" class="label">S3 endpoint</text>
   <text x="310" y="188" text-anchor="middle" class="sub">any node</text>
+  <rect x="470" y="40" width="180" height="56" class="box"/>
+  <text x="560" y="64" text-anchor="middle" class="label">Postgres</text>
+  <text x="560" y="82" text-anchor="middle" class="sub">snapshots, files</text>
   <rect x="470" y="146" width="180" height="56" class="box-accent"/>
   <text x="560" y="170" text-anchor="middle" class="label">owner's cache</text>
   <text x="560" y="188" text-anchor="middle" class="sub">memory, optional disk</text>
@@ -28,12 +31,14 @@ Engines read a table in two steps: load it from the REST catalog, then read its 
   <text x="560" y="288" text-anchor="middle" class="label">Kafka</text>
   <text x="560" y="306" text-anchor="middle" class="sub">records</text>
   <path d="M150 68 L216 68" class="edge" marker-end="url(#reads-arrow)"/>
+  <path d="M400 68 L466 68" class="edge" marker-end="url(#reads-arrow)"/>
   <path d="M150 174 L216 174" class="edge" marker-end="url(#reads-arrow)"/>
   <path d="M400 174 L466 174" class="edge" marker-end="url(#reads-arrow)"/>
   <path d="M310 202 L310 260" class="edge-soft" marker-end="url(#reads-arrow)"/>
   <path d="M560 202 L560 260" class="edge" marker-end="url(#reads-arrow)"/>
   <text x="183" y="60" text-anchor="middle" class="sub">1. load</text>
   <text x="183" y="166" text-anchor="middle" class="sub">2. read</text>
+  <text x="433" y="60" text-anchor="middle" class="sub">snapshot</text>
   <text x="433" y="166" text-anchor="middle" class="sub">forward</text>
   <text x="318" y="236" class="sub">metadata</text>
   <text x="552" y="236" text-anchor="end" class="sub">build on a miss</text>
@@ -42,7 +47,7 @@ Engines read a table in two steps: load it from the REST catalog, then read its 
 
 ## Loading a table
 
-The catalog returns the latest snapshot's table metadata, with a tail up to each partition's last stable offset (see [Snapshots](/docs/design/snapshots)). Its `config` tells the engine where the S3 endpoint is: `s3.endpoint` from the `s3_endpoint` setting, path-style access, and the storage region.
+The catalog returns the table metadata, see [Snapshots](/docs/design/snapshots). Its `config` tells the engine where the S3 endpoint is: `s3.endpoint` from the `s3_endpoint` setting, path-style access, and the storage region.
 
 ## Reading objects
 
@@ -74,10 +79,10 @@ A build reads the file's committed records from Kafka and writes the Parquet wit
 
 ## Cache
 
-| Tier | Size | Setting |
-| --- | --- | --- |
-| Memory | 1 GiB | `cache_bytes` |
-| Disk | 50 GiB under `cache_dir`, when set | `cache_disk_bytes` |
+| Tier | Setting |
+| --- | --- |
+| Memory | `cache_bytes` |
+| Disk | `cache_disk_bytes`, under `cache_dir` when set |
 
 `cache_admission` chooses which blocks go to disk:
 
@@ -87,4 +92,4 @@ A build reads the file's committed records from Kafka and writes the Parquet wit
 | `fetched` | All, as soon as they are fetched |
 | `evicted` | On eviction from memory |
 
-A file read twice survives a restart on disk, so the node serves it again without a build. Files are cached under their table's uuid, so a table added again under the same name never reads the old table's files.
+A file on disk survives a restart. Files are cached under their table's uuid. A table added again under the same name never reads the old table's files.

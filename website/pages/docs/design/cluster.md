@@ -23,7 +23,7 @@ Mink nodes share one Postgres and nothing else. Work moves between them through 
   <text x="550" y="80" text-anchor="middle" class="sub">no writer</text>
   <rect x="20" y="150" width="620" height="60" class="box-accent"/>
   <text x="330" y="176" text-anchor="middle" class="label">Postgres</text>
-  <text x="330" y="194" text-anchor="middle" class="sub">members, partition leases, writer leases, each with an expiry and an epoch</text>
+  <text x="330" y="194" text-anchor="middle" class="sub">members with an expiry, leases with an expiry and an epoch</text>
   <path d="M110 96 L110 146" class="edge" marker-end="url(#cluster-arrow)"/>
   <path d="M330 96 L330 146" class="edge" marker-end="url(#cluster-arrow)"/>
   <path d="M550 96 L550 146" class="edge" marker-end="url(#cluster-arrow)"/>
@@ -37,6 +37,40 @@ Mink nodes share one Postgres and nothing else. Work moves between them through 
 
 A node registers in Postgres when it starts and renews its row every `lease_ttl / 3`, 10 seconds by default. A node is live while its row has not expired. A node that stops cleanly releases its leases and leaves at once. A node that crashes drops out when its row expires, after `lease_ttl`, 30 seconds by default.
 
+<div class="mink-diagram">
+<svg viewBox="0 0 660 180" width="660" role="img" aria-label="Node 1 holds a partition lease and renews it every lease_ttl / 3, then crashes. The lease expires lease_ttl after the last renewal, and node 2 takes it on its next round.">
+  <text x="40" y="28" class="sub">renews every lease_ttl / 3</text>
+  <path d="M40 36 L40 44" class="edge"/>
+  <path d="M120 36 L120 44" class="edge"/>
+  <path d="M200 36 L200 44" class="edge"/>
+  <rect x="40" y="44" width="200" height="36" class="box"/>
+  <text x="140" y="67" text-anchor="middle" class="label">node 1 holds the lease</text>
+  <text x="248" y="67" class="sub">crashes</text>
+  <path d="M440 36 L440 140" class="edge-soft"/>
+  <text x="448" y="28" class="sub">lease expires</text>
+  <text x="448" y="42" class="sub">last renewal + lease_ttl</text>
+  <rect x="456" y="96" width="144" height="36" class="box-accent"/>
+  <text x="528" y="119" text-anchor="middle" class="label">node 2 takes it</text>
+  <path d="M40 150 L600 150" class="edge"/>
+  <path d="M40 150 L40 155" class="edge"/>
+  <text x="40" y="170" text-anchor="middle" class="sub">0s</text>
+  <path d="M120 150 L120 155" class="edge"/>
+  <text x="120" y="170" text-anchor="middle" class="sub">10s</text>
+  <path d="M200 150 L200 155" class="edge"/>
+  <text x="200" y="170" text-anchor="middle" class="sub">20s</text>
+  <path d="M280 150 L280 155" class="edge"/>
+  <text x="280" y="170" text-anchor="middle" class="sub">30s</text>
+  <path d="M360 150 L360 155" class="edge"/>
+  <text x="360" y="170" text-anchor="middle" class="sub">40s</text>
+  <path d="M440 150 L440 155" class="edge"/>
+  <text x="440" y="170" text-anchor="middle" class="sub">50s</text>
+  <path d="M520 150 L520 155" class="edge"/>
+  <text x="520" y="170" text-anchor="middle" class="sub">60s</text>
+  <path d="M600 150 L600 155" class="edge"/>
+  <text x="600" y="170" text-anchor="middle" class="sub">70s</text>
+</svg>
+</div>
+
 ## Leases
 
 | Lease | Scope | Holder runs |
@@ -48,7 +82,7 @@ Each lease has an epoch that grows every time it changes hands. Postgres rejects
 
 ## Sharing
 
-Every `lease_ttl / 3`, each node with the `indexer` role applies the same rules. No operator moves work by hand.
+Every `lease_ttl / 3`, each node with the `indexer` role applies the same rules.
 
 | Rule | Effect |
 | --- | --- |
@@ -56,15 +90,15 @@ Every `lease_ttl / 3`, each node with the `indexer` role applies the same rules.
 | A node below its share takes free leases, the ones it prefers most first | New and freed partitions get an indexer |
 | A node above its share releases one lease of that table per round | A joining node takes work gradually |
 | Each table's writer lease goes to the node that prefers it most | One writer per table |
-| `max_partitions` caps the partition leases one node holds | Optional, unlimited by default |
+| `max_partitions` caps the partition leases one node holds | Limits one node's indexers |
 
-A node's preference for a lease is a hash of its id and the lease's scope, so every node computes the same answer.
+A node's preference for a lease is a hash of its id and the lease's scope. Every node computes the same preferences.
 
 ## Failures
 
 | Failure | Effect |
 | --- | --- |
-| A node crashes | Its leases expire after `lease_ttl`. Other nodes take them, and indexing resumes from the stored ranges. |
+| A node crashes | Its leases expire after `lease_ttl`. Other nodes take them, and indexing resumes from the indexed ranges. |
 | A node joins | Every share drops. Other nodes hand back one partition per table per round. |
 | Postgres is unreachable | Table loads, and reads of data files not in the owner's cache, answer `503`. Cached files are still served. Indexers and writers stop. Once Postgres answers, every node takes its share again without a restart. |
 | Kafka is unreachable | Table loads, builds and indexing fail until Kafka answers. Cached data files are still served. |
