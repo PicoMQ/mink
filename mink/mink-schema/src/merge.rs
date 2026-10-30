@@ -7,6 +7,7 @@ use mink_core::Part;
 
 use crate::binary::{DECODED_KEY, RESERVED_NAMES};
 use crate::payload::PayloadSchema;
+use crate::registry::SchemaKey;
 use crate::types::{PayloadField, PayloadType, path};
 use crate::wire::PartSchemaRef;
 
@@ -25,7 +26,7 @@ pub enum Rejection {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Merge {
-    registry_id: i32,
+    registry_key: SchemaKey,
     based_on: i32,
     schema: Option<Schema>,
     field_ids: FieldIds,
@@ -35,7 +36,7 @@ pub struct Merge {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MergeResult {
     Merged {
-        registry_id: i32,
+        registry_key: SchemaKey,
         table_schema_id: i32,
         field_ids: FieldIds,
     },
@@ -135,8 +136,8 @@ impl Rejection {
 }
 
 impl Merge {
-    pub fn registry_id(&self) -> i32 {
-        self.registry_id
+    pub fn registry_key(&self) -> SchemaKey {
+        self.registry_key
     }
 
     pub fn based_on(&self) -> i32 {
@@ -162,7 +163,7 @@ impl Merge {
             .map_or(self.based_on, Schema::schema_id);
 
         MergeResult::Merged {
-            registry_id: self.registry_id,
+            registry_key: self.registry_key,
             table_schema_id,
             field_ids: self.field_ids.clone(),
         }
@@ -188,14 +189,14 @@ pub fn merge(
     identity_field_ids: &FieldIds,
     part: Part,
     payload: &PayloadSchema,
-    registry_id: i32,
+    registry_key: SchemaKey,
 ) -> Result<Merge, Rejection> {
     merge_type(
         table,
         identity_field_ids,
         part,
         payload.payload_type(),
-        registry_id,
+        registry_key,
     )
 }
 
@@ -204,7 +205,7 @@ fn merge_type(
     identity_field_ids: &FieldIds,
     part: Part,
     payload_type: &PayloadType,
-    registry_id: i32,
+    registry_key: SchemaKey,
 ) -> Result<Merge, Rejection> {
     let original = columns(table.as_struct().fields());
     let mut columns = original.clone();
@@ -249,7 +250,7 @@ fn merge_type(
     };
 
     Ok(Merge {
-        registry_id,
+        registry_key,
         based_on: table.schema_id(),
         schema,
         field_ids: new_ids.resolve(state.by_writer_path),
@@ -693,6 +694,8 @@ mod tests {
     use iceberg::spec::NestedFieldRef;
     use proptest::prelude::*;
 
+    const KEY: SchemaKey = SchemaKey::Confluent(1);
+
     use super::*;
     use crate::binary_schema;
 
@@ -705,7 +708,7 @@ mod tests {
     }
 
     fn merged(table: &Schema, field_ids: &FieldIds, payload_type: &PayloadType) -> Merge {
-        merge_type(table, field_ids, Part::Value, payload_type, 1).unwrap()
+        merge_type(table, field_ids, Part::Value, payload_type, KEY).unwrap()
     }
 
     fn typed(schema: &Schema) -> Vec<(i32, String, Type)> {
@@ -741,7 +744,7 @@ mod tests {
         assert_eq!(
             two.result(),
             MergeResult::Merged {
-                registry_id: 1,
+                registry_key: KEY,
                 table_schema_id: 2,
                 field_ids: two.field_ids().clone(),
             }
@@ -765,9 +768,9 @@ mod tests {
         let key = PayloadType::Struct(vec![field("_kafka_offset", primitive(PrimitiveType::Long))]);
         let none = FieldIds::default();
 
-        let mink = merge_type(binary_schema(), &none, Part::Value, &mink, 1);
-        let iceberg = merge_type(binary_schema(), &none, Part::Value, &iceberg, 1);
-        let key = merge_type(binary_schema(), &none, Part::Key, &key, 1);
+        let mink = merge_type(binary_schema(), &none, Part::Value, &mink, KEY);
+        let iceberg = merge_type(binary_schema(), &none, Part::Value, &iceberg, KEY);
+        let key = merge_type(binary_schema(), &none, Part::Key, &key, KEY);
 
         assert_eq!(mink, Err(Rejection::ReservedName));
         assert_eq!(iceberg, Err(Rejection::ReservedName));
@@ -787,7 +790,7 @@ mod tests {
             &FieldIds::default(),
             Part::Value,
             &clashing,
-            1,
+            KEY,
         );
 
         assert_eq!(merged, Err(Rejection::Unsupported));

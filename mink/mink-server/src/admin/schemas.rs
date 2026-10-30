@@ -38,19 +38,19 @@ async fn schemas(
         .iter()
         .map(|merged| {
             let schema_ref = merged.schema_ref();
-            let (registry_id, schema_id, rejection) = match merged.result() {
+            let (registry_key, schema_id, rejection) = match merged.result() {
                 MergeResult::Merged {
-                    registry_id,
+                    registry_key,
                     table_schema_id,
                     ..
-                } => (Some(*registry_id), Some(*table_schema_id), None),
+                } => (Some(registry_key.to_string()), Some(*table_schema_id), None),
                 MergeResult::Rejected(rejection) => (None, None, Some(rejection.name())),
             };
 
             json!({
                 "part": schema_ref.part().name(),
                 "reference": schema_ref.schema_ref().to_string(),
-                "registryId": registry_id,
+                "registryKey": registry_key,
                 "schemaId": schema_id,
                 "rejection": rejection,
             })
@@ -136,14 +136,14 @@ mod tests {
         let references = schemas["references"].as_array().unwrap();
         let merged = references
             .iter()
-            .find(|reference| reference["reference"] == format!("id:{first}"))
+            .find(|reference| reference["reference"] == format!("confluent-id:{first}"))
             .unwrap();
         let rejected = references
             .iter()
-            .find(|reference| reference["reference"] == format!("id:{}", i32::MAX - 7))
+            .find(|reference| reference["reference"] == format!("confluent-id:{}", i32::MAX - 7))
             .unwrap();
         assert_eq!(merged["part"], "value");
-        assert_eq!(merged["registryId"], first);
+        assert_eq!(merged["registryKey"], format!("confluent:{first}"));
         assert_eq!(merged["schemaId"], 1);
         assert_eq!(rejected["rejection"], "missing");
         assert_eq!(rejected["schemaId"], serde_json::Value::Null);

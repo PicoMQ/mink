@@ -11,8 +11,8 @@ use iceberg::spec::{PrimitiveType, Schema, Type};
 use mink_conformance::{ExpectedMerge, PayloadCase, PayloadFixture, payload_fixture};
 use mink_core::{Part, Partition, Record};
 use mink_schema::{
-    Decoders, FieldIds, Merge, PayloadSchema, Rejection, SchemaFormat, SchemaRef, SchemaSet,
-    accept, binary_schema, merge, schema_refs, subject,
+    Decoders, FieldIds, Merge, PayloadSchema, Rejection, SchemaFormat, SchemaKey, SchemaRef,
+    SchemaSet, accept, binary_schema, merge, schema_refs, subject,
 };
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
@@ -49,7 +49,7 @@ impl FixtureTable {
 async fn merge_fixture(fixture: &PayloadFixture, case: &PayloadCase) -> FixtureTable {
     let mut latest = binary_schema().clone();
     let mut identity_field_ids: HashMap<Part, FieldIds> = HashMap::new();
-    let mut payloads: HashMap<i32, Arc<PayloadSchema>> = HashMap::new();
+    let mut payloads: HashMap<SchemaKey, Arc<PayloadSchema>> = HashMap::new();
     let mut merged_by_id: HashMap<(Part, i32), Result<Merge, Rejection>> = HashMap::new();
     let mut steps = Vec::new();
 
@@ -64,9 +64,10 @@ async fn merge_fixture(fixture: &PayloadFixture, case: &PayloadCase) -> FixtureT
         };
         let ids = identity_field_ids.entry(part).or_default();
         let merged = payload.and_then(|payload| {
-            let merged = merge(&latest, ids, part, &payload, id);
+            let key = SchemaKey::Confluent(id);
+            let merged = merge(&latest, ids, part, &payload, key);
 
-            payloads.insert(id, Arc::new(payload));
+            payloads.insert(key, Arc::new(payload));
 
             merged
         });
@@ -91,13 +92,13 @@ async fn merge_fixture(fixture: &PayloadFixture, case: &PayloadCase) -> FixtureT
 
     for schema_ref in schema_refs(&records(case)) {
         let id = match schema_ref.schema_ref() {
-            SchemaRef::Id(id) => Some(id),
-            SchemaRef::Guid(guid) => fixture.guid(guid),
+            SchemaRef::ConfluentId(id) => Some(id),
+            SchemaRef::ConfluentGuid(guid) => fixture.guid(guid),
         };
 
         match id.and_then(|id| merged_by_id.get(&(schema_ref.part(), id))) {
             Some(Ok(merged)) => {
-                let payload = payloads[&merged.registry_id()].clone();
+                let payload = payloads[&merged.registry_key()].clone();
 
                 decoders.insert_typed(schema_ref, payload, merged.field_ids().clone());
             }
@@ -109,13 +110,17 @@ async fn merge_fixture(fixture: &PayloadFixture, case: &PayloadCase) -> FixtureT
 }
 
 async fn schema_set(fixture: &PayloadFixture, id: i32) -> Option<SchemaSet> {
-    let found = |id| {
-        let schema = fixture.schema(id).and_then(|entry| entry.schema()).cloned();
+    let found = |key| {
+        let schema = match key {
+            SchemaKey::Confluent(id) => {
+                fixture.schema(id).and_then(|entry| entry.schema()).cloned()
+            }
+        };
 
         async move { schema.ok_or(()) }
     };
 
-    SchemaSet::load(id, found).await.ok()
+    SchemaSet::load(SchemaKey::Confluent(id), found).await.ok()
 }
 
 fn records(case: &PayloadCase) -> Vec<Record> {

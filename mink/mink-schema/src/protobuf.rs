@@ -53,10 +53,10 @@ impl ProtobufSchema {
     pub(crate) fn parse(schema_set: &SchemaSet) -> Result<ProtobufSchema, Error> {
         let schema = schema_set.schema();
         let invalid = |message: String| Error::PayloadSchema {
-            id: schema.id(),
+            key: schema.key(),
             message,
         };
-        let main = format!("registry/{}.proto", schema.id());
+        let main = format!("registry/{}.proto", schema.key());
 
         let mut by_name: HashMap<String, String> = schema_set
             .definitions_by_name()

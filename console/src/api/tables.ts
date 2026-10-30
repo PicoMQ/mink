@@ -101,7 +101,7 @@ interface SchemaField {
 export interface Reference {
   part: 'key' | 'value'
   reference: string
-  registryId: number | null
+  registryKey: string | null
   schemaId: number | null
   rejection: string | null
 }

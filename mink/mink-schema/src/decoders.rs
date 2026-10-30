@@ -84,7 +84,7 @@ mod tests {
 
     use super::*;
     use crate::binary::binary_schema;
-    use crate::registry::{RegistrySchema, SchemaFormat, SchemaRef, SchemaSet};
+    use crate::registry::{RegistrySchema, SchemaFormat, SchemaKey, SchemaRef, SchemaSet};
     use crate::value::PayloadValue;
 
     fn guid_header() -> Header {
@@ -111,16 +111,21 @@ mod tests {
 
     #[test]
     fn undecodable_parts_keep_their_raw_bytes() {
-        let int = RegistrySchema::new(1, SchemaFormat::Avro, "\"int\"", Vec::new());
+        let int = RegistrySchema::new(
+            SchemaKey::Confluent(1),
+            SchemaFormat::Avro,
+            "\"int\"",
+            Vec::new(),
+        );
         let schema = Arc::new(PayloadSchema::parse(&SchemaSet::new(int, Vec::new())).unwrap());
         let field_ids = FieldIds::from_iter([(String::new(), 10)]);
         let mut decoders = Decoders::default();
         decoders.insert_typed(
-            PartSchemaRef::new(Part::Value, SchemaRef::Id(1)),
+            PartSchemaRef::new(Part::Value, SchemaRef::ConfluentId(1)),
             schema,
             field_ids,
         );
-        decoders.insert_raw(PartSchemaRef::new(Part::Value, SchemaRef::Id(2)));
+        decoders.insert_raw(PartSchemaRef::new(Part::Value, SchemaRef::ConfluentId(2)));
         let table = table();
 
         let rejected: &'static [u8] = &[0, 0, 0, 0, 2, 2];
@@ -151,7 +156,7 @@ mod tests {
             by_id,
             Err(Error::UnmergedSchema {
                 part: Part::Key,
-                schema_ref: SchemaRef::Id(9)
+                schema_ref: SchemaRef::ConfluentId(9)
             })
         ));
         assert!(matches!(

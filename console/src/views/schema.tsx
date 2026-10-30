@@ -20,7 +20,7 @@ const REFERENCE_COLUMNS: Column<Reference>[] = [
     header: 'Registry schema',
     width: '12rem',
     cell: (reference) =>
-      reference.registryId === null ? 'none' : <a href={page('registry', reference.registryId)}>{reference.registryId}</a>,
+      reference.registryKey === null ? 'none' : <a href={page('registry', reference.registryKey)}>{reference.registryKey}</a>,
   },
   {
     name: 'result',

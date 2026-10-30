@@ -1,5 +1,6 @@
 use std::io;
 
+use mink_schema::SchemaKey;
 use nestor::{NestorError, OriginError};
 
 use crate::config::ConfigError;
@@ -43,7 +44,7 @@ pub enum Error {
     #[error("the schema registry answered unexpectedly: {0}")]
     RegistryResponse(String),
     #[error("registry schema {0} is not stored")]
-    UnstoredRegistrySchema(i32),
+    UnstoredRegistrySchema(SchemaKey),
     #[error("topic {topic} has no table schema {id}")]
     UnknownTableSchema { topic: String, id: i32 },
     #[error("no namespace {0}")]

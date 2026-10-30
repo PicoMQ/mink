@@ -69,8 +69,8 @@ Listing records reads Kafka and changes nothing.
 
 | Route | Returns |
 | --- | --- |
-| `GET /admin/registry` | Stored Schema Registry schemas with their format, references and the tables that use them |
-| `GET /admin/registry/{id}` | One schema with its definition |
+| `GET /admin/registry` | Stored Schema Registry schemas with their key, format, references and the tables that use them |
+| `GET /admin/registry/{key}` | One schema with its definition. A key names the registry and the schema, such as `confluent:42`. |
 
 ## Catalog and S3 for the console
 

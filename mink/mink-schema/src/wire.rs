@@ -73,7 +73,7 @@ pub(crate) fn read_header<'a>(
         };
 
         return Some(WireHeader {
-            schema_ref: SchemaRef::Guid(guid),
+            schema_ref: SchemaRef::ConfluentGuid(guid),
             payload,
         });
     }
@@ -85,7 +85,7 @@ pub(crate) fn read_header<'a>(
     let id = u32::from_be_bytes(bytes[1..PREFIX_LENGTH].try_into().ok()?);
 
     Some(WireHeader {
-        schema_ref: SchemaRef::Id(i32::try_from(id).ok()?),
+        schema_ref: SchemaRef::ConfluentId(i32::try_from(id).ok()?),
         payload: Cow::Borrowed(&bytes[PREFIX_LENGTH..]),
     })
 }
@@ -136,14 +136,14 @@ mod tests {
         assert_eq!(
             by_prefix,
             Some(WireHeader {
-                schema_ref: SchemaRef::Id(7),
+                schema_ref: SchemaRef::ConfluentId(7),
                 payload: Cow::Borrowed(&prefixed[5..]),
             })
         );
         assert_eq!(
             by_header,
             Some(WireHeader {
-                schema_ref: SchemaRef::Guid(guid),
+                schema_ref: SchemaRef::ConfluentGuid(guid),
                 payload: Cow::Borrowed(&prefixed[..]),
             })
         );
@@ -153,7 +153,7 @@ mod tests {
         assert_eq!(
             with_indexes,
             Some(WireHeader {
-                schema_ref: SchemaRef::Guid(guid),
+                schema_ref: SchemaRef::ConfluentGuid(guid),
                 payload: Cow::Owned(vec![0, 8, 2]),
             })
         );

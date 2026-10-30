@@ -8,7 +8,7 @@ import { View } from '../components/view'
 import { page, tablePage } from '../location'
 
 const COLUMNS: Column<RegistrySchema>[] = [
-  { name: 'id', header: 'Schema', width: '9rem', cell: (schema) => <a href={page('registry', schema.id)}>{schema.id}</a> },
+  { name: 'key', header: 'Schema', width: '14rem', cell: (schema) => <a href={page('registry', schema.key)}>{schema.key}</a> },
   { name: 'format', header: 'Format', width: '9rem', cell: (schema) => schema.format },
   { name: 'references', header: 'References', cell: (schema) => schema.references.map((reference) => reference.name).join(', ') || 'none' },
   {
@@ -32,7 +32,7 @@ export default function Registry() {
   return (
     <View trail={[{ label: 'Registry' }]}>
       <Toolbar actions={<Button onClick={pages.refresh}>Refresh</Button>} />
-      <List pages={pages} columns={COLUMNS} rowKey={(schema) => String(schema.id)} noun="schema" />
+      <List pages={pages} columns={COLUMNS} rowKey={(schema) => schema.key} noun="schema" />
     </View>
   )
 }

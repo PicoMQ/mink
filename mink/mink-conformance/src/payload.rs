@@ -2,7 +2,7 @@ use std::fs;
 
 use bytes::Bytes;
 use mink_core::{Header, Part, Record};
-use mink_schema::{Reference, RegistrySchema, Rejection, SchemaFormat};
+use mink_schema::{Reference, RegistrySchema, Rejection, SchemaFormat, SchemaKey};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -170,7 +170,10 @@ fn registry_fixture(json: &Value) -> RegistryFixture {
                 .map(|reference| {
                     let id = i32::try_from(reference["id"].as_i64().unwrap()).unwrap();
 
-                    Reference::new(reference["name"].as_str().unwrap(), id)
+                    Reference::new(
+                        reference["name"].as_str().unwrap(),
+                        SchemaKey::Confluent(id),
+                    )
                 })
                 .collect()
         })
@@ -178,7 +181,7 @@ fn registry_fixture(json: &Value) -> RegistryFixture {
     let schema = json["definition"].as_str().map(|definition| {
         let format = SchemaFormat::from_name(json["format"].as_str().unwrap()).unwrap();
 
-        RegistrySchema::new(id, format, definition, references)
+        RegistrySchema::new(SchemaKey::Confluent(id), format, definition, references)
     });
 
     RegistryFixture {

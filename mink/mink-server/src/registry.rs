@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use mink_metrics::{Answer, Metrics};
-use mink_schema::{Reference, RegistrySchema, Rejection, SchemaFormat, SchemaSet};
+use mink_schema::{Reference, RegistrySchema, Rejection, SchemaFormat, SchemaKey, SchemaSet};
 use mink_store::Store;
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
@@ -135,7 +135,9 @@ impl Registry {
         Ok(id.map(|id| id.id))
     }
 
-    async fn schema(&self, id: i32) -> Result<RegistrySchema, Failure> {
+    async fn schema(&self, key: SchemaKey) -> Result<RegistrySchema, Failure> {
+        let SchemaKey::Confluent(id) = key;
+
         let Some(response) = self
             .get::<SchemaResponse>(&format!("/schemas/ids/{id}"))
             .await?
@@ -154,12 +156,20 @@ impl Registry {
             );
 
             match self.get::<VersionResponse>(&path).await? {
-                Some(version) => references.push(Reference::new(&reference.name, version.id)),
+                Some(version) => references.push(Reference::new(
+                    &reference.name,
+                    SchemaKey::Confluent(version.id),
+                )),
                 None => return Err(Failure::Rejected(Rejection::Missing)),
             }
         }
 
-        Ok(RegistrySchema::new(id, format, response.schema, references))
+        Ok(RegistrySchema::new(
+            key,
+            format,
+            response.schema,
+            references,
+        ))
     }
 
     async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<Option<T>, Error> {
@@ -208,8 +218,8 @@ impl Registry {
     }
 }
 
-pub(crate) async fn stored(store: &Store, id: i32) -> Result<SchemaSet, Error> {
-    SchemaSet::load(id, |next| async move {
+pub(crate) async fn stored(store: &Store, key: SchemaKey) -> Result<SchemaSet, Error> {
+    SchemaSet::load(key, |next| async move {
         let stored = store.registry().get(next).await?;
 
         stored.ok_or(Error::UnstoredRegistrySchema(next))
@@ -220,9 +230,9 @@ pub(crate) async fn stored(store: &Store, id: i32) -> Result<SchemaSet, Error> {
 pub(crate) async fn fetch(
     store: &Store,
     registry: &Registry,
-    id: i32,
+    key: SchemaKey,
 ) -> Result<SchemaSet, Failure> {
-    SchemaSet::load(id, |next| async move {
+    SchemaSet::load(key, |next| async move {
         if let Some(stored) = store.registry().get(next).await? {
             return Ok(stored);
         }
@@ -330,13 +340,15 @@ mod tests {
         };
         let store = &setup.services.store;
 
-        let fetched = fetch(store, &client(&setup.url), setup.main).await.unwrap();
-        let again = fetch(store, &client(UNREACHABLE), setup.main)
-            .await
-            .unwrap();
-        let offline = stored(store, setup.main).await.unwrap();
+        let main = SchemaKey::Confluent(setup.main);
+        let fetched = fetch(store, &client(&setup.url), main).await.unwrap();
+        let again = fetch(store, &client(UNREACHABLE), main).await.unwrap();
+        let offline = stored(store, main).await.unwrap();
 
-        assert_eq!(fetched.schema().references()[0].id(), setup.dependency);
+        assert_eq!(
+            fetched.schema().references()[0].key(),
+            SchemaKey::Confluent(setup.dependency)
+        );
         assert_eq!(fetched.referenced().len(), 1);
         assert_eq!(again, fetched);
         assert_eq!(offline, fetched);
@@ -384,7 +396,9 @@ mod tests {
             return;
         };
         let store = &setup.services.store;
-        let unknown = i32::MAX - i32::try_from(Uuid::new_v4().as_u128() % 1_000_000).unwrap();
+        let unknown = SchemaKey::Confluent(
+            i32::MAX - i32::try_from(Uuid::new_v4().as_u128() % 1_000_000).unwrap(),
+        );
 
         let missing = fetch(store, &client(&setup.url), unknown).await;
         let failed = fetch(store, &client(UNREACHABLE), unknown).await;
@@ -398,7 +412,7 @@ mod tests {
             matches!(failed, Err(Failure::Failed(Error::RegistryUnavailable(_)))),
             "{failed:?}"
         );
-        assert!(matches!(unstored, Err(Error::UnstoredRegistrySchema(id)) if id == unknown));
+        assert!(matches!(unstored, Err(Error::UnstoredRegistrySchema(key)) if key == unknown));
         assert_eq!(store.registry().get(unknown).await.unwrap(), None);
     }
 

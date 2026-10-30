@@ -5,8 +5,8 @@ use iceberg::spec::Schema;
 use mink_core::{Part, Record};
 use mink_iceberg::{FileSchema, TypedSchema};
 use mink_schema::{
-    BINARY_SCHEMA_ID, Decoders, MergeResult, PartSchemaRef, PayloadSchema, Rejection, SchemaRef,
-    accept, merge, schema_refs, subject,
+    BINARY_SCHEMA_ID, Decoders, MergeResult, PartSchemaRef, PayloadSchema, Rejection, SchemaKey,
+    SchemaRef, accept, merge, schema_refs, subject,
 };
 use mink_store::Store;
 
@@ -16,7 +16,7 @@ use crate::registry::{self, Failure, Registry, retrying};
 pub(crate) struct Schemas {
     store: Store,
     registry: Option<Registry>,
-    parsed: Mutex<HashMap<i32, Arc<PayloadSchema>>>,
+    parsed: Mutex<HashMap<SchemaKey, Arc<PayloadSchema>>>,
 }
 
 impl Schemas {
@@ -95,11 +95,11 @@ impl Schemas {
 
             match topic_schema.result() {
                 MergeResult::Merged {
-                    registry_id,
+                    registry_key,
                     field_ids,
                     ..
                 } => {
-                    let schema = self.parsed(*registry_id).await?;
+                    let schema = self.parsed(*registry_key).await?;
 
                     decoders.insert_typed(schema_ref, schema, field_ids.clone());
                 }
@@ -118,9 +118,9 @@ impl Schemas {
     ) -> Result<(), Error> {
         let schemas = self.store.schemas();
 
-        let id = match schema_ref.schema_ref() {
-            SchemaRef::Id(id) => id,
-            SchemaRef::Guid(guid) => {
+        let key = match schema_ref.schema_ref() {
+            SchemaRef::ConfluentId(id) => SchemaKey::Confluent(id),
+            SchemaRef::ConfluentGuid(guid) => {
                 let resolved = retrying(|| async move {
                     let id = registry.guid_id(guid).await?;
                     id.ok_or(Failure::Rejected(Rejection::Missing))
@@ -128,7 +128,7 @@ impl Schemas {
                 .await;
 
                 match resolved {
-                    Ok(id) => id,
+                    Ok(id) => SchemaKey::Confluent(id),
                     Err(Failure::Rejected(rejection)) => {
                         schemas.merge(topic, schema_ref, &Err(rejection)).await?;
 
@@ -139,14 +139,16 @@ impl Schemas {
             }
         };
 
-        let by_id = PartSchemaRef::new(schema_ref.part(), SchemaRef::Id(id));
-        if schemas.result(topic, by_id).await?.is_none() {
-            self.merge_registry_schema(registry, topic, by_id, id)
+        let canonical = PartSchemaRef::new(schema_ref.part(), key.schema_ref());
+        if schemas.result(topic, canonical).await?.is_none() {
+            self.merge_registry_schema(registry, topic, canonical, key)
                 .await?;
         }
 
-        if schema_ref != by_id {
-            schemas.copy(topic, by_id, schema_ref.schema_ref()).await?;
+        if schema_ref != canonical {
+            schemas
+                .copy(topic, canonical, schema_ref.schema_ref())
+                .await?;
         }
 
         Ok(())
@@ -157,12 +159,12 @@ impl Schemas {
         registry: &Registry,
         topic: &str,
         schema_ref: PartSchemaRef,
-        id: i32,
+        key: SchemaKey,
     ) -> Result<(), Error> {
         let schemas = self.store.schemas();
         let part = schema_ref.part();
 
-        let payload = match retrying(|| self.payload_schema(registry, topic, part, id)).await {
+        let payload = match retrying(|| self.payload_schema(registry, topic, part, key)).await {
             Ok(payload) => Ok(payload),
             Err(Failure::Rejected(rejection)) => Err(rejection),
             Err(Failure::Failed(error)) => return Err(error),
@@ -174,7 +176,7 @@ impl Schemas {
                     let latest = schemas.latest(topic).await?;
                     let field_ids = schemas.field_ids(topic, part).await?;
 
-                    merge(&latest, &field_ids, part, payload, id)
+                    merge(&latest, &field_ids, part, payload, key)
                 }
                 Err(rejection) => Err(*rejection),
             };
@@ -192,35 +194,36 @@ impl Schemas {
         registry: &Registry,
         topic: &str,
         part: Part,
-        id: i32,
+        key: SchemaKey,
     ) -> Result<Arc<PayloadSchema>, Failure> {
         let subject = subject(topic, part);
+        let SchemaKey::Confluent(id) = key;
 
         if !registry.subject_exists(&subject).await? {
             return Err(Failure::Rejected(Rejection::NotAccepted));
         }
 
-        let set = registry::fetch(&self.store, registry, id).await?;
+        let set = registry::fetch(&self.store, registry, key).await?;
         let registered_under_subject = registry.accepted(id, &subject).await?;
         let schema = Arc::new(accept(&set, registered_under_subject)?);
 
-        self.locked().insert(id, schema.clone());
+        self.locked().insert(key, schema.clone());
         Ok(schema)
     }
 
-    async fn parsed(&self, id: i32) -> Result<Arc<PayloadSchema>, Error> {
-        if let Some(cached) = self.locked().get(&id).cloned() {
+    async fn parsed(&self, key: SchemaKey) -> Result<Arc<PayloadSchema>, Error> {
+        if let Some(cached) = self.locked().get(&key).cloned() {
             return Ok(cached);
         }
 
-        let set = registry::stored(&self.store, id).await?;
+        let set = registry::stored(&self.store, key).await?;
         let schema = Arc::new(PayloadSchema::parse(&set)?);
 
-        self.locked().insert(id, schema.clone());
+        self.locked().insert(key, schema.clone());
         Ok(schema)
     }
 
-    fn locked(&self) -> MutexGuard<'_, HashMap<i32, Arc<PayloadSchema>>> {
+    fn locked(&self) -> MutexGuard<'_, HashMap<SchemaKey, Arc<PayloadSchema>>> {
         self.parsed
             .lock()
             .expect("the parsed schemas are never poisoned")

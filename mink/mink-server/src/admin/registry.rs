@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::routing::get;
 use axum::{Json, Router};
-use mink_schema::{Reference, SchemaFormat};
+use mink_schema::{Reference, SchemaFormat, SchemaKey};
 use serde_json::{Value, json};
 
 use super::Admin;
@@ -13,7 +13,7 @@ use super::reply::{Failure, Params, Segments};
 pub(super) fn routes() -> Router<Arc<Admin>> {
     Router::new()
         .route("/admin/registry", get(schemas))
-        .route("/admin/registry/{id}", get(schema))
+        .route("/admin/registry/{key}", get(schema))
 }
 
 async fn schemas(
@@ -21,7 +21,10 @@ async fn schemas(
     Params(page): Params<PageQuery>,
 ) -> Result<Json<Value>, Failure> {
     let paging = Paging::new(&page, &[])?;
-    let after = paging.after::<i32>()?;
+    let after = paging
+        .after::<String>()?
+        .map(|text| parsed(&text))
+        .transpose()?;
 
     let listed = admin
         .services
@@ -35,9 +38,9 @@ async fn schemas(
         .iter()
         .map(|schema| {
             (
-                schema.id(),
+                schema.key().to_string(),
                 item(
-                    schema.id(),
+                    schema.key(),
                     schema.format(),
                     schema.references(),
                     schema.tables(),
@@ -50,29 +53,39 @@ async fn schemas(
 
 async fn schema(
     State(admin): State<Arc<Admin>>,
-    Segments(id): Segments<i32>,
+    Segments(text): Segments<String>,
 ) -> Result<Json<Value>, Failure> {
     let registry = admin.services.store.registry();
+    let key = parsed(&text)?;
 
     let schema = registry
-        .get(id)
+        .get(key)
         .await?
-        .ok_or_else(|| Failure::missing(format!("no registry schema {id}")))?;
-    let tables = registry.tables(id).await?;
+        .ok_or_else(|| Failure::missing(format!("no registry schema {key}")))?;
+    let tables = registry.tables(key).await?;
 
-    let mut detail = item(id, schema.format(), schema.references(), &tables);
+    let mut detail = item(key, schema.format(), schema.references(), &tables);
     detail["definition"] = json!(schema.definition());
     Ok(Json(detail))
 }
 
-fn item(id: i32, format: SchemaFormat, references: &[Reference], tables: &[String]) -> Value {
+fn parsed(text: &str) -> Result<SchemaKey, Failure> {
+    SchemaKey::parse(text).ok_or_else(|| Failure::bad(format!("{text:?} is not a schema key")))
+}
+
+fn item(
+    key: SchemaKey,
+    format: SchemaFormat,
+    references: &[Reference],
+    tables: &[String],
+) -> Value {
     let references: Vec<Value> = references
         .iter()
-        .map(|reference| json!({ "name": reference.name(), "id": reference.id() }))
+        .map(|reference| json!({ "name": reference.name(), "key": reference.key().to_string() }))
         .collect();
 
     json!({
-        "id": id,
+        "key": key.to_string(),
         "format": format.name(),
         "references": references,
         "tables": tables,
@@ -94,8 +107,8 @@ mod tests {
         setup.produce(&[mink_conformance::prefixed(first, &[10])]);
         setup.merge().await;
 
-        let (_, detail) = get(&setup.base, &format!("/admin/registry/{first}")).await;
-        let (unknown, _) = get(&setup.base, "/admin/registry/2147483000").await;
+        let (_, detail) = get(&setup.base, &format!("/admin/registry/confluent:{first}")).await;
+        let (unknown, _) = get(&setup.base, "/admin/registry/confluent:2147483000").await;
         let mut listed = Vec::new();
         let mut cursor: Option<String> = None;
         loop {
@@ -112,7 +125,10 @@ mod tests {
         }
         setup.node.shutdown().await.unwrap();
 
-        let item = listed.iter().find(|item| item["id"] == first).unwrap();
+        let item = listed
+            .iter()
+            .find(|item| item["key"] == format!("confluent:{first}"))
+            .unwrap();
         assert_eq!(item["format"], "avro");
         assert_eq!(item["tables"], serde_json::json!([setup.topic.name()]));
         assert!(

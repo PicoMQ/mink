@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use iceberg::spec::Schema;
 use mink_core::Part;
 use mink_schema::{
-    BINARY_SCHEMA_ID, FieldIds, Merge, MergeResult, PartSchemaRef, Rejection, SchemaRef,
+    BINARY_SCHEMA_ID, FieldIds, Merge, MergeResult, PartSchemaRef, Rejection, SchemaKey, SchemaRef,
     TopicSchema, binary_schema,
 };
 use serde_json::Value;
@@ -20,7 +20,7 @@ pub struct Schemas<'a> {
 struct TopicSchemaRow {
     part: String,
     schema_ref: String,
-    registry_id: Option<i32>,
+    registry_key: Option<String>,
     table_schema_id: Option<i32>,
     field_ids: Option<Json<BTreeMap<String, i32>>>,
     rejection: Option<String>,
@@ -82,8 +82,8 @@ impl<'a> Schemas<'a> {
     pub async fn copy(&self, topic: &str, from: PartSchemaRef, to: SchemaRef) -> Result<(), Error> {
         sqlx::query(
             "INSERT INTO topic_schema \
-             (topic, part, schema_ref, registry_id, table_schema_id, field_ids, rejection) \
-             SELECT topic, part, $4, registry_id, table_schema_id, field_ids, rejection \
+             (topic, part, schema_ref, registry_key, table_schema_id, field_ids, rejection) \
+             SELECT topic, part, $4, registry_key, table_schema_id, field_ids, rejection \
              FROM topic_schema WHERE topic = $1 AND part = $2 AND schema_ref = $3 \
              ON CONFLICT (topic, part, schema_ref) DO NOTHING",
         )
@@ -109,7 +109,7 @@ impl<'a> Schemas<'a> {
 
     pub async fn topic_schemas(&self, topic: &str) -> Result<Vec<TopicSchema>, Error> {
         let rows: Vec<TopicSchemaRow> = sqlx::query_as(
-            "SELECT part, schema_ref, registry_id, table_schema_id, field_ids, rejection \
+            "SELECT part, schema_ref, registry_key, table_schema_id, field_ids, rejection \
              FROM topic_schema WHERE topic = $1 ORDER BY part, schema_ref",
         )
         .bind(topic)
@@ -181,7 +181,7 @@ async fn result(
     schema_ref: PartSchemaRef,
 ) -> Result<Option<MergeResult>, Error> {
     let row: Option<TopicSchemaRow> = sqlx::query_as(
-        "SELECT part, schema_ref, registry_id, table_schema_id, field_ids, rejection \
+        "SELECT part, schema_ref, registry_key, table_schema_id, field_ids, rejection \
          FROM topic_schema WHERE topic = $1 AND part = $2 AND schema_ref = $3",
     )
     .bind(topic)
@@ -263,16 +263,16 @@ async fn insert_result(
     schema_ref: PartSchemaRef,
     result: &MergeResult,
 ) -> Result<(), Error> {
-    let (registry_id, table_schema_id, field_ids, rejection) = match result {
+    let (registry_key, table_schema_id, field_ids, rejection) = match result {
         MergeResult::Merged {
-            registry_id,
+            registry_key,
             table_schema_id,
             field_ids,
         } => {
             let field_ids: BTreeMap<&str, i32> = field_ids.iter().collect();
 
             (
-                Some(*registry_id),
+                Some(registry_key.to_string()),
                 Some(*table_schema_id),
                 Some(Json(field_ids)),
                 None,
@@ -283,13 +283,13 @@ async fn insert_result(
 
     sqlx::query(
         "INSERT INTO topic_schema \
-         (topic, part, schema_ref, registry_id, table_schema_id, field_ids, rejection) \
+         (topic, part, schema_ref, registry_key, table_schema_id, field_ids, rejection) \
          VALUES ($1, $2, $3, $4, $5, $6, $7)",
     )
     .bind(topic)
     .bind(schema_ref.part().name())
     .bind(schema_ref.schema_ref().to_string())
-    .bind(registry_id)
+    .bind(registry_key)
     .bind(table_schema_id)
     .bind(field_ids)
     .bind(rejection)
@@ -307,17 +307,17 @@ fn parsed(definition: Value) -> Result<Schema, Error> {
 fn topic_schema(row: TopicSchemaRow) -> Result<TopicSchema, Error> {
     let corrupt = || Error::Corrupt("a topic schema row".to_owned());
     let part = Part::from_name(&row.part).ok_or_else(corrupt)?;
-    let schema_ref = SchemaRef::from_key(&row.schema_ref).ok_or_else(corrupt)?;
+    let schema_ref = SchemaRef::parse(&row.schema_ref).ok_or_else(corrupt)?;
 
     let result = match (
-        row.registry_id,
+        row.registry_key.as_deref().map(SchemaKey::parse),
         row.table_schema_id,
         row.field_ids,
         row.rejection,
     ) {
-        (Some(registry_id), Some(table_schema_id), Some(Json(field_ids)), None) => {
+        (Some(Some(registry_key)), Some(table_schema_id), Some(Json(field_ids)), None) => {
             MergeResult::Merged {
-                registry_id,
+                registry_key,
                 table_schema_id,
                 field_ids: field_ids.into_iter().collect(),
             }
@@ -351,8 +351,12 @@ mod tests {
             .map(|name| json!({"name": name, "type": "int"}))
             .collect();
         let definition = json!({"type": "record", "name": "R", "fields": fields});
-        let schema =
-            RegistrySchema::new(id, SchemaFormat::Avro, definition.to_string(), Vec::new());
+        let schema = RegistrySchema::new(
+            SchemaKey::Confluent(id),
+            SchemaFormat::Avro,
+            definition.to_string(),
+            Vec::new(),
+        );
 
         store.registry().put(&schema).await.unwrap();
         schema
@@ -362,11 +366,11 @@ mod tests {
         let set = SchemaSet::new(registry.clone(), Vec::new());
         let payload = PayloadSchema::parse(&set).unwrap();
 
-        merge(table, field_ids, Part::Value, &payload, registry.id()).unwrap()
+        merge(table, field_ids, Part::Value, &payload, registry.key()).unwrap()
     }
 
-    fn by_id(registry: &RegistrySchema) -> PartSchemaRef {
-        PartSchemaRef::new(Part::Value, SchemaRef::Id(registry.id()))
+    fn reference(registry: &RegistrySchema) -> PartSchemaRef {
+        PartSchemaRef::new(Part::Value, registry.key().schema_ref())
     }
 
     #[tokio::test]
@@ -387,8 +391,8 @@ mod tests {
         );
 
         let (one, two) = tokio::join!(
-            schemas.merge(topic.name(), by_id(&first), &first_merge),
-            schemas.merge(topic.name(), by_id(&second), &second_merge),
+            schemas.merge(topic.name(), reference(&first), &first_merge),
+            schemas.merge(topic.name(), reference(&second), &second_merge),
         );
 
         let (conflict, loser) = match (&one, &two) {
@@ -409,7 +413,7 @@ mod tests {
         let field_ids = schemas.field_ids(topic.name(), Part::Value).await.unwrap();
         let retried = Ok(merged(&latest, &field_ids, loser));
         schemas
-            .merge(topic.name(), by_id(loser), &retried)
+            .merge(topic.name(), reference(loser), &retried)
             .await
             .unwrap();
 
@@ -434,17 +438,22 @@ mod tests {
         };
         let topic = testing::topic(&store, 1).await;
         let registry = registered(&store, &["a"]).await;
-        let guid = SchemaRef::Guid(Uuid::new_v4());
-        let rejected_guid = PartSchemaRef::new(Part::Value, SchemaRef::Guid(Uuid::new_v4()));
+        let guid = SchemaRef::ConfluentGuid(Uuid::new_v4());
+        let rejected_guid =
+            PartSchemaRef::new(Part::Value, SchemaRef::ConfluentGuid(Uuid::new_v4()));
         let schemas = store.schemas();
         let first_merge = Ok(merged(binary_schema(), &FieldIds::default(), &registry));
 
         let first = schemas
-            .merge(topic.name(), by_id(&registry), &first_merge)
+            .merge(topic.name(), reference(&registry), &first_merge)
             .await
             .unwrap();
         let again = schemas
-            .merge(topic.name(), by_id(&registry), &Err(Rejection::Unsupported))
+            .merge(
+                topic.name(),
+                reference(&registry),
+                &Err(Rejection::Unsupported),
+            )
             .await
             .unwrap();
         schemas
@@ -452,7 +461,7 @@ mod tests {
             .await
             .unwrap();
         schemas
-            .copy(topic.name(), by_id(&registry), guid)
+            .copy(topic.name(), reference(&registry), guid)
             .await
             .unwrap();
 
