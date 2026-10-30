@@ -9,7 +9,7 @@ use crate::binary::{DECODED_KEY, RESERVED_NAMES};
 use crate::payload::PayloadSchema;
 use crate::registry::SchemaKey;
 use crate::types::{PayloadField, PayloadType, path};
-use crate::wire::PartSchemaRef;
+use crate::wire::PartSchemaId;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FieldIds {
@@ -19,6 +19,7 @@ pub struct FieldIds {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Rejection {
     Missing,
+    OtherRegistry,
     NotAccepted,
     Unsupported,
     ReservedName,
@@ -45,7 +46,7 @@ pub enum MergeResult {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TopicSchema {
-    schema_ref: PartSchemaRef,
+    schema_id: PartSchemaId,
     result: MergeResult,
 }
 
@@ -112,8 +113,9 @@ impl FromIterator<(String, i32)> for FieldIds {
 }
 
 impl Rejection {
-    pub(crate) const ALL: [Rejection; 4] = [
+    pub(crate) const ALL: [Rejection; 5] = [
         Rejection::Missing,
+        Rejection::OtherRegistry,
         Rejection::NotAccepted,
         Rejection::Unsupported,
         Rejection::ReservedName,
@@ -122,6 +124,7 @@ impl Rejection {
     pub fn name(self) -> &'static str {
         match self {
             Rejection::Missing => "missing",
+            Rejection::OtherRegistry => "other_registry",
             Rejection::NotAccepted => "not_accepted",
             Rejection::Unsupported => "unsupported",
             Rejection::ReservedName => "reserved_name",
@@ -171,12 +174,12 @@ impl Merge {
 }
 
 impl TopicSchema {
-    pub fn new(schema_ref: PartSchemaRef, result: MergeResult) -> TopicSchema {
-        TopicSchema { schema_ref, result }
+    pub fn new(schema_id: PartSchemaId, result: MergeResult) -> TopicSchema {
+        TopicSchema { schema_id, result }
     }
 
-    pub fn schema_ref(&self) -> PartSchemaRef {
-        self.schema_ref
+    pub fn schema_id(&self) -> PartSchemaId {
+        self.schema_id
     }
 
     pub fn result(&self) -> &MergeResult {

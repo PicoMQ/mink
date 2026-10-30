@@ -5,8 +5,8 @@ use iceberg::spec::Schema;
 use mink_core::{Part, Record};
 use mink_iceberg::{FileSchema, TypedSchema};
 use mink_schema::{
-    BINARY_SCHEMA_ID, Decoders, MergeResult, PartSchemaRef, PayloadSchema, Rejection, SchemaKey,
-    accept, merge, schema_refs,
+    BINARY_SCHEMA_ID, Decoders, MergeResult, PartSchemaId, PayloadSchema, Rejection, SchemaId,
+    SchemaKey, merge, schema_ids,
 };
 use mink_store::Store;
 
@@ -41,11 +41,11 @@ impl Schemas {
             return Ok(FileSchema::Binary);
         };
 
-        for schema_ref in schema_refs(records) {
-            let stored = self.store.schemas().result(topic, schema_ref).await?;
+        for schema_id in schema_ids(records) {
+            let stored = self.store.schemas().result(topic, schema_id).await?;
 
             if stored.is_none() {
-                self.merge_schema(registry, topic, schema_ref).await?;
+                self.merge_schema(registry, topic, schema_id).await?;
             }
         }
 
@@ -91,7 +91,7 @@ impl Schemas {
         let mut decoders = Decoders::default();
 
         for topic_schema in self.store.schemas().topic_schemas(topic).await? {
-            let schema_ref = topic_schema.schema_ref();
+            let schema_id = topic_schema.schema_id();
 
             match topic_schema.result() {
                 MergeResult::Merged {
@@ -101,9 +101,9 @@ impl Schemas {
                 } => {
                     let schema = self.parsed(*registry_key).await?;
 
-                    decoders.insert_typed(schema_ref, schema, field_ids.clone());
+                    decoders.insert_typed(schema_id, schema, field_ids.clone());
                 }
-                MergeResult::Rejected(_) => decoders.insert_raw(schema_ref),
+                MergeResult::Rejected(_) => decoders.insert_raw(schema_id),
             }
         }
 
@@ -114,29 +114,29 @@ impl Schemas {
         &self,
         registry: &dyn Registry,
         topic: &str,
-        schema_ref: PartSchemaRef,
+        schema_id: PartSchemaId,
     ) -> Result<(), Error> {
         let schemas = self.store.schemas();
 
-        let key = match retrying(|| registry.resolve(schema_ref.schema_ref())).await {
+        let key = match retrying(|| registry.resolve(schema_id.schema_id())).await {
             Ok(key) => key,
             Err(Failure::Rejected(rejection)) => {
-                schemas.merge(topic, schema_ref, &Err(rejection)).await?;
+                schemas.merge(topic, schema_id, &Err(rejection)).await?;
 
                 return Ok(());
             }
             Err(Failure::Failed(error)) => return Err(error),
         };
 
-        let canonical = PartSchemaRef::new(schema_ref.part(), key.schema_ref());
+        let canonical = PartSchemaId::new(schema_id.part(), SchemaId::Key(key));
         if schemas.result(topic, canonical).await?.is_none() {
             self.merge_registry_schema(registry, topic, canonical, key)
                 .await?;
         }
 
-        if schema_ref != canonical {
+        if schema_id != canonical {
             schemas
-                .copy(topic, canonical, schema_ref.schema_ref())
+                .copy(topic, canonical, schema_id.schema_id())
                 .await?;
         }
 
@@ -147,11 +147,11 @@ impl Schemas {
         &self,
         registry: &dyn Registry,
         topic: &str,
-        schema_ref: PartSchemaRef,
+        schema_id: PartSchemaId,
         key: SchemaKey,
     ) -> Result<(), Error> {
         let schemas = self.store.schemas();
-        let part = schema_ref.part();
+        let part = schema_id.part();
 
         let payload = match retrying(|| self.payload_schema(registry, topic, part, key)).await {
             Ok(payload) => Ok(payload),
@@ -170,7 +170,7 @@ impl Schemas {
                 Err(rejection) => Err(*rejection),
             };
 
-            match schemas.merge(topic, schema_ref, &merged).await {
+            match schemas.merge(topic, schema_id, &merged).await {
                 Ok(_) => return Ok(()),
                 Err(mink_store::Error::SchemaConflict { .. }) => continue,
                 Err(error) => return Err(error.into()),
@@ -185,12 +185,13 @@ impl Schemas {
         part: Part,
         key: SchemaKey,
     ) -> Result<Arc<PayloadSchema>, Failure> {
-        let set = registry::fetch(&self.store, registry, key).await?;
         if !registry.accepted(topic, part, key).await? {
             return Err(Failure::Rejected(Rejection::NotAccepted));
         }
 
-        let schema = Arc::new(accept(&set)?);
+        let set = registry::fetch(&self.store, registry, key).await?;
+        let schema = PayloadSchema::parse(&set).map_err(|_| Rejection::Unsupported)?;
+        let schema = Arc::new(schema);
 
         self.locked().insert(key, schema.clone());
         Ok(schema)

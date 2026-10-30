@@ -12,14 +12,15 @@ pub enum SchemaFormat {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum SchemaRef {
-    ConfluentId(i32),
+pub enum SchemaId {
+    Key(SchemaKey),
     ConfluentGuid(Uuid),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SchemaKey {
     Confluent(i32),
+    Glue(Uuid),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,23 +65,20 @@ impl SchemaFormat {
     }
 }
 
-impl SchemaRef {
-    pub fn parse(text: &str) -> Option<SchemaRef> {
-        let (kind, value) = text.split_once(':')?;
-
-        match kind {
-            "confluent-id" => value.parse().ok().map(SchemaRef::ConfluentId),
-            "confluent-guid" => Uuid::parse_str(value).ok().map(SchemaRef::ConfluentGuid),
-            _ => None,
+impl SchemaId {
+    pub fn parse(text: &str) -> Option<SchemaId> {
+        match text.split_once(':')? {
+            ("confluent-guid", guid) => Uuid::parse_str(guid).ok().map(SchemaId::ConfluentGuid),
+            _ => SchemaKey::parse(text).map(SchemaId::Key),
         }
     }
 }
 
-impl fmt::Display for SchemaRef {
+impl fmt::Display for SchemaId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SchemaRef::ConfluentId(id) => write!(f, "confluent-id:{id}"),
-            SchemaRef::ConfluentGuid(guid) => write!(f, "confluent-guid:{guid}"),
+            SchemaId::Key(key) => key.fmt(f),
+            SchemaId::ConfluentGuid(guid) => write!(f, "confluent-guid:{guid}"),
         }
     }
 }
@@ -91,13 +89,8 @@ impl SchemaKey {
 
         match kind {
             "confluent" => value.parse().ok().map(SchemaKey::Confluent),
+            "glue" => Uuid::parse_str(value).ok().map(SchemaKey::Glue),
             _ => None,
-        }
-    }
-
-    pub fn schema_ref(self) -> SchemaRef {
-        match self {
-            SchemaKey::Confluent(id) => SchemaRef::ConfluentId(id),
         }
     }
 }
@@ -106,6 +99,7 @@ impl fmt::Display for SchemaKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             SchemaKey::Confluent(id) => write!(f, "confluent:{id}"),
+            SchemaKey::Glue(version) => write!(f, "glue:{version}"),
         }
     }
 }
@@ -227,24 +221,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn names_refs_and_keys_round_trip() {
-        let refs = [
-            SchemaRef::ConfluentId(7),
-            SchemaRef::ConfluentGuid(Uuid::from_u128(9)),
+    fn formats_ids_and_keys_round_trip() {
+        let ids = [
+            SchemaId::Key(SchemaKey::Confluent(7)),
+            SchemaId::Key(SchemaKey::Glue(Uuid::from_u128(11))),
+            SchemaId::ConfluentGuid(Uuid::from_u128(9)),
         ];
 
         for format in SchemaFormat::ALL {
             assert_eq!(SchemaFormat::from_name(format.name()), Some(format));
         }
-        for schema_ref in refs {
-            assert_eq!(SchemaRef::parse(&schema_ref.to_string()), Some(schema_ref));
+        for id in ids {
+            assert_eq!(SchemaId::parse(&id.to_string()), Some(id));
         }
-        let key = SchemaKey::Confluent(7);
 
-        assert_eq!(SchemaKey::parse(&key.to_string()), Some(key));
-        assert_eq!(key.schema_ref(), SchemaRef::ConfluentId(7));
-        assert_eq!(SchemaRef::parse("name:7"), None);
-        assert_eq!(SchemaKey::parse("id:7"), None);
+        assert_eq!(ids[0].to_string(), "confluent:7");
+        assert_eq!(SchemaId::parse("name:7"), None);
+        assert_eq!(SchemaKey::parse("confluent-guid:7"), None);
         assert_eq!(subject("orders", Part::Value), "orders-value");
     }
 

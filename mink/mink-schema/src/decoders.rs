@@ -8,11 +8,11 @@ use crate::Error;
 use crate::columns::{ColumnValue, to_columns};
 use crate::merge::FieldIds;
 use crate::payload::PayloadSchema;
-use crate::wire::{PartSchemaRef, read_header};
+use crate::wire::{PartSchemaId, read_header};
 
 #[derive(Default)]
 pub struct Decoders {
-    by_ref: HashMap<PartSchemaRef, PartDecoder>,
+    by_schema_id: HashMap<PartSchemaId, PartDecoder>,
 }
 
 enum PartDecoder {
@@ -32,16 +32,16 @@ pub enum PartValues<'a> {
 impl Decoders {
     pub fn insert_typed(
         &mut self,
-        schema_ref: PartSchemaRef,
+        schema_id: PartSchemaId,
         schema: Arc<PayloadSchema>,
         field_ids: FieldIds,
     ) {
-        self.by_ref
-            .insert(schema_ref, PartDecoder::Typed { schema, field_ids });
+        self.by_schema_id
+            .insert(schema_id, PartDecoder::Typed { schema, field_ids });
     }
 
-    pub fn insert_raw(&mut self, schema_ref: PartSchemaRef) {
-        self.by_ref.insert(schema_ref, PartDecoder::Raw);
+    pub fn insert_raw(&mut self, schema_id: PartSchemaId) {
+        self.by_schema_id.insert(schema_id, PartDecoder::Raw);
     }
 
     pub fn values<'a>(
@@ -58,8 +58,8 @@ impl Decoders {
             return Ok(PartValues::Raw(bytes));
         };
 
-        let schema_ref = PartSchemaRef::new(part, header.schema_ref);
-        let values = match self.by_ref.get(&schema_ref) {
+        let schema_id = PartSchemaId::new(part, header.schema_id);
+        let values = match self.by_schema_id.get(&schema_id) {
             Some(PartDecoder::Typed { schema, field_ids }) => schema
                 .decode(&header.payload)
                 .and_then(|value| to_columns(value, field_ids, table))
@@ -68,7 +68,7 @@ impl Decoders {
             None => {
                 return Err(Error::UnmergedSchema {
                     part,
-                    schema_ref: header.schema_ref,
+                    schema_id: header.schema_id,
                 });
             }
         };
@@ -84,7 +84,7 @@ mod tests {
 
     use super::*;
     use crate::binary::binary_schema;
-    use crate::registry::{RegistrySchema, SchemaFormat, SchemaKey, SchemaRef, SchemaSet};
+    use crate::registry::{RegistrySchema, SchemaFormat, SchemaId, SchemaKey, SchemaSet};
     use crate::value::PayloadValue;
 
     fn guid_header() -> Header {
@@ -121,11 +121,14 @@ mod tests {
         let field_ids = FieldIds::from_iter([(String::new(), 10)]);
         let mut decoders = Decoders::default();
         decoders.insert_typed(
-            PartSchemaRef::new(Part::Value, SchemaRef::ConfluentId(1)),
+            PartSchemaId::new(Part::Value, SchemaId::Key(SchemaKey::Confluent(1))),
             schema,
             field_ids,
         );
-        decoders.insert_raw(PartSchemaRef::new(Part::Value, SchemaRef::ConfluentId(2)));
+        decoders.insert_raw(PartSchemaId::new(
+            Part::Value,
+            SchemaId::Key(SchemaKey::Confluent(2)),
+        ));
         let table = table();
 
         let rejected: &'static [u8] = &[0, 0, 0, 0, 2, 2];
@@ -156,7 +159,7 @@ mod tests {
             by_id,
             Err(Error::UnmergedSchema {
                 part: Part::Key,
-                schema_ref: SchemaRef::ConfluentId(9)
+                schema_id: SchemaId::Key(SchemaKey::Confluent(9))
             })
         ));
         assert!(matches!(

@@ -510,8 +510,8 @@ mod tests {
     use iceberg::spec::Datum;
     use mink_core::Part;
     use mink_schema::{
-        Decoders, FieldIds, PartSchemaRef, PayloadSchema, RegistrySchema, SchemaFormat, SchemaKey,
-        SchemaRef, SchemaSet, binary_schema, merge,
+        Decoders, FieldIds, PartSchemaId, PayloadSchema, RegistrySchema, SchemaFormat, SchemaId,
+        SchemaKey, SchemaSet, binary_schema, merge,
     };
 
     use super::*;
@@ -757,8 +757,8 @@ mod tests {
         )
         .unwrap();
         let mut decoders = Decoders::default();
-        let schema_ref = PartSchemaRef::new(Part::Value, SchemaRef::ConfluentId(1));
-        decoders.insert_typed(schema_ref, payload, merged.field_ids().clone());
+        let schema_id = PartSchemaId::new(Part::Value, SchemaId::Key(SchemaKey::Confluent(1)));
+        decoders.insert_typed(schema_id, payload, merged.field_ids().clone());
         let schema = merged.schema().unwrap().clone();
 
         let long = b"abcdefghijklmnopqrstuvwxyz";

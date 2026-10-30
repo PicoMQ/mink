@@ -1,0 +1,87 @@
+{
+  "records" : [ {
+    "case" : "types",
+    "record" : 0,
+    "part" : "value",
+    "confluent_id" : 63,
+    "version" : "ec09087e-7396-4e5f-aabb-ebfff56fe941",
+    "bytes" : "0300ec09087e73964e5faabbebfff56fe9417b2262223a747275652c2269223a2d372c2264223a322e352c2273223a2268c3a96c6c6f222c227473223a22323032362d31302d32385431323a30303a30302e3132333435365a222c226474223a22323032362d31302d3238222c2275223a2266383164346661652d376465632d313164302d613736352d303061306339316536626636222c2265223a22475245454e222c226f7074223a6e756c6c2c22617272223a5b312c325d2c226d223a7b2262223a322c2261223a317d2c226e6573746564223a7b2278223a352c2279223a22776879227d2c2263686f696365223a34322c2270616972223a5b312c2261225d2c22706f696e74223a7b2278223a312c2279223a327d2c2274726565223a7b2276616c7565223a312c226368696c6472656e223a5b7b2276616c7565223a322c226368696c6472656e223a5b5d7d5d7d7d"
+  }, {
+    "case" : "types",
+    "record" : 0,
+    "part" : "value",
+    "confluent_id" : 63,
+    "version" : "ec09087e-7396-4e5f-aabb-ebfff56fe941",
+    "bytes" : "0305ec09087e73964e5faabbebfff56fe941789c558e414ec3301045ef326bbbf20c8953bcafd8b140ac4059b8f144b16492c87580aaca8138071763521052252fc66ffe7f9a0b1cc195bcb082084e370a0238dad50a4ee060f8fe4a69020565fb9121abd168da3f233963e4ed90eeaadabe4824949b88904540bfc750f59e7513b8d388c168dfd85a1be34d778f6c8fbd95284bf4e1e9707894799ac5342e2929f039837b4545ad82377097ed58120c0e5705239f0a870d7f82938bcf22f918ce20ab6e986227d24ad2b38fbf16e989679ee258fe4a782d91144a66dee0bb4f0b5f17dd1053c83c4af51fd30d6ed7765d7f00ba8f58d7"
+  }, {
+    "case" : "evolution",
+    "record" : 0,
+    "part" : "value",
+    "confluent_id" : 64,
+    "version" : "1b02e84b-66bd-44b3-8663-4dee3173efd2",
+    "bytes" : "03001b02e84b66bd44b386634dee3173efd27b226964223a312c22616d6f756e74223a312e352c22737461747573223a226e6577222c226c6567616379223a377d"
+  }, {
+    "case" : "evolution",
+    "record" : 0,
+    "part" : "value",
+    "confluent_id" : 64,
+    "version" : "1b02e84b-66bd-44b3-8663-4dee3173efd2",
+    "bytes" : "03051b02e84b66bd44b386634dee3173efd2789cab56ca4c51b232d4514acccd2fcd2b0132f54c75948a4b124b4a8b95ac94f252cb9574947252d313932b95accc6b0154610e79"
+  }, {
+    "case" : "evolution",
+    "record" : 1,
+    "part" : "value",
+    "confluent_id" : 65,
+    "version" : "370638e8-56cc-40e1-9a2f-a10542b6396e",
+    "bytes" : "0300370638e856cc40e19a2fa10542b6396e7b226964223a322c22616d6f756e74223a322e32352c22737461747573223a2270616964222c226c6567616379223a382c2263757272656e6379223a22455552227d"
+  }, {
+    "case" : "evolution",
+    "record" : 1,
+    "part" : "value",
+    "confluent_id" : 65,
+    "version" : "370638e8-56cc-40e1-9a2f-a10542b6396e",
+    "bytes" : "0305370638e856cc40e19a2fa10542b6396e789cab56ca4c51b232d2514acccd2fcd2b0132f58c4c75948a4b124b4a8b95ac940a1281f23a4a39a9e989c9954a56163a4ac9a54545a979208e926b6890522d009d681447"
+  }, {
+    "case" : "evolution",
+    "record" : 2,
+    "part" : "value",
+    "confluent_id" : 66,
+    "version" : "e2ac2769-ec18-4ffb-8e0d-a4a18f569098",
+    "bytes" : "0300e2ac2769ec184ffb8e0da4a18f5690987b226964223a332c22616d6f756e74223a332e352c22737461747573223a2273656e74222c226c6567616379223a2278227d"
+  }, {
+    "case" : "evolution",
+    "record" : 2,
+    "part" : "value",
+    "confluent_id" : 66,
+    "version" : "e2ac2769-ec18-4ffb-8e0d-a4a18f569098",
+    "bytes" : "0305e2ac2769ec184ffb8e0da4a18f569098789cab56ca4c51b232d6514acccd2fcd2b0132f54c75948a4b124b4a8b95ac948a5381623a4a39a9e989c995407e85522d0083d50f72"
+  }, {
+    "case" : "wire",
+    "record" : 0,
+    "part" : "value",
+    "confluent_id" : 69,
+    "version" : "a4934bdf-0c3a-4fd2-8e72-9dcdc5308c0a",
+    "bytes" : "0300a4934bdf0c3a4fd28e729dcdc5308c0a7b226e223a317d"
+  }, {
+    "case" : "wire",
+    "record" : 0,
+    "part" : "value",
+    "confluent_id" : 69,
+    "version" : "a4934bdf-0c3a-4fd2-8e72-9dcdc5308c0a",
+    "bytes" : "0305a4934bdf0c3a4fd28e729dcdc5308c0a789cab56ca53b232ac0500086b0216"
+  }, {
+    "case" : "wire",
+    "record" : 1,
+    "part" : "value",
+    "confluent_id" : 69,
+    "version" : "a4934bdf-0c3a-4fd2-8e72-9dcdc5308c0a",
+    "bytes" : "0300a4934bdf0c3a4fd28e729dcdc5308c0a7b226e223a327d"
+  }, {
+    "case" : "wire",
+    "record" : 1,
+    "part" : "value",
+    "confluent_id" : 69,
+    "version" : "a4934bdf-0c3a-4fd2-8e72-9dcdc5308c0a",
+    "bytes" : "0305a4934bdf0c3a4fd28e729dcdc5308c0a789cab56ca53b232aa0500086d0217"
+  } ]
+}

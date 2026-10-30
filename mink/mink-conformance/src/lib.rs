@@ -19,7 +19,8 @@ pub use kafka::{
 };
 pub use metadata::{MetadataFixture, MetadataStep, bless_metadata, metadata_fixture};
 pub use payload::{
-    ExpectedMerge, MergeStep, PayloadCase, PayloadFixture, PayloadRecord, payload_fixture,
+    ExpectedMerge, GlueFixture, GlueRecord, MergeStep, PayloadCase, PayloadFixture, PayloadRecord,
+    glue_fixture, payload_fixture,
 };
 pub use postgres::fresh_schema;
 pub use records::{RecordFixture, record_fixtures};

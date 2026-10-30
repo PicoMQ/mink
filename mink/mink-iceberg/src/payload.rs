@@ -7,12 +7,13 @@ use arrow_array::types::{
     Time64MicrosecondType, TimestampMicrosecondType,
 };
 use arrow_array::{Array, ArrayRef, RecordBatch};
+use bytes::Bytes;
 use iceberg::spec::{PrimitiveType, Schema, Type};
-use mink_conformance::{ExpectedMerge, PayloadCase, PayloadFixture, payload_fixture};
+use mink_conformance::{ExpectedMerge, PayloadCase, PayloadFixture, glue_fixture, payload_fixture};
 use mink_core::{Part, Partition, Record};
 use mink_schema::{
-    Decoders, FieldIds, Merge, PayloadSchema, Rejection, SchemaFormat, SchemaKey, SchemaRef,
-    SchemaSet, accept, binary_schema, merge, schema_refs, subject,
+    Decoders, FieldIds, Merge, PartSchemaId, PayloadSchema, RegistrySchema, Rejection,
+    SchemaFormat, SchemaId, SchemaKey, SchemaSet, binary_schema, merge, schema_ids, subject,
 };
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
@@ -23,6 +24,7 @@ use crate::schema::{FileSchema, TypedSchema};
 struct FixtureTable {
     steps: Vec<Step>,
     decoders: Decoders,
+    typed: HashMap<(Part, i32), (Arc<PayloadSchema>, FieldIds)>,
 }
 
 struct Step {
@@ -35,6 +37,21 @@ impl FixtureTable {
         self.steps
             .last()
             .map_or_else(|| binary_schema(), |step| &step.table)
+    }
+
+    fn decode_glue(&mut self, fixture: &PayloadFixture, part: Part, version: Uuid, id: i32) {
+        let key = SchemaKey::Glue(version);
+        let confluent = fixture.schema(id).and_then(|entry| entry.schema()).unwrap();
+        let schema =
+            RegistrySchema::new(key, confluent.format(), confluent.definition(), Vec::new());
+        let payload = PayloadSchema::parse(&SchemaSet::new(schema, Vec::new())).unwrap();
+        let (_, field_ids) = &self.typed[&(part, id)];
+
+        self.decoders.insert_typed(
+            PartSchemaId::new(part, SchemaId::Key(key)),
+            Arc::new(payload),
+            field_ids.clone(),
+        );
     }
 
     fn rows(self, records: &[Record]) -> RecordBatch {
@@ -50,7 +67,7 @@ async fn merge_fixture(fixture: &PayloadFixture, case: &PayloadCase) -> FixtureT
     let mut latest = binary_schema().clone();
     let mut identity_field_ids: HashMap<Part, FieldIds> = HashMap::new();
     let mut payloads: HashMap<SchemaKey, Arc<PayloadSchema>> = HashMap::new();
-    let mut merged_by_id: HashMap<(Part, i32), Result<Merge, Rejection>> = HashMap::new();
+    let mut typed: HashMap<(Part, i32), (Arc<PayloadSchema>, FieldIds)> = HashMap::new();
     let mut steps = Vec::new();
 
     for step in case.merges() {
@@ -60,7 +77,7 @@ async fn merge_fixture(fixture: &PayloadFixture, case: &PayloadCase) -> FixtureT
 
         let payload = match schema_set(fixture, id).await {
             Some(_) if !registered_under_subject => Err(Rejection::NotAccepted),
-            Some(set) => accept(&set),
+            Some(set) => PayloadSchema::parse(&set).map_err(|_| Rejection::Unsupported),
             None => Err(Rejection::Missing),
         };
         let ids = identity_field_ids.entry(part).or_default();
@@ -81,7 +98,11 @@ async fn merge_fixture(fixture: &PayloadFixture, case: &PayloadCase) -> FixtureT
             *ids = merged.identity_field_ids().clone();
         }
 
-        merged_by_id.insert((part, id), merged.clone());
+        if let Ok(merged) = &merged {
+            let payload = payloads[&merged.registry_key()].clone();
+
+            typed.insert((part, id), (payload, merged.field_ids().clone()));
+        }
 
         steps.push(Step {
             merged,
@@ -91,23 +112,26 @@ async fn merge_fixture(fixture: &PayloadFixture, case: &PayloadCase) -> FixtureT
 
     let mut decoders = Decoders::default();
 
-    for schema_ref in schema_refs(&records(case)) {
-        let id = match schema_ref.schema_ref() {
-            SchemaRef::ConfluentId(id) => Some(id),
-            SchemaRef::ConfluentGuid(guid) => fixture.guid(guid),
+    for schema_id in schema_ids(&records(case)) {
+        let id = match schema_id.schema_id() {
+            SchemaId::Key(SchemaKey::Confluent(id)) => Some(id),
+            SchemaId::ConfluentGuid(guid) => fixture.guid(guid),
+            SchemaId::Key(SchemaKey::Glue(_)) => None,
         };
 
-        match id.and_then(|id| merged_by_id.get(&(schema_ref.part(), id))) {
-            Some(Ok(merged)) => {
-                let payload = payloads[&merged.registry_key()].clone();
-
-                decoders.insert_typed(schema_ref, payload, merged.field_ids().clone());
+        match id.and_then(|id| typed.get(&(schema_id.part(), id))) {
+            Some((payload, field_ids)) => {
+                decoders.insert_typed(schema_id, payload.clone(), field_ids.clone());
             }
-            _ => decoders.insert_raw(schema_ref),
+            None => decoders.insert_raw(schema_id),
         }
     }
 
-    FixtureTable { steps, decoders }
+    FixtureTable {
+        steps,
+        decoders,
+        typed,
+    }
 }
 
 async fn schema_set(fixture: &PayloadFixture, id: i32) -> Option<SchemaSet> {
@@ -116,6 +140,7 @@ async fn schema_set(fixture: &PayloadFixture, id: i32) -> Option<SchemaSet> {
             SchemaKey::Confluent(id) => {
                 fixture.schema(id).and_then(|entry| entry.schema()).cloned()
             }
+            SchemaKey::Glue(_) => unreachable!("payload fixtures name Confluent schemas"),
         };
 
         async move { schema.ok_or(()) }
@@ -129,6 +154,74 @@ fn records(case: &PayloadCase) -> Vec<Record> {
         .iter()
         .map(|record| record.record().clone())
         .collect()
+}
+
+fn glued(source: &Record, part: Part, bytes: &Bytes) -> Record {
+    let named = format!("__{}_schema_id", part.name());
+    let headers = source
+        .headers()
+        .iter()
+        .filter(|header| header.key() != named)
+        .cloned()
+        .collect();
+    let (key, value) = match part {
+        Part::Key => (Some(bytes.clone()), source.value().cloned()),
+        Part::Value => (source.key().cloned(), Some(bytes.clone())),
+    };
+
+    Record::new(source.offset(), source.timestamp_ms(), key, value, headers).unwrap()
+}
+
+async fn assert_glue_rows(format: SchemaFormat) {
+    let fixture = payload_fixture(format);
+    let glue = glue_fixture(format);
+
+    for case in fixture.cases() {
+        let written: Vec<_> = glue
+            .records()
+            .iter()
+            .filter(|record| record.case() == case.name())
+            .collect();
+        if written.is_empty() {
+            continue;
+        }
+
+        let mut table = merge_fixture(&fixture, case).await;
+        for record in &written {
+            table.decode_glue(
+                &fixture,
+                record.part(),
+                record.version(),
+                record.confluent_id(),
+            );
+        }
+        let records: Vec<Record> = written
+            .iter()
+            .map(|record| {
+                let source = case.records()[record.record()].record();
+                glued(source, record.part(), record.bytes())
+            })
+            .collect();
+        let schema = table.latest().clone();
+
+        let rows = table.rows(&records);
+
+        for (index, record) in written.iter().enumerate() {
+            let actual = row(&rows, &schema, index);
+            let expected = case.records()[record.record()].row();
+
+            for (column, expected) in expected.as_object().unwrap() {
+                assert_eq!(
+                    &actual[column],
+                    expected,
+                    "{} record {} {} column {column}",
+                    case.name(),
+                    record.record(),
+                    record.part().name(),
+                );
+            }
+        }
+    }
 }
 
 async fn assert_tables(format: SchemaFormat) {
@@ -205,6 +298,21 @@ async fn json_fixtures_merge_to_their_table_schemas() {
 #[tokio::test]
 async fn json_fixtures_decode_to_their_rows() {
     assert_rows(SchemaFormat::Json).await;
+}
+
+#[tokio::test]
+async fn avro_written_through_glue_decodes_to_the_same_rows() {
+    assert_glue_rows(SchemaFormat::Avro).await;
+}
+
+#[tokio::test]
+async fn protobuf_written_through_glue_decodes_to_the_same_rows() {
+    assert_glue_rows(SchemaFormat::Protobuf).await;
+}
+
+#[tokio::test]
+async fn json_written_through_glue_decodes_to_the_same_rows() {
+    assert_glue_rows(SchemaFormat::Json).await;
 }
 
 fn row(rows: &RecordBatch, schema: &Schema, index: usize) -> Value {

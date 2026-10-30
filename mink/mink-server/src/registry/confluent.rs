@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use mink_core::Part;
 use mink_metrics::{Answer, Metrics};
 use mink_schema::{
-    Reference, RegistrySchema, Rejection, SchemaFormat, SchemaKey, SchemaRef, subject,
+    Reference, RegistrySchema, Rejection, SchemaFormat, SchemaId, SchemaKey, subject,
 };
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
@@ -83,25 +83,6 @@ impl Confluent {
         })
     }
 
-    async fn subject_exists(&self, subject: &str) -> Result<bool, Error> {
-        let versions: Option<Vec<i32>> = self
-            .get(&format!("/subjects/{subject}/versions?deleted=true"))
-            .await?;
-
-        Ok(versions.is_some())
-    }
-
-    async fn registered_under(&self, id: i32, subject: &str) -> Result<bool, Error> {
-        let versions: Option<Vec<SubjectVersion>> = self
-            .get(&format!("/schemas/ids/{id}/versions?deleted=true"))
-            .await?;
-
-        Ok(versions
-            .unwrap_or_default()
-            .iter()
-            .any(|version| version.subject == subject))
-    }
-
     async fn guid_id(&self, guid: Uuid) -> Result<Option<i32>, Error> {
         let ids: Option<Vec<ContextId>> = self.get(&format!("/schemas/guids/{guid}/ids")).await?;
 
@@ -166,18 +147,21 @@ impl Registry for Confluent {
         subjects.is_ok()
     }
 
-    async fn resolve(&self, schema_ref: SchemaRef) -> Result<SchemaKey, Failure> {
-        match schema_ref {
-            SchemaRef::ConfluentId(id) => Ok(SchemaKey::Confluent(id)),
-            SchemaRef::ConfluentGuid(guid) => match self.guid_id(guid).await? {
+    async fn resolve(&self, schema_id: SchemaId) -> Result<SchemaKey, Failure> {
+        match schema_id {
+            SchemaId::Key(SchemaKey::Confluent(id)) => Ok(SchemaKey::Confluent(id)),
+            SchemaId::ConfluentGuid(guid) => match self.guid_id(guid).await? {
                 Some(id) => Ok(SchemaKey::Confluent(id)),
                 None => Err(Failure::Rejected(Rejection::Missing)),
             },
+            SchemaId::Key(SchemaKey::Glue(_)) => Err(Failure::Rejected(Rejection::OtherRegistry)),
         }
     }
 
     async fn schema(&self, key: SchemaKey) -> Result<RegistrySchema, Failure> {
-        let SchemaKey::Confluent(id) = key;
+        let SchemaKey::Confluent(id) = key else {
+            return Err(Failure::Failed(Error::ForeignSchemaKey(key)));
+        };
 
         let Some(response) = self
             .get::<SchemaResponse>(&format!("/schemas/ids/{id}"))
@@ -214,14 +198,19 @@ impl Registry for Confluent {
     }
 
     async fn accepted(&self, topic: &str, part: Part, key: SchemaKey) -> Result<bool, Failure> {
-        let SchemaKey::Confluent(id) = key;
+        let SchemaKey::Confluent(id) = key else {
+            return Err(Failure::Failed(Error::ForeignSchemaKey(key)));
+        };
         let subject = subject(topic, part);
 
-        if !self.subject_exists(&subject).await? {
-            return Ok(false);
-        }
+        let Some(versions) = self
+            .get::<Vec<SubjectVersion>>(&format!("/schemas/ids/{id}/versions?deleted=true"))
+            .await?
+        else {
+            return Err(Failure::Rejected(Rejection::Missing));
+        };
 
-        Ok(self.registered_under(id, &subject).await?)
+        Ok(versions.iter().any(|version| version.subject == subject))
     }
 }
 
@@ -314,9 +303,9 @@ mod tests {
         let guid = mink_conformance::schema_guid(&setup.url, setup.main).await;
         let client = client(&setup.url);
 
-        let resolved = client.resolve(SchemaRef::ConfluentGuid(guid)).await;
+        let resolved = client.resolve(SchemaId::ConfluentGuid(guid)).await;
         let unknown = client
-            .resolve(SchemaRef::ConfluentGuid(Uuid::new_v4()))
+            .resolve(SchemaId::ConfluentGuid(Uuid::new_v4()))
             .await;
 
         assert!(
@@ -374,6 +363,22 @@ mod tests {
         );
         assert!(matches!(unstored, Err(Error::UnstoredRegistrySchema(key)) if key == unknown));
         assert_eq!(store.registry().get(unknown).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn ids_resolve_to_themselves_and_glue_versions_to_another_registry() {
+        let client = client(UNREACHABLE);
+
+        let own = client.resolve(SchemaId::Key(SchemaKey::Confluent(7))).await;
+        let glue = client
+            .resolve(SchemaId::Key(SchemaKey::Glue(Uuid::new_v4())))
+            .await;
+
+        assert!(matches!(own, Ok(SchemaKey::Confluent(7))), "{own:?}");
+        assert!(
+            matches!(glue, Err(Failure::Rejected(Rejection::OtherRegistry))),
+            "{glue:?}"
+        );
     }
 
     #[test]

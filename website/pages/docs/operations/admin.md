@@ -50,7 +50,7 @@ Every node with the `admin` role serves the admin API, the [console](/docs/opera
 | `GET /admin/tables/{name}/files/{file}` | One file, with its path and per-column statistics |
 | `GET /admin/tables/{name}/snapshots` | Snapshots, newest first |
 | `GET /admin/tables/{name}/snapshots/{id}` | One snapshot, with each partition's offsets and its metadata location |
-| `GET /admin/tables/{name}/schemas` | Every table schema, and every schema reference records named, merged or rejected |
+| `GET /admin/tables/{name}/schemas` | Every table schema, and every schema id records named, merged or rejected |
 
 ## Records
 

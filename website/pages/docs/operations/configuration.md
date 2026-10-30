@@ -62,9 +62,11 @@ Durations are a number and a unit: `ms`, `s`, `m` or `h`. Sizes are bytes. Every
 | `storage.endpoint` | none | An S3-compatible store such as RustFS or MinIO, addressed in path style. Without it, AWS S3 in `storage.region`. |
 | `storage.region` | `us-east-1` | The bucket's region |
 | `storage.credentials` | none | `{ access_key_id, secret_access_key }`. Without them, AWS's own sources: the `AWS_*` environment variables, web identity, the ECS task role, EKS Pod Identity, or the instance profile. |
-| `schema_registry.type` | none | `confluent`, for Confluent Schema Registry or a registry with its API. Without a registry, new records keep their raw bytes. |
-| `schema_registry.url` | none | The registry's URL |
-| `schema_registry.username`, `schema_registry.password` | none | Basic authentication for the registry |
+| `schema_registry.type` | none | `confluent`, for Confluent Schema Registry or a registry with its API, or `glue`, for AWS Glue Schema Registry. Without a registry, new records keep their raw bytes. |
+| `schema_registry.url` | none | For `confluent`: the registry's URL |
+| `schema_registry.username`, `schema_registry.password` | none | For `confluent`: Basic authentication |
+| `schema_registry.name` | none | For `glue`: the registry's name. A record's schema must be a version of the schema named after its topic. |
+| `schema_registry.region` | none | For `glue`: the registry's region. Without it, the AWS SDK's own sources, such as `AWS_REGION`. Credentials come from the AWS SDK's default credential chain. |
 | `namespace` | `kafka` | The catalog's one namespace |
 
 ## Indexing

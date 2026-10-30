@@ -25,12 +25,13 @@ A topic written with Schema Registry schemas gets more columns after these.
 
 ## Schema Registry
 
-Mink reads the schema id the way Confluent's serializers write it.
+Mink reads the schema id the way Confluent's and AWS Glue's serializers write it, in this order.
 
 | Format | Where |
 | --- | --- |
-| Payload prefix | Byte `0`, then the schema id as 4 bytes, then the payload |
-| Header | `__key_schema_id` or `__value_schema_id`, holding byte `1` and the schema's GUID. The header wins over a payload prefix. |
+| Header | `__key_schema_id` or `__value_schema_id`, holding byte `1` and the schema's GUID. The header wins over a prefix. |
+| Glue prefix | Byte `3`, the compression byte (`0` none, `5` zlib), then the schema version UUID as 16 bytes, then the payload |
+| Confluent prefix | Byte `0`, then the schema id as 4 bytes, then the payload |
 
 A part without a schema id, with a schema Mink cannot read, or with bytes that do not decode keeps its raw bytes in `_kafka_key` or `_kafka_value`, and its typed columns are null. A part that does not decode is not an error.
 

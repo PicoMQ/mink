@@ -94,6 +94,10 @@ pub enum SchemaRegistry {
         username: Option<String>,
         password: Option<String>,
     },
+    Glue {
+        name: String,
+        region: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -218,9 +222,17 @@ impl Config {
             ),
             (
                 "schema_registry",
-                self.schema_registry
-                    .as_ref()
-                    .map_or("none".to_owned(), SchemaRegistry::location),
+                match &self.schema_registry {
+                    None => "none".to_owned(),
+                    Some(SchemaRegistry::Confluent { url, .. }) => url.clone(),
+                    Some(SchemaRegistry::Glue {
+                        name,
+                        region: Some(region),
+                    }) => format!("AWS Glue registry {name} in {region}"),
+                    Some(SchemaRegistry::Glue { name, region: None }) => {
+                        format!("AWS Glue registry {name}")
+                    }
+                },
             ),
             ("namespace", self.namespace.clone()),
             ("admin_address", self.admin_address.to_string()),
@@ -284,14 +296,6 @@ impl Config {
             return Err(ConfigError::RemoteAdmin(self.admin_address));
         }
         Ok(())
-    }
-}
-
-impl SchemaRegistry {
-    pub(crate) fn location(&self) -> String {
-        match self {
-            SchemaRegistry::Confluent { url, .. } => url.clone(),
-        }
     }
 }
 
@@ -622,11 +626,16 @@ mod tests {
                 "[schema_registry]\ntype = \"confluent\"\nurl = \"http://registry:8081\"",
             )?;
             jail.create_file(
+                "glue.toml",
+                "[schema_registry]\ntype = \"glue\"\nname = \"mink\"\nregion = \"us-east-1\"",
+            )?;
+            jail.create_file(
                 "unknown.toml",
                 "[schema_registry]\ntype = \"other\"\nurl = \"http://registry:8081\"",
             )?;
 
             let confluent = Config::load(Some(Path::new("confluent.toml"))).unwrap();
+            let glue = Config::load(Some(Path::new("glue.toml"))).unwrap();
             let unknown = Config::load(Some(Path::new("unknown.toml")));
 
             assert_eq!(
@@ -640,6 +649,10 @@ mod tests {
             assert_eq!(
                 confluent.describe()["schema_registry"],
                 "http://registry:8081"
+            );
+            assert_eq!(
+                glue.describe()["schema_registry"],
+                "AWS Glue registry mink in us-east-1"
             );
             assert!(matches!(unknown, Err(ConfigError::Load(_))), "{unknown:?}");
             Ok(())

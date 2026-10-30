@@ -32,6 +32,19 @@ pub struct PayloadCase {
     records: Vec<PayloadRecord>,
 }
 
+pub struct GlueFixture {
+    records: Vec<GlueRecord>,
+}
+
+pub struct GlueRecord {
+    case: String,
+    record: usize,
+    part: Part,
+    confluent_id: i32,
+    version: Uuid,
+    bytes: Bytes,
+}
+
 pub struct MergeStep {
     part: Part,
     id: i32,
@@ -253,4 +266,59 @@ fn payload_record(offset: i64, json: &Value) -> PayloadRecord {
         record,
         row: json["row"].clone(),
     }
+}
+
+impl GlueFixture {
+    pub fn records(&self) -> &[GlueRecord] {
+        &self.records
+    }
+}
+
+impl GlueRecord {
+    pub fn case(&self) -> &str {
+        &self.case
+    }
+
+    pub fn record(&self) -> usize {
+        self.record
+    }
+
+    pub fn part(&self) -> Part {
+        self.part
+    }
+
+    pub fn confluent_id(&self) -> i32 {
+        self.confluent_id
+    }
+
+    pub fn version(&self) -> Uuid {
+        self.version
+    }
+
+    pub fn bytes(&self) -> &Bytes {
+        &self.bytes
+    }
+}
+
+pub fn glue_fixture(format: SchemaFormat) -> GlueFixture {
+    let path = fixtures("payload")
+        .join("glue")
+        .join(format!("{}.json", format.name()));
+    let json: Value = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+
+    let records = json["records"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|record| GlueRecord {
+            case: record["case"].as_str().unwrap().to_owned(),
+            record: usize::try_from(record["record"].as_u64().unwrap()).unwrap(),
+            part: Part::from_name(record["part"].as_str().unwrap()).unwrap(),
+            confluent_id: i32::try_from(record["confluent_id"].as_i64().unwrap()).unwrap(),
+            version: Uuid::parse_str(record["version"].as_str().unwrap()).unwrap(),
+            bytes: Bytes::from(hex::decode(record["bytes"].as_str().unwrap()).unwrap()),
+        })
+        .collect();
+
+    GlueFixture { records }
 }

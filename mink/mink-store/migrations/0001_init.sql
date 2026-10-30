@@ -130,12 +130,12 @@ CREATE TABLE field (
 CREATE TABLE topic_schema (
     topic TEXT NOT NULL REFERENCES topic (name) ON DELETE CASCADE,
     part TEXT NOT NULL CHECK (part IN ('key', 'value')),
-    schema_ref TEXT NOT NULL,
+    schema_id TEXT NOT NULL,
     registry_key TEXT REFERENCES registry_schema (key),
     table_schema_id INTEGER CHECK (table_schema_id >= 0),
     field_ids JSONB,
-    rejection TEXT CHECK (rejection IN ('missing', 'not_accepted', 'unsupported', 'reserved_name')),
-    PRIMARY KEY (topic, part, schema_ref),
+    rejection TEXT CHECK (rejection IN ('missing', 'other_registry', 'not_accepted', 'unsupported', 'reserved_name')),
+    PRIMARY KEY (topic, part, schema_id),
     CHECK ((rejection IS NULL) = (registry_key IS NOT NULL)),
     CHECK ((rejection IS NULL) = (table_schema_id IS NOT NULL)),
     CHECK ((rejection IS NULL) = (field_ids IS NOT NULL))

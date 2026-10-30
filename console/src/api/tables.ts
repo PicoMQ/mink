@@ -98,18 +98,18 @@ interface SchemaField {
   fields?: SchemaField[]
 }
 
-export interface Reference {
+export interface Merge {
   part: 'key' | 'value'
-  reference: string
+  schemaId: string
   registryKey: string | null
-  schemaId: number | null
+  tableSchemaId: number | null
   rejection: string | null
 }
 
 interface Schemas {
   current: number
   schemas: { id: number; fields: SchemaField[] }[]
-  references: Reference[]
+  merges: Merge[]
 }
 
 export const tables = (prefix?: string) => listing<Table>(['tables'], { prefix })

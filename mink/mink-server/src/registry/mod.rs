@@ -1,14 +1,16 @@
 mod confluent;
+mod glue;
 
 use std::time::Duration;
 
 use async_trait::async_trait;
 use mink_core::Part;
 use mink_metrics::Metrics;
-use mink_schema::{RegistrySchema, Rejection, SchemaKey, SchemaRef, SchemaSet};
+use mink_schema::{RegistrySchema, Rejection, SchemaId, SchemaKey, SchemaSet};
 use mink_store::Store;
 
 use confluent::Confluent;
+use glue::Glue;
 
 use crate::Error;
 use crate::config::SchemaRegistry;
@@ -43,14 +45,14 @@ impl From<Rejection> for Failure {
 pub(crate) trait Registry: Send + Sync {
     async fn reachable(&self) -> bool;
 
-    async fn resolve(&self, schema_ref: SchemaRef) -> Result<SchemaKey, Failure>;
+    async fn resolve(&self, schema_id: SchemaId) -> Result<SchemaKey, Failure>;
 
     async fn schema(&self, key: SchemaKey) -> Result<RegistrySchema, Failure>;
 
     async fn accepted(&self, topic: &str, part: Part, key: SchemaKey) -> Result<bool, Failure>;
 }
 
-pub(crate) fn connect(
+pub(crate) async fn connect(
     settings: &SchemaRegistry,
     metrics: Metrics,
 ) -> Result<Box<dyn Registry>, Error> {
@@ -65,6 +67,9 @@ pub(crate) fn connect(
             password.clone(),
             metrics,
         )?)),
+        SchemaRegistry::Glue { name, region } => Ok(Box::new(
+            Glue::new(name.clone(), region.clone(), metrics).await,
+        )),
     }
 }
 
