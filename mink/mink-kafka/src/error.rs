@@ -35,7 +35,7 @@ pub enum Error {
     UnknownBroker(BrokerId),
     #[error("{0:?} is not in the cluster metadata")]
     UnknownPartition(Partition),
-    #[error("no broker answered: {}", listed(.0))]
+    #[error("every broker failed: {}", listed(.0))]
     Unreachable(Vec<(String, Error)>),
     #[error("timestamp {0} is negative")]
     InvalidTimestamp(i64),

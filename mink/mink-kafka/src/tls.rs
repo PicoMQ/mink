@@ -1,8 +1,8 @@
-use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rustls_platform_verifier::Verifier;
+use serde::{Deserialize, Serialize};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
 use tokio_rustls::client::TlsStream;
@@ -14,15 +14,20 @@ use tokio_rustls::rustls::pki_types::{CertificateDer, ServerName};
 
 use crate::Error;
 
-#[derive(Clone)]
-pub(crate) struct Tls {
-    connector: TlsConnector,
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Tls {
+    ca: Option<PathBuf>,
 }
 
 impl Tls {
-    pub(crate) fn new(ca: Option<&Path>) -> Result<Tls, Error> {
+    pub fn new(ca: Option<PathBuf>) -> Tls {
+        Tls { ca }
+    }
+
+    pub(crate) fn connector(&self) -> Result<TlsConnector, Error> {
         let provider = Arc::new(aws_lc_rs::default_provider());
-        let verifier = match ca {
+        let verifier = match &self.ca {
             Some(ca) => Verifier::new_with_extra_roots(certificates(ca)?, provider.clone())?,
             None => Verifier::new(provider.clone())?,
         };
@@ -33,35 +38,27 @@ impl Tls {
             .with_custom_certificate_verifier(Arc::new(verifier))
             .with_no_client_auth();
 
-        Ok(Tls {
-            connector: TlsConnector::from(Arc::new(config)),
-        })
-    }
-
-    pub(crate) async fn connect(
-        &self,
-        address: &str,
-        stream: TcpStream,
-    ) -> Result<TlsStream<TcpStream>, Error> {
-        let name = ServerName::try_from(host(address).to_owned())
-            .map_err(|_| Error::ServerName(address.to_owned()))?;
-
-        self.connector.connect(name, stream).await.map_err(|error| {
-            match error
-                .get_ref()
-                .and_then(|inner| inner.downcast_ref::<rustls::Error>())
-            {
-                Some(rejected) => Error::Tls(rejected.clone()),
-                None => Error::Io(error),
-            }
-        })
+        Ok(TlsConnector::from(Arc::new(config)))
     }
 }
 
-impl fmt::Debug for Tls {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.debug_struct("Tls").finish_non_exhaustive()
-    }
+pub(crate) async fn connect(
+    connector: &TlsConnector,
+    address: &str,
+    stream: TcpStream,
+) -> Result<TlsStream<TcpStream>, Error> {
+    let name = ServerName::try_from(host(address).to_owned())
+        .map_err(|_| Error::ServerName(address.to_owned()))?;
+
+    connector.connect(name, stream).await.map_err(|error| {
+        match error
+            .get_ref()
+            .and_then(|inner| inner.downcast_ref::<rustls::Error>())
+        {
+            Some(rejected) => Error::Tls(rejected.clone()),
+            None => Error::Io(error),
+        }
+    })
 }
 
 fn certificates(ca: &Path) -> Result<Vec<CertificateDer<'static>>, Error> {
@@ -106,11 +103,19 @@ mod tests {
         let empty = std::env::temp_dir().join(format!("mink-empty-{}.pem", std::process::id()));
         std::fs::write(&empty, "").unwrap();
 
-        let missing = Tls::new(Some(Path::new("/nonexistent/ca.pem")));
-        let without = Tls::new(Some(&empty));
+        let missing = Tls::new(Some(PathBuf::from("/nonexistent/ca.pem"))).connector();
+        let without = Tls::new(Some(empty.clone())).connector();
 
-        assert!(matches!(missing, Err(Error::CaFile { .. })), "{missing:?}");
-        assert!(matches!(without, Err(Error::CaFile { .. })), "{without:?}");
+        assert!(
+            matches!(missing, Err(Error::CaFile { .. })),
+            "{:?}",
+            missing.err()
+        );
+        assert!(
+            matches!(without, Err(Error::CaFile { .. })),
+            "{:?}",
+            without.err()
+        );
         std::fs::remove_file(empty).unwrap();
     }
 }

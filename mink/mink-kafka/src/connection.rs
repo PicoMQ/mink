@@ -16,11 +16,9 @@ use kafka_protocol::protocol::{
 use mink_core::Partition;
 use mink_metrics::{Metrics, Outcome};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::net::TcpStream;
 
 use crate::Error;
 use crate::codes::{NONE, UNSUPPORTED_SASL_MECHANISM, check};
-use crate::config::Config;
 use crate::sasl::Mechanism;
 
 const CLIENT_ID: &str = "mink";
@@ -32,7 +30,6 @@ const LIST_OFFSETS: RangeInclusive<i16> = 2..=10;
 const FETCH: RangeInclusive<i16> = 4..=12;
 const SASL_HANDSHAKE: RangeInclusive<i16> = 1..=1;
 const SASL_AUTHENTICATE: RangeInclusive<i16> = 0..=2;
-const SESSION_SHARE: f64 = 0.9;
 
 const NO_REPLICA: BrokerId = BrokerId(-1);
 const NO_LEADER_EPOCH: i32 = -1;
@@ -54,7 +51,7 @@ struct ApiVersions {
     sasl_authenticate: Option<i16>,
 }
 
-trait Transport: AsyncRead + AsyncWrite + Unpin + Send {}
+pub(crate) trait Transport: AsyncRead + AsyncWrite + Unpin + Send {}
 
 impl<T: AsyncRead + AsyncWrite + Unpin + Send> Transport for T {}
 
@@ -97,9 +94,8 @@ impl ApiVersions {
 }
 
 impl Connection {
-    pub(crate) async fn connect(
-        address: &str,
-        config: &Config,
+    pub(crate) async fn open(
+        mut stream: Box<dyn Transport>,
         timeout: Duration,
         metrics: Metrics,
     ) -> Result<Connection, Error> {
@@ -107,24 +103,13 @@ impl Connection {
             .with_client_software_name(StrBytes::from_static_str(CLIENT_ID))
             .with_client_software_version(StrBytes::from_static_str(env!("CARGO_PKG_VERSION")));
 
-        let handshake = async {
-            let tcp = TcpStream::connect(address).await?;
-            tcp.set_nodelay(true)?;
-            let mut stream: Box<dyn Transport> = match config.tls() {
-                Some(tls) => Box::new(tls.connect(address, tcp).await?),
-                None => Box::new(tcp),
-            };
-
-            let response = exchange(&mut *stream, 0, &request, API_VERSIONS).await?;
-
-            Ok::<_, Error>((stream, response))
-        };
-        let (stream, response) = tokio::time::timeout(timeout, handshake)
+        let exchange = exchange(&mut *stream, 0, &request, API_VERSIONS);
+        let response = tokio::time::timeout(timeout, exchange)
             .await
             .map_err(|_| Error::Timeout)??;
         let versions = ApiVersions::negotiate(&response)?;
 
-        let mut connection = Connection {
+        Ok(Connection {
             stream,
             correlation: 1,
             versions,
@@ -132,22 +117,20 @@ impl Connection {
             closed: false,
             expires: None,
             metrics,
-        };
+        })
+    }
 
-        if let Some(sasl) = config.sasl() {
-            let lifetime = sasl.authenticate(&mut connection).await?;
-            connection.expires =
-                lifetime.map(|lifetime| Instant::now() + lifetime.mul_f64(SESSION_SHARE));
-        }
-
-        Ok(connection)
+    pub(crate) fn expire_at(&mut self, expires: Instant) {
+        self.expires = Some(expires);
     }
 
     pub(crate) fn closed(&self) -> bool {
         self.closed
-            || self
-                .expires
-                .is_some_and(|expires| Instant::now() >= expires)
+    }
+
+    pub(crate) fn expired(&self) -> bool {
+        self.expires
+            .is_some_and(|expires| Instant::now() >= expires)
     }
 
     pub(crate) async fn sasl_handshake(&mut self, mechanism: Mechanism) -> Result<(), Error> {
@@ -398,13 +381,12 @@ fn topic_name(partition: &Partition) -> TopicName {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use kafka_protocol::messages::SaslHandshakeResponse;
     use kafka_protocol::messages::api_versions_response::ApiVersion;
     use kafka_protocol::protocol::Encodable;
     use tokio::net::TcpListener;
 
     use super::*;
-    use crate::sasl::Sasl;
+    use crate::connector::tests::plain;
 
     pub(crate) fn advertised(ranges: &[(ApiKey, i16, i16)]) -> ApiVersionsResponse {
         ApiVersionsResponse::default().with_api_keys(
@@ -448,10 +430,6 @@ pub(crate) mod tests {
     }
 
     pub(crate) const TIMEOUT: Duration = Duration::from_secs(1);
-
-    fn config(address: &str) -> Config {
-        Config::new(vec![address.to_owned()]).unwrap()
-    }
 
     pub(crate) async fn broker(
         reply: impl Fn(ApiKey, i16, i32, Bytes) -> Option<Vec<u8>> + Send + 'static,
@@ -548,10 +526,10 @@ pub(crate) mod tests {
             ))
         })
         .await;
-        let mut connection =
-            Connection::connect(&address, &config(&address), TIMEOUT, Metrics::new())
-                .await
-                .unwrap();
+        let mut connection = plain(TIMEOUT)
+            .connect(&address, Metrics::new())
+            .await
+            .unwrap();
 
         let first = connection.metadata().await;
         let second = connection.metadata().await;
@@ -573,10 +551,10 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn a_call_cancelled_mid_exchange_closes_the_connection() {
         let address = broker(|_, _, _, _| None).await;
-        let mut connection =
-            Connection::connect(&address, &config(&address), TIMEOUT, Metrics::new())
-                .await
-                .unwrap();
+        let mut connection = plain(TIMEOUT)
+            .connect(&address, Metrics::new())
+            .await
+            .unwrap();
 
         let cancelled =
             tokio::time::timeout(Duration::from_millis(50), connection.metadata()).await;
@@ -590,49 +568,14 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn a_broker_that_never_answers_times_out_and_closes_the_connection() {
         let address = broker(|_, _, _, _| None).await;
-        let mut connection = Connection::connect(
-            &address,
-            &config(&address),
-            Duration::from_millis(100),
-            Metrics::new(),
-        )
-        .await
-        .unwrap();
+        let mut connection = plain(Duration::from_millis(100))
+            .connect(&address, Metrics::new())
+            .await
+            .unwrap();
 
         let metadata = connection.metadata().await;
 
         assert!(matches!(metadata, Err(Error::Timeout)), "{metadata:?}");
-        assert!(connection.closed());
-    }
-
-    #[tokio::test]
-    async fn a_connection_closes_before_its_sasl_session_expires() {
-        let address = broker(|key, version, correlation, _| match key {
-            ApiKey::SaslHandshake => Some(frame(
-                correlation,
-                key,
-                version,
-                &SaslHandshakeResponse::default(),
-            )),
-            ApiKey::SaslAuthenticate => Some(frame(
-                correlation,
-                key,
-                version,
-                &SaslAuthenticateResponse::default().with_session_lifetime_ms(1_000),
-            )),
-            _ => None,
-        })
-        .await;
-        let sasl = Sasl::new(Mechanism::Plain, "mink".to_owned(), "mink".to_owned());
-        let config = config(&address).with_sasl(sasl);
-
-        let connection = Connection::connect(&address, &config, TIMEOUT, Metrics::new())
-            .await
-            .unwrap();
-        let fresh = connection.closed();
-        tokio::time::sleep(Duration::from_millis(950)).await;
-
-        assert!(!fresh);
         assert!(connection.closed());
     }
 }

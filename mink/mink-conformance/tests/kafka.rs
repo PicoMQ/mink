@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use mink_core::{Header, Offsets, Partition, Record};
-use mink_kafka::{Cluster, Config, Error, Mechanism, Sasl};
+use mink_kafka::{Cluster, Config, Error, Mechanism, Sasl, Tls};
 use mink_metrics::Metrics;
 use rdkafka::config::ClientConfig;
 use rdkafka::consumer::{BaseConsumer, Consumer};
@@ -282,8 +282,7 @@ async fn reads_over_tls_and_sasl_match_a_read_committed_consumer() {
     let tls = |bootstrap: &str| {
         Config::new(vec![bootstrap.to_owned()])
             .unwrap()
-            .with_tls(Some(Path::new(&ca)))
-            .unwrap()
+            .with_tls(Tls::new(Some(PathBuf::from(&ca))))
     };
 
     let configs = [
@@ -328,13 +327,11 @@ async fn a_wrong_password_or_an_untrusted_certificate_is_refused() {
     let wrong = Sasl::new(Mechanism::ScramSha512, USER.to_owned(), "wrong".to_owned());
     let trusted = Config::new(vec![sasl_ssl.clone()])
         .unwrap()
-        .with_tls(Some(Path::new(&ca)))
-        .unwrap()
+        .with_tls(Tls::new(Some(PathBuf::from(&ca))))
         .with_sasl(wrong);
     let untrusted = Config::new(vec![sasl_ssl])
         .unwrap()
-        .with_tls(None)
-        .unwrap()
+        .with_tls(Tls::new(None))
         .with_sasl(Sasl::new(
             Mechanism::Plain,
             USER.to_owned(),

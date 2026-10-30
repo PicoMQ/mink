@@ -1,7 +1,18 @@
 services:
+  certs:
+    image: alpine:3.22
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["apk add --no-cache openssl >/dev/null && /auth/generate.sh"]
+    volumes:
+      - ./auth:/auth
+    restart: "no"
+
   postgres:
     image: postgres:17-bookworm
     container_name: mink-postgres
+    depends_on:
+      certs:
+        condition: service_completed_successfully
     environment:
       POSTGRES_USER: mink
       POSTGRES_PASSWORD: mink
@@ -68,6 +79,9 @@ services:
   kafka:
     image: apache/kafka:3.9.1
     container_name: mink-kafka
+    depends_on:
+      certs:
+        condition: service_completed_successfully
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller

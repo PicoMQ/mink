@@ -12,6 +12,7 @@ use crate::batch::Batch;
 use crate::codes::NONE;
 use crate::config::Config;
 use crate::connection::{Connection, EARLIEST, LATEST};
+use crate::connector::Connector;
 use crate::listing::Listing;
 use crate::retry::{Backoff, retriable};
 use crate::transaction::committed;
@@ -22,6 +23,7 @@ type Call<'c, T> = Pin<Box<dyn Future<Output = Result<T, Error>> + Send + 'c>>;
 
 pub struct Cluster {
     config: Config,
+    connector: Connector,
     metrics: Metrics,
     brokers: HashMap<BrokerId, String>,
     leaders: HashMap<Partition, Option<BrokerId>>,
@@ -30,8 +32,10 @@ pub struct Cluster {
 
 impl Cluster {
     pub async fn connect(config: Config, metrics: Metrics) -> Result<Cluster, Error> {
+        let connector = Connector::new(&config)?;
         let mut cluster = Cluster {
             config,
+            connector,
             metrics,
             brokers: HashMap::new(),
             leaders: HashMap::new(),
@@ -188,7 +192,7 @@ impl Cluster {
         if self
             .connections
             .get(&broker)
-            .is_some_and(Connection::closed)
+            .is_some_and(|connection| connection.closed() || connection.expired())
         {
             self.connections.remove(&broker);
         }
@@ -200,10 +204,10 @@ impl Cluster {
                     .brokers
                     .get(&broker)
                     .ok_or(Error::UnknownBroker(broker))?;
-                let timeout = self.config.request_timeout();
-                let connection =
-                    Connection::connect(address, &self.config, timeout, self.metrics.clone())
-                        .await?;
+                let connection = self
+                    .connector
+                    .connect(address, self.metrics.clone())
+                    .await?;
 
                 Ok(entry.insert(connection))
             }
@@ -227,9 +231,7 @@ impl Cluster {
         }
 
         for address in self.config.bootstrap().to_vec() {
-            let timeout = self.config.request_timeout();
-            let connected =
-                Connection::connect(&address, &self.config, timeout, self.metrics.clone()).await;
+            let connected = self.connector.connect(&address, self.metrics.clone()).await;
             let metadata = match connected {
                 Ok(mut connection) => connection.metadata().await,
                 Err(error) => Err(error),
@@ -689,16 +691,20 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn an_authentication_failure_ends_connect_without_retrying() {
-        let address = broker(|key, version, correlation, _| {
+    async fn refusing_broker() -> String {
+        broker(|key, version, correlation, _| {
             let refused = SaslHandshakeResponse::default()
                 .with_error_code(UNSUPPORTED_SASL_MECHANISM)
                 .with_mechanisms(vec![StrBytes::from_static_str("PLAIN")]);
 
             (key == ApiKey::SaslHandshake).then(|| frame(correlation, key, version, &refused))
         })
-        .await;
+        .await
+    }
+
+    #[tokio::test]
+    async fn an_authentication_failure_ends_connect_without_retrying() {
+        let address = refusing_broker().await;
         let sasl = Sasl::new(Mechanism::ScramSha512, "mink".to_owned(), "mink".to_owned());
         let config = Config::new(vec![address]).unwrap().with_sasl(sasl);
         let started = std::time::Instant::now();
@@ -715,14 +721,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_broker_that_refuses_does_not_stop_the_next_from_being_tried() {
-        let refusing = broker(|key, version, correlation, _| {
-            let refused = SaslHandshakeResponse::default()
-                .with_error_code(UNSUPPORTED_SASL_MECHANISM)
-                .with_mechanisms(vec![StrBytes::from_static_str("PLAIN")]);
-
-            (key == ApiKey::SaslHandshake).then(|| frame(correlation, key, version, &refused))
-        })
-        .await;
+        let refusing = refusing_broker().await;
         let accepting = broker(|key, version, correlation, _| match key {
             ApiKey::SaslHandshake => Some(frame(
                 correlation,

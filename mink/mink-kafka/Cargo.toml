@@ -19,6 +19,7 @@ getrandom = { workspace = true }
 hmac = { workspace = true }
 kafka-protocol = { workspace = true }
 rustls-platform-verifier = { workspace = true }
+serde = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["net"] }

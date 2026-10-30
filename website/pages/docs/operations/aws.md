@@ -36,7 +36,7 @@ An existing Kafka cluster or database in the VPC must accept connections from th
 - Terraform 1.15.8 or later
 - AWS credentials that can create the resources above
 - The [Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) for the AWS CLI, to reach the console and the client
-- The Mink image. The default is `ghcr.io/picomq/mink:latest`, published for `arm64` and `amd64`.
+- The Mink image. The default, `ghcr.io/picomq/mink:latest`, is published with each release, for `arm64` and `amd64`. Before the first release, build it from source as shown below.
 
 ## Apply
 
@@ -89,10 +89,11 @@ aws ssm start-session \
 
 ## Try it
 
-Open a shell on the client:
+Open a shell on the client and become root, which runs Docker:
 
 ```bash
 aws ssm start-session --target "$(terraform output -raw client_instance_id)"
+sudo -i
 ```
 
 Write the SCRAM credentials into a Kafka client config. `SECRET` is the `scram_secret_arn` output, and `BOOTSTRAP` is the `kafka_bootstrap` output joined with commas.
@@ -122,7 +123,7 @@ curl -X POST http://mink.internal:9180/admin/tables \
 Query it with DuckDB:
 
 ```bash
-HOME=/root /opt/duckdb/bin/python - <<'EOF'
+/opt/duckdb/bin/python - <<'EOF'
 import duckdb
 db = duckdb.connect()
 for statement in [

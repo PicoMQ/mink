@@ -93,6 +93,7 @@ resource "aws_instance" "client" {
     set -euo pipefail
     dnf install -y docker python3.12 jq
     systemctl enable --now docker
+    echo "export AWS_REGION=${var.region}" > /etc/profile.d/region.sh
     python3.12 -m venv /opt/duckdb
     /opt/duckdb/bin/pip install duckdb==2.0.0
     docker pull apache/kafka:3.9.1

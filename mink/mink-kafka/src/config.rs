@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::time::Duration;
 
 use crate::Error;
@@ -11,7 +10,7 @@ const MAX_BYTES: i32 = 8 * 1024 * 1024;
 const RETRY_DEADLINE: Duration = Duration::from_secs(60);
 const RESPONSE_MARGIN: Duration = Duration::from_secs(30);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     bootstrap: Vec<String>,
     max_wait: Duration,
@@ -37,9 +36,9 @@ impl Config {
         })
     }
 
-    pub fn with_tls(mut self, ca: Option<&Path>) -> Result<Config, Error> {
-        self.tls = Some(Tls::new(ca)?);
-        Ok(self)
+    pub fn with_tls(mut self, tls: Tls) -> Config {
+        self.tls = Some(tls);
+        self
     }
 
     pub fn with_sasl(mut self, sasl: Sasl) -> Config {

@@ -2894,6 +2894,7 @@ dependencies = [
  "mink-metrics",
  "proptest",
  "rustls-platform-verifier",
+ "serde",
  "sha2 0.11.1",
  "thiserror",
  "tokio",

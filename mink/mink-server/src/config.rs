@@ -6,7 +6,7 @@ use std::time::Duration;
 use figment::Figment;
 use figment::providers::{Env, Format, Serialized, Toml};
 use mink_core::{Granularity, Role};
-use mink_kafka::Mechanism;
+use mink_kafka::{Sasl, Tls};
 use nestor::DiskAdmission;
 use serde::{Deserialize, Serialize};
 
@@ -69,21 +69,6 @@ pub struct Kafka {
     pub(crate) bootstrap: Vec<String>,
     pub(crate) tls: Option<Tls>,
     pub(crate) sasl: Option<Sasl>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Sasl {
-    #[serde(with = "mechanism")]
-    pub(crate) mechanism: Mechanism,
-    pub(crate) username: String,
-    pub(crate) password: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Tls {
-    pub(crate) ca: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -310,7 +295,7 @@ impl Kafka {
         };
 
         match &self.sasl {
-            Some(sasl) => format!("{protocol} {}", sasl.mechanism.name()),
+            Some(sasl) => format!("{protocol} {}", sasl.mechanism().name()),
             None => protocol.to_owned(),
         }
     }
@@ -319,14 +304,10 @@ impl Kafka {
         let mut config = mink_kafka::Config::new(self.bootstrap.clone())?;
 
         if let Some(tls) = &self.tls {
-            config = config.with_tls(tls.ca.as_deref())?;
+            config = config.with_tls(tls.clone());
         }
         if let Some(sasl) = &self.sasl {
-            config = config.with_sasl(mink_kafka::Sasl::new(
-                sasl.mechanism,
-                sasl.username.clone(),
-                sasl.password.clone(),
-            ));
+            config = config.with_sasl(sasl.clone());
         }
 
         Ok(config)
@@ -404,30 +385,6 @@ mod roles {
     }
 }
 
-mod mechanism {
-    use mink_kafka::Mechanism;
-    use serde::{Deserialize, Deserializer, Serializer, de};
-
-    pub(super) fn serialize<S: Serializer>(
-        mechanism: &Mechanism,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(mechanism.name())
-    }
-
-    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
-        deserializer: D,
-    ) -> Result<Mechanism, D::Error> {
-        let name = String::deserialize(deserializer)?;
-
-        Mechanism::from_name(&name).ok_or_else(|| {
-            de::Error::custom(format!(
-                "{name:?} is not a SASL mechanism: PLAIN, SCRAM-SHA-256 or SCRAM-SHA-512"
-            ))
-        })
-    }
-}
-
 mod granularity {
     use mink_core::Granularity;
     use serde::{Deserialize, Deserializer, Serializer, de};
@@ -494,6 +451,8 @@ mod duration {
 #[cfg(test)]
 #[allow(clippy::result_large_err)]
 mod tests {
+    use mink_kafka::Mechanism;
+
     use super::*;
 
     #[test]
@@ -579,9 +538,9 @@ mod tests {
             let lower = Config::load(Some(Path::new("lower.toml")));
 
             assert_eq!(config.kafka.bootstrap, ["b-1.msk:9096"]);
-            assert_eq!(config.kafka.tls, Some(Tls { ca: None }));
+            assert_eq!(config.kafka.tls, Some(Tls::new(None)));
             assert_eq!(
-                config.kafka.sasl.as_ref().map(|sasl| sasl.mechanism),
+                config.kafka.sasl.as_ref().map(Sasl::mechanism),
                 Some(Mechanism::ScramSha512)
             );
             assert!(
@@ -597,12 +556,12 @@ mod tests {
         let config = Config {
             kafka: Kafka {
                 bootstrap: vec!["b-1:9096".to_owned()],
-                tls: Some(Tls { ca: None }),
-                sasl: Some(Sasl {
-                    mechanism: Mechanism::Plain,
-                    username: "key".to_owned(),
-                    password: "hunter2".to_owned(),
-                }),
+                tls: Some(Tls::new(None)),
+                sasl: Some(Sasl::new(
+                    Mechanism::Plain,
+                    "key".to_owned(),
+                    "hunter2".to_owned(),
+                )),
             },
             ..Config::default()
         };

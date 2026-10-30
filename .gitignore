@@ -4,6 +4,10 @@
 *.profraw
 *.profdata
 
+# Harness
+harness/auth/*.pem
+harness/auth/*.key
+
 # Console
 console/node_modules/
 console/test-results/

@@ -1,9 +1,9 @@
 use std::fmt;
-use std::time::Duration;
+
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 
 use crate::Error;
-use crate::connection::Connection;
-use crate::scram::{Hash, Scram};
+use crate::scram::{Hash, Scram, ServerSignature};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mechanism {
@@ -12,11 +12,18 @@ pub enum Mechanism {
     ScramSha512,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Sasl {
     mechanism: Mechanism,
     username: String,
     password: String,
+}
+
+pub(crate) enum Exchange {
+    Plain,
+    ScramFirst { scram: Scram, password: String },
+    ScramFinal(ServerSignature),
 }
 
 impl Mechanism {
@@ -50,44 +57,67 @@ impl Sasl {
         }
     }
 
-    pub(crate) async fn authenticate(
-        &self,
-        connection: &mut Connection,
-    ) -> Result<Option<Duration>, Error> {
-        connection.sasl_handshake(self.mechanism).await?;
+    pub fn mechanism(&self) -> Mechanism {
+        self.mechanism
+    }
 
-        let lifetime_ms = match self.mechanism {
-            Mechanism::Plain => self.plain(connection).await?,
-            Mechanism::ScramSha256 => self.scram(connection, Hash::Sha256).await?,
-            Mechanism::ScramSha512 => self.scram(connection, Hash::Sha512).await?,
+    pub(crate) fn start(&self) -> Result<(Exchange, Vec<u8>), Error> {
+        let hash = match self.mechanism {
+            Mechanism::Plain => {
+                let message = format!("\0{}\0{}", self.username, self.password);
+                return Ok((Exchange::Plain, message.into_bytes()));
+            }
+            Mechanism::ScramSha256 => Hash::Sha256,
+            Mechanism::ScramSha512 => Hash::Sha512,
         };
 
-        Ok(u64::try_from(lifetime_ms)
-            .ok()
-            .filter(|lifetime_ms| *lifetime_ms > 0)
-            .map(Duration::from_millis))
-    }
-
-    async fn plain(&self, connection: &mut Connection) -> Result<i64, Error> {
-        let message = format!("\0{}\0{}", self.username, self.password);
-
-        let response = connection.sasl_authenticate(message.into_bytes()).await?;
-
-        Ok(response.session_lifetime_ms)
-    }
-
-    async fn scram(&self, connection: &mut Connection, hash: Hash) -> Result<i64, Error> {
         let scram = Scram::new(hash, &self.username)?;
+        let message = scram.first_message().into_bytes();
+        let exchange = Exchange::ScramFirst {
+            scram,
+            password: self.password.clone(),
+        };
 
-        let server_first = connection
-            .sasl_authenticate(scram.first_message().into_bytes())
-            .await?;
-        let (message, signature) =
-            scram.final_message(&self.password, text(&server_first.auth_bytes)?)?;
-        let server_final = connection.sasl_authenticate(message.into_bytes()).await?;
-        signature.verify(text(&server_final.auth_bytes)?)?;
+        Ok((exchange, message))
+    }
+}
 
-        Ok(server_final.session_lifetime_ms)
+impl Exchange {
+    pub(crate) fn respond(self, server: &[u8]) -> Result<Option<(Exchange, Vec<u8>)>, Error> {
+        match self {
+            Exchange::Plain => Ok(None),
+            Exchange::ScramFirst { scram, password } => {
+                let (message, signature) = scram.final_message(&password, text(server)?)?;
+
+                Ok(Some((
+                    Exchange::ScramFinal(signature),
+                    message.into_bytes(),
+                )))
+            }
+            Exchange::ScramFinal(signature) => {
+                signature.verify(text(server)?)?;
+
+                Ok(None)
+            }
+        }
+    }
+}
+
+impl Serialize for Mechanism {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.name())
+    }
+}
+
+impl<'de> Deserialize<'de> for Mechanism {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Mechanism, D::Error> {
+        let name = String::deserialize(deserializer)?;
+
+        Mechanism::from_name(&name).ok_or_else(|| {
+            de::Error::custom(format!(
+                "{name:?} is not a SASL mechanism: PLAIN, SCRAM-SHA-256 or SCRAM-SHA-512"
+            ))
+        })
     }
 }
 
@@ -120,6 +150,17 @@ mod tests {
             Some(Mechanism::ScramSha512)
         );
         assert_eq!(Mechanism::from_name("scram-sha-512"), None);
+    }
+
+    #[test]
+    fn plain_sends_one_message_and_finishes_on_the_reply() {
+        let sasl = Sasl::new(Mechanism::Plain, "mink".to_owned(), "secret".to_owned());
+
+        let (exchange, message) = sasl.start().unwrap();
+        let next = exchange.respond(b"").unwrap();
+
+        assert_eq!(message, b"\0mink\0secret");
+        assert!(next.is_none());
     }
 
     #[test]
