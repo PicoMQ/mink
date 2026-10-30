@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::Error;
 use crate::config::Config;
 use crate::membership::Membership;
-use crate::registry::Registry;
+use crate::registry;
 use crate::schemas::Schemas;
 use crate::warehouse::Warehouse;
 
@@ -36,8 +36,8 @@ impl Services {
         let kafka = Pool::new(kafka_config, metrics.clone());
         let registry = config
             .schema_registry
-            .clone()
-            .map(|settings| Registry::new(settings, metrics.clone()))
+            .as_ref()
+            .map(|settings| registry::connect(settings, metrics.clone()))
             .transpose()?;
         let schemas = Schemas::new(store.clone(), registry);
 

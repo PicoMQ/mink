@@ -439,7 +439,7 @@ mod tests {
         let Some(registry) = mink_conformance::service("TEST_SCHEMA_REGISTRY") else {
             return;
         };
-        let settings = SchemaRegistry {
+        let settings = SchemaRegistry::Confluent {
             url: registry.clone(),
             username: None,
             password: None,

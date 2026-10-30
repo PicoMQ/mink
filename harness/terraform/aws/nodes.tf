@@ -71,7 +71,10 @@ resource "aws_ecs_task_definition" "node" {
           { name = "MINK_KAFKA__SASL__MECHANISM", value = local.kafka.sasl.mechanism },
           { name = "MINK_KAFKA__SASL__USERNAME", value = local.kafka.sasl.username },
         ] : [],
-        local.use_registry ? [{ name = "MINK_SCHEMA_REGISTRY__URL", value = var.schema_registry.url }] : [],
+        local.use_registry ? [
+          { name = "MINK_SCHEMA_REGISTRY__TYPE", value = "confluent" },
+          { name = "MINK_SCHEMA_REGISTRY__URL", value = var.schema_registry.url },
+        ] : [],
         try(var.schema_registry.username, null) == null ? [] : [
           { name = "MINK_SCHEMA_REGISTRY__USERNAME", value = var.schema_registry.username },
         ],

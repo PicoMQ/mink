@@ -6,7 +6,7 @@ use mink_core::{Part, Record};
 use mink_iceberg::{FileSchema, TypedSchema};
 use mink_schema::{
     BINARY_SCHEMA_ID, Decoders, MergeResult, PartSchemaRef, PayloadSchema, Rejection, SchemaKey,
-    SchemaRef, accept, merge, schema_refs, subject,
+    accept, merge, schema_refs,
 };
 use mink_store::Store;
 
@@ -15,12 +15,12 @@ use crate::registry::{self, Failure, Registry, retrying};
 
 pub(crate) struct Schemas {
     store: Store,
-    registry: Option<Registry>,
+    registry: Option<Box<dyn Registry>>,
     parsed: Mutex<HashMap<SchemaKey, Arc<PayloadSchema>>>,
 }
 
 impl Schemas {
-    pub(crate) fn new(store: Store, registry: Option<Registry>) -> Schemas {
+    pub(crate) fn new(store: Store, registry: Option<Box<dyn Registry>>) -> Schemas {
         Schemas {
             store,
             registry,
@@ -28,8 +28,8 @@ impl Schemas {
         }
     }
 
-    pub(crate) fn registry(&self) -> Option<&Registry> {
-        self.registry.as_ref()
+    pub(crate) fn registry(&self) -> Option<&dyn Registry> {
+        self.registry.as_deref()
     }
 
     pub(crate) async fn latest_file_schema(
@@ -37,7 +37,7 @@ impl Schemas {
         topic: &str,
         records: &[Record],
     ) -> Result<FileSchema, Error> {
-        let Some(registry) = &self.registry else {
+        let Some(registry) = self.registry() else {
             return Ok(FileSchema::Binary);
         };
 
@@ -112,31 +112,20 @@ impl Schemas {
 
     async fn merge_schema(
         &self,
-        registry: &Registry,
+        registry: &dyn Registry,
         topic: &str,
         schema_ref: PartSchemaRef,
     ) -> Result<(), Error> {
         let schemas = self.store.schemas();
 
-        let key = match schema_ref.schema_ref() {
-            SchemaRef::ConfluentId(id) => SchemaKey::Confluent(id),
-            SchemaRef::ConfluentGuid(guid) => {
-                let resolved = retrying(|| async move {
-                    let id = registry.guid_id(guid).await?;
-                    id.ok_or(Failure::Rejected(Rejection::Missing))
-                })
-                .await;
+        let key = match retrying(|| registry.resolve(schema_ref.schema_ref())).await {
+            Ok(key) => key,
+            Err(Failure::Rejected(rejection)) => {
+                schemas.merge(topic, schema_ref, &Err(rejection)).await?;
 
-                match resolved {
-                    Ok(id) => SchemaKey::Confluent(id),
-                    Err(Failure::Rejected(rejection)) => {
-                        schemas.merge(topic, schema_ref, &Err(rejection)).await?;
-
-                        return Ok(());
-                    }
-                    Err(Failure::Failed(error)) => return Err(error),
-                }
+                return Ok(());
             }
+            Err(Failure::Failed(error)) => return Err(error),
         };
 
         let canonical = PartSchemaRef::new(schema_ref.part(), key.schema_ref());
@@ -156,7 +145,7 @@ impl Schemas {
 
     async fn merge_registry_schema(
         &self,
-        registry: &Registry,
+        registry: &dyn Registry,
         topic: &str,
         schema_ref: PartSchemaRef,
         key: SchemaKey,
@@ -191,21 +180,17 @@ impl Schemas {
 
     async fn payload_schema(
         &self,
-        registry: &Registry,
+        registry: &dyn Registry,
         topic: &str,
         part: Part,
         key: SchemaKey,
     ) -> Result<Arc<PayloadSchema>, Failure> {
-        let subject = subject(topic, part);
-        let SchemaKey::Confluent(id) = key;
-
-        if !registry.subject_exists(&subject).await? {
+        let set = registry::fetch(&self.store, registry, key).await?;
+        if !registry.accepted(topic, part, key).await? {
             return Err(Failure::Rejected(Rejection::NotAccepted));
         }
 
-        let set = registry::fetch(&self.store, registry, key).await?;
-        let registered_under_subject = registry.accepted(id, &subject).await?;
-        let schema = Arc::new(accept(&set, registered_under_subject)?);
+        let schema = Arc::new(accept(&set)?);
 
         self.locked().insert(key, schema.clone());
         Ok(schema)

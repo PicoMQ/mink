@@ -87,11 +87,13 @@ pub struct Credentials {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct SchemaRegistry {
-    pub(crate) url: String,
-    pub(crate) username: Option<String>,
-    pub(crate) password: Option<String>,
+#[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
+pub enum SchemaRegistry {
+    Confluent {
+        url: String,
+        username: Option<String>,
+        password: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -218,7 +220,7 @@ impl Config {
                 "schema_registry",
                 self.schema_registry
                     .as_ref()
-                    .map_or("none".to_owned(), |registry| registry.url.clone()),
+                    .map_or("none".to_owned(), SchemaRegistry::location),
             ),
             ("namespace", self.namespace.clone()),
             ("admin_address", self.admin_address.to_string()),
@@ -282,6 +284,14 @@ impl Config {
             return Err(ConfigError::RemoteAdmin(self.admin_address));
         }
         Ok(())
+    }
+}
+
+impl SchemaRegistry {
+    pub(crate) fn location(&self) -> String {
+        match self {
+            SchemaRegistry::Confluent { url, .. } => url.clone(),
+        }
     }
 }
 
@@ -600,6 +610,38 @@ mod tests {
                 credentials("mink", "minkminkmink")
             );
             assert_eq!(env.storage.credentials, credentials("env", "secret"));
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn the_schema_registry_is_chosen_by_its_type() {
+        figment::Jail::expect_with(|jail| {
+            jail.create_file(
+                "confluent.toml",
+                "[schema_registry]\ntype = \"confluent\"\nurl = \"http://registry:8081\"",
+            )?;
+            jail.create_file(
+                "unknown.toml",
+                "[schema_registry]\ntype = \"other\"\nurl = \"http://registry:8081\"",
+            )?;
+
+            let confluent = Config::load(Some(Path::new("confluent.toml"))).unwrap();
+            let unknown = Config::load(Some(Path::new("unknown.toml")));
+
+            assert_eq!(
+                confluent.schema_registry,
+                Some(SchemaRegistry::Confluent {
+                    url: "http://registry:8081".to_owned(),
+                    username: None,
+                    password: None,
+                })
+            );
+            assert_eq!(
+                confluent.describe()["schema_registry"],
+                "http://registry:8081"
+            );
+            assert!(matches!(unknown, Err(ConfigError::Load(_))), "{unknown:?}");
             Ok(())
         });
     }

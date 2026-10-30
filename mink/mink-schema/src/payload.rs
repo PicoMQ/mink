@@ -45,10 +45,6 @@ impl PayloadSchema {
     }
 }
 
-pub fn accept(set: &SchemaSet, registered_under_subject: bool) -> Result<PayloadSchema, Rejection> {
-    if !registered_under_subject {
-        return Err(Rejection::NotAccepted);
-    }
-
+pub fn accept(set: &SchemaSet) -> Result<PayloadSchema, Rejection> {
     PayloadSchema::parse(set).map_err(|_| Rejection::Unsupported)
 }

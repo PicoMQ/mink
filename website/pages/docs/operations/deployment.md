@@ -37,6 +37,7 @@ docker run -d --name mink --network harness_default \
   -e MINK_STORAGE__ENDPOINT=http://rustfs:9000 \
   -e MINK_STORAGE__CREDENTIALS__ACCESS_KEY_ID=mink \
   -e MINK_STORAGE__CREDENTIALS__SECRET_ACCESS_KEY=minkminkmink \
+  -e MINK_SCHEMA_REGISTRY__TYPE=confluent \
   -e MINK_SCHEMA_REGISTRY__URL=http://schema-registry:8081 \
   -e MINK_CATALOG_ADDRESS=0.0.0.0:8181 \
   -e MINK_S3_ADDRESS=0.0.0.0:9100 \
@@ -69,6 +70,7 @@ x-mink: &mink
     MINK_STORAGE__ENDPOINT: http://rustfs:9000
     MINK_STORAGE__CREDENTIALS__ACCESS_KEY_ID: mink
     MINK_STORAGE__CREDENTIALS__SECRET_ACCESS_KEY: minkminkmink
+    MINK_SCHEMA_REGISTRY__TYPE: confluent
     MINK_SCHEMA_REGISTRY__URL: http://schema-registry:8081
     MINK_CATALOG_ADDRESS: 0.0.0.0:8181
     MINK_S3_ADDRESS: 0.0.0.0:9100

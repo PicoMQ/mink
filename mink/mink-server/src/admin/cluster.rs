@@ -16,9 +16,12 @@ async fn cluster(State(admin): State<Arc<Admin>>) -> Json<Value> {
     let config = &services.config;
     let roles: Vec<&str> = config.roles.iter().map(|role| role.name()).collect();
 
-    let registry = match services.schemas.registry() {
-        Some(registry) => json!({ "url": registry.url(), "reachable": registry.reachable().await }),
-        None => Value::Null,
+    let registry = match (&config.schema_registry, services.schemas.registry()) {
+        (Some(settings), Some(registry)) => json!({
+            "location": settings.location(),
+            "reachable": registry.reachable().await,
+        }),
+        _ => Value::Null,
     };
 
     let sql = match admin.sql {

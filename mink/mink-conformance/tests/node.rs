@@ -106,7 +106,9 @@ async fn start(env: &TestEnv, roles: &[Role], settings: &str) -> TestNode {
     let cache_dir = cache.path().display();
     let schema_registry = registry
         .as_ref()
-        .map(|url| format!("[schema_registry]\n        url = \"{url}\""))
+        .map(|url| {
+            format!("[schema_registry]\n        type = \"confluent\"\n        url = \"{url}\"")
+        })
         .unwrap_or_default();
     let config = format!(
         r#"

@@ -16,4 +16,5 @@ endpoint = "http://rustfs:9000"
 credentials = { access_key_id = "mink", secret_access_key = "minkminkmink" }
 
 [schema_registry]
+type = "confluent"
 url = "http://schema-registry:8081"

@@ -1,47 +1,27 @@
 use std::time::Duration;
 
+use async_trait::async_trait;
+use mink_core::Part;
 use mink_metrics::{Answer, Metrics};
-use mink_schema::{Reference, RegistrySchema, Rejection, SchemaFormat, SchemaKey, SchemaSet};
-use mink_store::Store;
+use mink_schema::{
+    Reference, RegistrySchema, Rejection, SchemaFormat, SchemaKey, SchemaRef, subject,
+};
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use uuid::Uuid;
 
+use super::{Failure, Registry};
 use crate::Error;
-use crate::config::SchemaRegistry;
 
 const DEFAULT_CONTEXT: &str = ".";
 const TIMEOUT: Duration = Duration::from_secs(10);
-const LAGGING_REGISTRY: [Duration; 2] = [Duration::from_secs(1), Duration::from_secs(2)];
 
-#[derive(Debug)]
-pub(crate) enum Failure {
-    Rejected(Rejection),
-    Failed(Error),
-}
-
-impl From<Error> for Failure {
-    fn from(error: Error) -> Failure {
-        Failure::Failed(error)
-    }
-}
-
-impl From<mink_store::Error> for Failure {
-    fn from(error: mink_store::Error) -> Failure {
-        Failure::Failed(error.into())
-    }
-}
-
-impl From<Rejection> for Failure {
-    fn from(rejection: Rejection) -> Failure {
-        Failure::Rejected(rejection)
-    }
-}
-
-pub(crate) struct Registry {
+pub(crate) struct Confluent {
     http: Client,
-    settings: SchemaRegistry,
+    url: String,
+    username: Option<String>,
+    password: Option<String>,
     metrics: Metrics,
 }
 
@@ -82,31 +62,28 @@ struct ErrorResponse {
     error_code: i64,
 }
 
-impl Registry {
-    pub(crate) fn new(settings: SchemaRegistry, metrics: Metrics) -> Result<Registry, Error> {
+impl Confluent {
+    pub(crate) fn new(
+        url: String,
+        username: Option<String>,
+        password: Option<String>,
+        metrics: Metrics,
+    ) -> Result<Confluent, Error> {
         let http = Client::builder()
             .timeout(TIMEOUT)
             .build()
             .map_err(|error| Error::RegistryUnavailable(error.to_string()))?;
 
-        Ok(Registry {
+        Ok(Confluent {
             http,
-            settings,
+            url,
+            username,
+            password,
             metrics,
         })
     }
 
-    pub(crate) fn url(&self) -> &str {
-        &self.settings.url
-    }
-
-    pub(crate) async fn reachable(&self) -> bool {
-        let subjects: Result<Option<Vec<String>>, Error> = self.get("/subjects").await;
-
-        subjects.is_ok()
-    }
-
-    pub(crate) async fn subject_exists(&self, subject: &str) -> Result<bool, Error> {
+    async fn subject_exists(&self, subject: &str) -> Result<bool, Error> {
         let versions: Option<Vec<i32>> = self
             .get(&format!("/subjects/{subject}/versions?deleted=true"))
             .await?;
@@ -114,7 +91,7 @@ impl Registry {
         Ok(versions.is_some())
     }
 
-    pub(crate) async fn accepted(&self, id: i32, subject: &str) -> Result<bool, Error> {
+    async fn registered_under(&self, id: i32, subject: &str) -> Result<bool, Error> {
         let versions: Option<Vec<SubjectVersion>> = self
             .get(&format!("/schemas/ids/{id}/versions?deleted=true"))
             .await?;
@@ -125,7 +102,7 @@ impl Registry {
             .any(|version| version.subject == subject))
     }
 
-    pub(crate) async fn guid_id(&self, guid: Uuid) -> Result<Option<i32>, Error> {
+    async fn guid_id(&self, guid: Uuid) -> Result<Option<i32>, Error> {
         let ids: Option<Vec<ContextId>> = self.get(&format!("/schemas/guids/{guid}/ids")).await?;
 
         let id = ids
@@ -133,6 +110,70 @@ impl Registry {
             .into_iter()
             .find(|id| id.context == DEFAULT_CONTEXT);
         Ok(id.map(|id| id.id))
+    }
+
+    async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<Option<T>, Error> {
+        let answer = self.request(path).await;
+
+        let counted = match &answer {
+            Ok(Some(_)) => Answer::Ok,
+            Ok(None) => Answer::Missing,
+            Err(_) => Answer::Error,
+        };
+        self.metrics.registry_request(counted);
+        answer
+    }
+
+    async fn request<T: DeserializeOwned>(&self, path: &str) -> Result<Option<T>, Error> {
+        let url = format!("{}{path}", self.url.trim_end_matches('/'));
+        let mut request = self.http.get(&url);
+
+        if let Some(username) = &self.username {
+            request = request.basic_auth(username, self.password.as_ref());
+        }
+
+        let response = request
+            .send()
+            .await
+            .map_err(|error| Error::RegistryUnavailable(error.to_string()))?;
+        let status = response.status();
+
+        if status == StatusCode::NOT_FOUND {
+            let error: Option<ErrorResponse> = response.json().await.ok();
+
+            return match error {
+                Some(error) if (40400..40500).contains(&error.error_code) => Ok(None),
+                _ => Err(Error::RegistryUnavailable(format!("{url} answered 404"))),
+            };
+        }
+        if !status.is_success() {
+            return Err(Error::RegistryUnavailable(format!(
+                "{url} answered {status}"
+            )));
+        }
+
+        let body = response.json().await;
+        body.map(Some)
+            .map_err(|error| Error::RegistryResponse(format!("{url}: {error}")))
+    }
+}
+
+#[async_trait]
+impl Registry for Confluent {
+    async fn reachable(&self) -> bool {
+        let subjects: Result<Option<Vec<String>>, Error> = self.get("/subjects").await;
+
+        subjects.is_ok()
+    }
+
+    async fn resolve(&self, schema_ref: SchemaRef) -> Result<SchemaKey, Failure> {
+        match schema_ref {
+            SchemaRef::ConfluentId(id) => Ok(SchemaKey::Confluent(id)),
+            SchemaRef::ConfluentGuid(guid) => match self.guid_id(guid).await? {
+                Some(id) => Ok(SchemaKey::Confluent(id)),
+                None => Err(Failure::Rejected(Rejection::Missing)),
+            },
+        }
     }
 
     async fn schema(&self, key: SchemaKey) -> Result<RegistrySchema, Failure> {
@@ -172,101 +213,16 @@ impl Registry {
         ))
     }
 
-    async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<Option<T>, Error> {
-        let answer = self.request(path).await;
+    async fn accepted(&self, topic: &str, part: Part, key: SchemaKey) -> Result<bool, Failure> {
+        let SchemaKey::Confluent(id) = key;
+        let subject = subject(topic, part);
 
-        let counted = match &answer {
-            Ok(Some(_)) => Answer::Ok,
-            Ok(None) => Answer::Missing,
-            Err(_) => Answer::Error,
-        };
-        self.metrics.registry_request(counted);
-        answer
+        if !self.subject_exists(&subject).await? {
+            return Ok(false);
+        }
+
+        Ok(self.registered_under(id, &subject).await?)
     }
-
-    async fn request<T: DeserializeOwned>(&self, path: &str) -> Result<Option<T>, Error> {
-        let url = format!("{}{path}", self.settings.url.trim_end_matches('/'));
-        let mut request = self.http.get(&url);
-
-        if let Some(username) = &self.settings.username {
-            request = request.basic_auth(username, self.settings.password.as_ref());
-        }
-
-        let response = request
-            .send()
-            .await
-            .map_err(|error| Error::RegistryUnavailable(error.to_string()))?;
-        let status = response.status();
-
-        if status == StatusCode::NOT_FOUND {
-            let error: Option<ErrorResponse> = response.json().await.ok();
-
-            return match error {
-                Some(error) if (40400..40500).contains(&error.error_code) => Ok(None),
-                _ => Err(Error::RegistryUnavailable(format!("{url} answered 404"))),
-            };
-        }
-        if !status.is_success() {
-            return Err(Error::RegistryUnavailable(format!(
-                "{url} answered {status}"
-            )));
-        }
-
-        let body = response.json().await;
-        body.map(Some)
-            .map_err(|error| Error::RegistryResponse(format!("{url}: {error}")))
-    }
-}
-
-pub(crate) async fn stored(store: &Store, key: SchemaKey) -> Result<SchemaSet, Error> {
-    SchemaSet::load(key, |next| async move {
-        let stored = store.registry().get(next).await?;
-
-        stored.ok_or(Error::UnstoredRegistrySchema(next))
-    })
-    .await
-}
-
-pub(crate) async fn fetch(
-    store: &Store,
-    registry: &Registry,
-    key: SchemaKey,
-) -> Result<SchemaSet, Failure> {
-    SchemaSet::load(key, |next| async move {
-        if let Some(stored) = store.registry().get(next).await? {
-            return Ok(stored);
-        }
-
-        let fetched = registry.schema(next).await?;
-
-        store.registry().put(&fetched).await?;
-        Ok(fetched)
-    })
-    .await
-}
-
-pub(crate) async fn retrying<T, F>(attempt: impl Fn() -> F) -> Result<T, Failure>
-where
-    F: Future<Output = Result<T, Failure>>,
-{
-    let mut answer = attempt().await;
-
-    for wait in LAGGING_REGISTRY {
-        let lagging = matches!(
-            answer,
-            Err(Failure::Rejected(
-                Rejection::Missing | Rejection::NotAccepted
-            ))
-        );
-        if !lagging {
-            break;
-        }
-
-        tokio::time::sleep(wait).await;
-        answer = attempt().await;
-    }
-
-    answer
 }
 
 fn format(schema_type: Option<&str>) -> Option<SchemaFormat> {
@@ -282,6 +238,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::registry::{fetch, stored};
     use crate::services::Services;
     use crate::testing;
 
@@ -292,24 +249,19 @@ mod tests {
         url: String,
         dependency: i32,
         main: i32,
-        subject: String,
+        topic: String,
     }
 
-    fn client(url: &str) -> Registry {
-        let settings = SchemaRegistry {
-            url: url.to_owned(),
-            username: None,
-            password: None,
-        };
-
-        Registry::new(settings, Metrics::new()).unwrap()
+    fn client(url: &str) -> Confluent {
+        Confluent::new(url.to_owned(), None, None, Metrics::new()).unwrap()
     }
 
     async fn setup() -> Option<Setup> {
         let url = mink_conformance::service("TEST_SCHEMA_REGISTRY")?;
         let services = testing::services(|_| {}).await?;
-        let namespace = format!("t{}", Uuid::new_v4().simple());
-        let subject = format!("{namespace}-value");
+        let topic = format!("t{}", Uuid::new_v4().simple());
+        let namespace = topic.clone();
+        let subject = format!("{topic}-value");
 
         let dependency_schema = json!({"type": "record", "name": "Dep", "namespace": namespace,
             "fields": [{"name": "x", "type": "long"}]});
@@ -329,7 +281,7 @@ mod tests {
             url,
             dependency,
             main,
-            subject,
+            topic,
         })
     }
 
@@ -362,11 +314,19 @@ mod tests {
         let guid = mink_conformance::schema_guid(&setup.url, setup.main).await;
         let client = client(&setup.url);
 
-        let resolved = client.guid_id(guid).await.unwrap();
-        let unknown = client.guid_id(Uuid::new_v4()).await.unwrap();
+        let resolved = client.resolve(SchemaRef::ConfluentGuid(guid)).await;
+        let unknown = client
+            .resolve(SchemaRef::ConfluentGuid(Uuid::new_v4()))
+            .await;
 
-        assert_eq!(resolved, Some(setup.main));
-        assert_eq!(unknown, None);
+        assert!(
+            matches!(resolved, Ok(key) if key == SchemaKey::Confluent(setup.main)),
+            "{resolved:?}"
+        );
+        assert!(
+            matches!(unknown, Err(Failure::Rejected(Rejection::Missing))),
+            "{unknown:?}"
+        );
     }
 
     #[tokio::test]
@@ -376,18 +336,18 @@ mod tests {
         };
         let client = client(&setup.url);
 
-        let under_subject = client.accepted(setup.main, &setup.subject).await.unwrap();
-        let elsewhere = client
-            .accepted(setup.dependency, &setup.subject)
-            .await
-            .unwrap();
-        let present = client.subject_exists(&setup.subject).await.unwrap();
-        let absent = client.subject_exists("absent-value").await.unwrap();
+        let main = SchemaKey::Confluent(setup.main);
+        let dependency = SchemaKey::Confluent(setup.dependency);
 
-        assert!(under_subject);
-        assert!(!elsewhere);
-        assert!(present);
-        assert!(!absent);
+        let under_subject = client.accepted(&setup.topic, Part::Value, main).await;
+        let elsewhere = client.accepted(&setup.topic, Part::Value, dependency).await;
+        let other_part = client.accepted(&setup.topic, Part::Key, main).await;
+        let absent = client.accepted("absent", Part::Value, main).await;
+
+        assert!(matches!(under_subject, Ok(true)), "{under_subject:?}");
+        assert!(matches!(elsewhere, Ok(false)), "{elsewhere:?}");
+        assert!(matches!(other_part, Ok(false)), "{other_part:?}");
+        assert!(matches!(absent, Ok(false)), "{absent:?}");
     }
 
     #[tokio::test]

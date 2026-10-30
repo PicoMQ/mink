@@ -59,7 +59,8 @@ async fn merge_fixture(fixture: &PayloadFixture, case: &PayloadCase) -> FixtureT
         let registered_under_subject = subjects.contains(&subject(case.topic(), part));
 
         let payload = match schema_set(fixture, id).await {
-            Some(set) => accept(&set, registered_under_subject),
+            Some(_) if !registered_under_subject => Err(Rejection::NotAccepted),
+            Some(set) => accept(&set),
             None => Err(Rejection::Missing),
         };
         let ids = identity_field_ids.entry(part).or_default();

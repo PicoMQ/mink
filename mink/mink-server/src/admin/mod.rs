@@ -203,7 +203,7 @@ pub(super) mod tests {
     pub(in crate::admin) async fn with_registry() -> Option<Registered> {
         let registry = mink_conformance::service("TEST_SCHEMA_REGISTRY")?;
         let bootstrap = testing::kafka()?;
-        let settings = SchemaRegistry {
+        let settings = SchemaRegistry::Confluent {
             url: registry.clone(),
             username: None,
             password: None,
