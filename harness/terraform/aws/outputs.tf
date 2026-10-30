@@ -31,6 +31,10 @@ output "scram_secret_arn" {
   value = local.create_kafka ? aws_secretsmanager_secret.scram[0].arn : null
 }
 
+output "schema_registry" {
+  value = local.use_registry ? nonsensitive(coalesce(local.registry.url, local.registry.name)) : null
+}
+
 output "postgres_address" {
   value = local.create_postgres ? aws_db_instance.this[0].address : null
 }

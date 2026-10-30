@@ -4,7 +4,9 @@ locals {
   create_kafka       = nonsensitive(var.kafka == null)
   create_postgres    = nonsensitive(var.postgres_url == null)
   create_bucket      = var.bucket == null
-  use_registry       = nonsensitive(var.schema_registry != null)
+
+  create_confluent_registry = var.create_schema_registry == "confluent"
+  create_glue_registry      = var.create_schema_registry == "glue"
 
   vpc_id             = local.create_network ? aws_vpc.this[0].id : var.vpc_id
   private_subnet_ids = local.create_network ? aws_subnet.private[*].id : var.private_subnet_ids
@@ -29,6 +31,10 @@ locals {
     admin   = 9180
   }
 
+  registry_port  = 8081
+  registry_image = "confluentinc/cp-schema-registry:8.1.1"
+  alb_ports      = merge(local.ports, local.create_confluent_registry ? { registry = local.registry_port } : {})
+
   node_ports = {
     for pair in setproduct(keys(local.nodes), ["s3", "admin"]) : "${pair[1]}-${pair[0]}" => {
       node = pair[0]
@@ -49,8 +55,42 @@ locals {
     }
   } : var.kafka
 
-  kafka_sasl        = nonsensitive(local.kafka.sasl != null)
-  registry_password = nonsensitive(try(var.schema_registry.password, null) != null)
+  kafka_sasl = nonsensitive(local.kafka.sasl != null)
+
+  kafka_security_protocol = "${local.kafka_sasl ? "SASL_" : ""}${local.kafka.tls ? "SSL" : "PLAINTEXT"}"
+  kafka_login_modules = {
+    PLAIN           = "org.apache.kafka.common.security.plain.PlainLoginModule"
+    "SCRAM-SHA-256" = "org.apache.kafka.common.security.scram.ScramLoginModule"
+    "SCRAM-SHA-512" = "org.apache.kafka.common.security.scram.ScramLoginModule"
+  }
+
+  registry = (
+    local.create_confluent_registry ? {
+      type     = "confluent"
+      url      = "http://registry.${var.domain}:${local.registry_port}"
+      username = null
+      password = null
+      name     = null
+      region   = null
+    } :
+    local.create_glue_registry ? {
+      type     = "glue"
+      url      = null
+      username = null
+      password = null
+      name     = aws_glue_registry.this[0].registry_name
+      region   = var.region
+    } :
+    var.schema_registry
+  )
+
+  use_registry      = nonsensitive(local.registry != null)
+  registry_password = nonsensitive(try(local.registry.password, null) != null)
+  registry_settings = local.use_registry ? { for key, value in local.registry : key => value if value != null && key != "password" } : {}
+
+  use_glue_registry    = nonsensitive(try(local.registry.type, null) == "glue")
+  glue_registry_name   = local.use_glue_registry ? nonsensitive(local.registry.name) : null
+  glue_registry_region = local.use_glue_registry ? nonsensitive(coalesce(local.registry.region, var.region)) : null
 
   postgres_url = local.create_postgres ? join("", [
     "postgres://${aws_db_instance.this[0].username}:${random_password.postgres[0].result}",

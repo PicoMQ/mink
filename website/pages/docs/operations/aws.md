@@ -10,20 +10,21 @@ The Terraform stack in `harness/terraform/aws` runs Mink on ECS Fargate. It crea
 | Kafka | MSK, one broker in each of the first three private subnets, SASL/SCRAM-SHA-512 over TLS on port 9096. The SCRAM user lives in Secrets Manager under its own KMS key. | `kafka`: bootstrap brokers, TLS and SASL. With TLS, the brokers' certificates must chain to a public CA, as Confluent Cloud's and MSK's do. |
 | Postgres | RDS PostgreSQL 17. Nodes connect with `sslmode=verify-full` against the RDS CA bundle. | `postgres_url`. For RDS, add `sslmode=verify-full&sslrootcert=/certs/rds.pem`: each node downloads the bundle there before it starts. |
 | Bucket | A private, encrypted bucket for the warehouse | `bucket`, in `region` |
-| Schema Registry | None | `schema_registry`: URL and credentials |
+| Schema Registry | With `create_schema_registry = "confluent"`, Confluent Schema Registry on ECS, storing schemas in the stack's Kafka, at `registry.<domain>:8081`. With `"glue"`, an AWS Glue registry named `project`, which nodes read with their task role. | `schema_registry`: a Confluent URL and credentials, or a Glue registry's name and region |
 | Nodes | `node_count` ECS services, one task each. They reach S3 with their task role. | |
 | Load balancer | An internal ALB on 8181 (catalog), 9100 (S3 endpoint) and 9180 (admin API and console), with a host name per node | |
 | DNS | A private Route 53 zone, `domain` (default `mink.internal`), for the ALB and each node | |
 | Client | With `client = true`, an EC2 instance with Docker, the Kafka CLI and DuckDB, reached only through SSM | |
 | Image repository | With `create_repository = true`, an ECR repository for images built from source | |
 
-The Postgres URL and the Kafka and Schema Registry passwords reach the nodes from Secrets Manager. Nothing in the stack accepts connections from the internet. The NAT gateway's address is for outbound traffic only.
+The Postgres URL and the Kafka and Schema Registry passwords reach the containers from Secrets Manager. Nothing in the stack accepts connections from the internet. The NAT gateway's address is for outbound traffic only.
 
 | Reaches | From |
 | --- | --- |
-| The ALB | `allowed_cidrs` (the VPC's range by default), nodes and the client |
+| The ALB, and the Schema Registry through it on 8081 | `allowed_cidrs` (the VPC's range by default), nodes and the client |
 | Nodes | The ALB only |
-| MSK | Nodes and the client |
+| The Schema Registry | The ALB only |
+| MSK | Nodes, the Schema Registry and the client |
 | RDS | Nodes only |
 | The client | Nothing. SSM Session Manager only. |
 
@@ -167,6 +168,7 @@ With `force_destroy = false`, the default, the database keeps a final snapshot, 
 | `postgres_url` | none | An existing database |
 | `db_instance_class`, `db_multi_az` | `db.t4g.micro`, `true` | The RDS instance |
 | `bucket` | none | An existing bucket |
-| `schema_registry` | none | `url`, `username` and `password` |
+| `create_schema_registry` | none | `confluent` or `glue` |
+| `schema_registry` | none | An existing registry: `{ type = "confluent", url, username, password }` or `{ type = "glue", name, region }` |
 | `client`, `client_instance_type` | `false`, `t4g.small` | The client instance |
 | `force_destroy` | `false` | Let destroy delete data |

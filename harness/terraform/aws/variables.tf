@@ -131,14 +131,41 @@ variable "bucket" {
   default = null
 }
 
+variable "create_schema_registry" {
+  type    = string
+  default = null
+
+  validation {
+    condition     = var.create_schema_registry == null || contains(["confluent", "glue"], var.create_schema_registry)
+    error_message = "create_schema_registry must be confluent or glue."
+  }
+}
+
 variable "schema_registry" {
   type = object({
-    url      = string
+    type     = string
+    url      = optional(string)
     username = optional(string)
     password = optional(string)
+    name     = optional(string)
+    region   = optional(string)
   })
   default   = null
   sensitive = true
+
+  validation {
+    condition = var.schema_registry == null || (
+      var.schema_registry.type == "confluent" && var.schema_registry.url != null && var.schema_registry.name == null && var.schema_registry.region == null
+      ) || (
+      var.schema_registry.type == "glue" && var.schema_registry.name != null && var.schema_registry.url == null && var.schema_registry.username == null && var.schema_registry.password == null
+    )
+    error_message = "schema_registry is { type = \"confluent\", url, username, password } or { type = \"glue\", name, region }."
+  }
+
+  validation {
+    condition     = var.schema_registry == null || var.create_schema_registry == null
+    error_message = "Set create_schema_registry or schema_registry, not both."
+  }
 }
 
 variable "client" {

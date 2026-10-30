@@ -30,6 +30,7 @@ data "aws_iam_policy_document" "execution_secrets" {
       [aws_secretsmanager_secret.postgres.arn],
       aws_secretsmanager_secret.kafka[*].arn,
       aws_secretsmanager_secret.registry[*].arn,
+      aws_secretsmanager_secret.registry_kafka[*].arn,
     )
   }
 }
@@ -88,4 +89,26 @@ resource "aws_iam_role_policy" "task_exec" {
   name   = "exec"
   role   = aws_iam_role.task.id
   policy = data.aws_iam_policy_document.task_exec.json
+}
+
+data "aws_caller_identity" "this" {}
+
+data "aws_iam_policy_document" "task_glue" {
+  count = local.use_glue_registry ? 1 : 0
+
+  statement {
+    actions = ["glue:GetRegistry", "glue:GetSchemaVersion"]
+    resources = [
+      "arn:aws:glue:${local.glue_registry_region}:${data.aws_caller_identity.this.account_id}:registry/${local.glue_registry_name}",
+      "arn:aws:glue:${local.glue_registry_region}:${data.aws_caller_identity.this.account_id}:schema/${local.glue_registry_name}/*",
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "task_glue" {
+  count = local.use_glue_registry ? 1 : 0
+
+  name   = "glue"
+  role   = aws_iam_role.task.id
+  policy = data.aws_iam_policy_document.task_glue[0].json
 }

@@ -81,6 +81,45 @@ resource "aws_lb_listener" "this" {
   }
 }
 
+resource "aws_lb_target_group" "registry" {
+  count = local.create_confluent_registry ? 1 : 0
+
+  name        = "${var.project}-registry"
+  port        = local.registry_port
+  protocol    = "HTTP"
+  vpc_id      = local.vpc_id
+  target_type = "ip"
+
+  health_check {
+    enabled             = true
+    path                = "/subjects"
+    matcher             = "200"
+    interval            = 10
+    timeout             = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+  }
+
+  deregistration_delay = 30
+
+  tags = {
+    Name = "${var.project}-registry"
+  }
+}
+
+resource "aws_lb_listener" "registry" {
+  count = local.create_confluent_registry ? 1 : 0
+
+  load_balancer_arn = aws_lb.this.arn
+  port              = local.registry_port
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.registry[0].arn
+  }
+}
+
 resource "aws_lb_listener_rule" "node" {
   for_each = local.node_ports
 

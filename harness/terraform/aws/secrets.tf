@@ -93,5 +93,28 @@ resource "aws_secretsmanager_secret_version" "registry" {
   count = local.registry_password ? 1 : 0
 
   secret_id     = aws_secretsmanager_secret.registry[0].id
-  secret_string = var.schema_registry.password
+  secret_string = local.registry.password
+}
+
+resource "aws_secretsmanager_secret" "registry_kafka" {
+  count = local.create_confluent_registry && local.kafka_sasl ? 1 : 0
+
+  name_prefix             = "${var.project}-registry-kafka-"
+  recovery_window_in_days = var.force_destroy ? 0 : 7
+
+  tags = {
+    Name = "${var.project}-registry-kafka"
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "registry_kafka" {
+  count = local.create_confluent_registry && local.kafka_sasl ? 1 : 0
+
+  secret_id = aws_secretsmanager_secret.registry_kafka[0].id
+  secret_string = join(" ", [
+    local.kafka_login_modules[local.kafka.sasl.mechanism],
+    "required",
+    "username=${jsonencode(local.kafka.sasl.username)}",
+    "password=${jsonencode(local.kafka.sasl.password)};",
+  ])
 }

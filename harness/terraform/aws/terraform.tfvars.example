@@ -32,10 +32,17 @@ image      = "ghcr.io/picomq/mink:latest"
 # Existing bucket. Omit to create one.
 # bucket = "my-warehouse"
 
+# Schema registry: create one, confluent or glue, or use an existing one.
+# create_schema_registry = "confluent"
 # schema_registry = {
+#   type     = "confluent"
 #   url      = "https://psrc-xxxxx.us-east-1.aws.confluent.cloud"
 #   username = "API_KEY"
 #   password = "API_SECRET"
+# }
+# schema_registry = {
+#   type = "glue"
+#   name = "my-registry"
 # }
 
 # client            = true

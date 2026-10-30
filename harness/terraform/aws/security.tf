@@ -8,7 +8,7 @@ resource "aws_security_group" "alb" {
   vpc_id      = local.vpc_id
 
   dynamic "ingress" {
-    for_each = local.ports
+    for_each = local.alb_ports
 
     content {
       description     = "${ingress.key} from allowed networks, nodes and the client"
@@ -68,6 +68,37 @@ resource "aws_vpc_security_group_ingress_rule" "node" {
   referenced_security_group_id = aws_security_group.alb.id
 }
 
+resource "aws_security_group" "registry" {
+  count = local.create_confluent_registry ? 1 : 0
+
+  name_prefix = "${var.project}-registry-"
+  description = "Confluent Schema Registry"
+  vpc_id      = local.vpc_id
+
+  ingress {
+    description     = "Schema Registry from the ALB"
+    from_port       = local.registry_port
+    to_port         = local.registry_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "${var.project}-registry"
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
 resource "aws_security_group" "kafka" {
   count = local.create_kafka ? 1 : 0
 
@@ -76,11 +107,11 @@ resource "aws_security_group" "kafka" {
   vpc_id      = local.vpc_id
 
   ingress {
-    description     = "SASL_SSL from nodes and the client"
+    description     = "SASL_SSL from nodes, the registry and the client"
     from_port       = 9096
     to_port         = 9096
     protocol        = "tcp"
-    security_groups = concat([aws_security_group.node.id], aws_security_group.client[*].id)
+    security_groups = concat([aws_security_group.node.id], aws_security_group.registry[*].id, aws_security_group.client[*].id)
   }
 
   egress {
