@@ -90,6 +90,10 @@ locals {
   use_glue_registry    = nonsensitive(try(local.registry.type, null) == "glue")
   glue_registry_name   = local.use_glue_registry ? nonsensitive(local.registry.name) : null
   glue_registry_region = local.use_glue_registry ? nonsensitive(coalesce(local.registry.region, var.region)) : null
+  glue_registry_arns = local.use_glue_registry ? [
+    "arn:aws:glue:${local.glue_registry_region}:${data.aws_caller_identity.this.account_id}:registry/${local.glue_registry_name}",
+    "arn:aws:glue:${local.glue_registry_region}:${data.aws_caller_identity.this.account_id}:schema/${local.glue_registry_name}/*",
+  ] : []
 
   postgres_url = local.create_postgres ? join("", [
     "postgres://${aws_db_instance.this[0].username}:${random_password.postgres[0].result}",

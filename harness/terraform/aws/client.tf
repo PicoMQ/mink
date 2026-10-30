@@ -63,6 +63,30 @@ resource "aws_iam_role_policy" "client_kafka" {
   policy = data.aws_iam_policy_document.client_kafka[0].json
 }
 
+data "aws_iam_policy_document" "client_glue" {
+  count = var.client && local.use_glue_registry ? 1 : 0
+
+  statement {
+    actions = [
+      "glue:GetRegistry",
+      "glue:CreateSchema",
+      "glue:GetSchemaByDefinition",
+      "glue:RegisterSchemaVersion",
+      "glue:GetSchemaVersion",
+      "glue:PutSchemaVersionMetadata",
+    ]
+    resources = local.glue_registry_arns
+  }
+}
+
+resource "aws_iam_role_policy" "client_glue" {
+  count = var.client && local.use_glue_registry ? 1 : 0
+
+  name   = "glue"
+  role   = aws_iam_role.client[0].id
+  policy = data.aws_iam_policy_document.client_glue[0].json
+}
+
 resource "aws_iam_instance_profile" "client" {
   count = var.client ? 1 : 0
 

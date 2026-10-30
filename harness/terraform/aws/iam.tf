@@ -97,11 +97,8 @@ data "aws_iam_policy_document" "task_glue" {
   count = local.use_glue_registry ? 1 : 0
 
   statement {
-    actions = ["glue:GetRegistry", "glue:GetSchemaVersion"]
-    resources = [
-      "arn:aws:glue:${local.glue_registry_region}:${data.aws_caller_identity.this.account_id}:registry/${local.glue_registry_name}",
-      "arn:aws:glue:${local.glue_registry_region}:${data.aws_caller_identity.this.account_id}:schema/${local.glue_registry_name}/*",
-    ]
+    actions   = ["glue:GetRegistry", "glue:GetSchemaVersion"]
+    resources = local.glue_registry_arns
   }
 }
 

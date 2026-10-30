@@ -185,42 +185,43 @@ EOF
 
 ## Load TPC-H
 
-With `create_schema_registry = "confluent"`, `harness/tpch` loads TPC-H `lineitem` through the stack and checks the result.
+`harness/tpch` loads TPC-H `lineitem` into the stack through its Schema Registry and checks the result. It works with either registry type.
 
 | Step | What it does |
 | --- | --- |
 | Generate | Builds `lineitem` at the given scale with DuckDB |
-| Produce | Writes every row to a new `lineitem` topic with Confluent's JSON Schema serializer. It stops if the topic already exists. |
-| Add | Adds the table and waits until the catalog's current snapshot holds every row |
+| Create | Creates a `lineitem` topic, which must not exist yet, and adds it as a table |
+| Produce | Writes every row with the registry's own serializer: Confluent's JSON Schema serializer or AWS's Glue serializer |
+| Wait | Waits until the catalog's current snapshot holds every row |
 | Check | Runs TPC-H Q1 and Q6 through Mink and on DuckDB's own copy, and fails if they differ |
+
+The table exists from the start. The console and engines show it fill as records are committed.
 
 Both sides compute prices in `double`. Sums agree to a relative 1e-9.
 
-On the client, after writing the SCRAM credentials above:
+On the client, after writing the Kafka client config above:
 
 ```bash
 dnf install -y git
 git clone https://github.com/PicoMQ/mink /opt/mink
-/opt/duckdb/bin/pip install "confluent-kafka[json,schemaregistry]"
-cat > /tmp/kafka.conf <<EOF
-bootstrap.servers=$BOOTSTRAP
-security.protocol=SASL_SSL
-sasl.mechanism=SCRAM-SHA-512
-sasl.username=$(echo "$CREDENTIALS" | jq -r .username)
-sasl.password=$(echo "$CREDENTIALS" | jq -r .password)
-EOF
-cd /opt/mink/harness
-/opt/duckdb/bin/python -m tpch /tmp/kafka.conf http://registry.mink.internal:8081 http://mink.internal:9180 0.5
+echo "bootstrap.servers=$BOOTSTRAP" >> /tmp/client.properties
+docker run --rm --network host -e AWS_REGION \
+  -v /opt/mink/harness/tpch:/src -v /tmp/client.properties:/client.properties -w /src \
+  maven:3.9-eclipse-temurin-25 mvn -q compile exec:java \
+  -Dexec.args="/client.properties glue mink http://mink.internal:9180 0.5"
 ```
+
+With `create_schema_registry = "confluent"`, the registry arguments are `confluent http://registry.mink.internal:8081`.
 
 | Argument | Value |
 | --- | --- |
-| Kafka config | librdkafka settings, one `key=value` per line |
-| Registry | The Schema Registry's URL |
+| Kafka properties | A Kafka client `.properties` file |
+| Registry type | `confluent` or `glue` |
+| Registry | A Confluent registry's URL, or a Glue registry's name in `AWS_REGION` |
 | Mink | A node's admin URL. The tool reaches the catalog at `/catalog` and the S3 endpoint at `/s3` under it. |
 | Scale | TPC-H scale, `0.5` by default |
 
-At scale `0.5` it loads 2,999,671 rows. On the default stack the run takes under 3 minutes and ends with `Q1: match` and `Q6: match`, each followed by its result rows.
+At scale `0.5` it loads 2,999,671 rows and ends with `Q1: match` and `Q6: match`, each followed by its result rows. Through Glue on the default stack the run takes about 27 minutes, most of it producing.
 
 ## Destroy
 
