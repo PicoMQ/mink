@@ -89,11 +89,10 @@ pub struct Tls {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Storage {
-    pub(crate) endpoint: String,
+    pub(crate) endpoint: Option<String>,
     pub(crate) region: String,
-    pub(crate) access_key_id: String,
-    pub(crate) secret_access_key: String,
-    pub(crate) path_style: bool,
+    pub(crate) access_key_id: Option<String>,
+    pub(crate) secret_access_key: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -126,6 +125,8 @@ pub enum ConfigError {
     StatisticsInterval,
     #[error("admin_address {0} is not a loopback address; set admin_remote to allow it")]
     RemoteAdmin(SocketAddr),
+    #[error("storage.access_key_id and storage.secret_access_key are set together or not at all")]
+    StorageCredentials,
 }
 
 impl Default for Config {
@@ -150,11 +151,10 @@ impl Default for Config {
             },
             warehouse: "s3://mink/warehouse".to_owned(),
             storage: Storage {
-                endpoint: "http://localhost:9000".to_owned(),
+                endpoint: None,
                 region: "us-east-1".to_owned(),
-                access_key_id: "mink".to_owned(),
-                secret_access_key: "minkminkmink".to_owned(),
-                path_style: true,
+                access_key_id: None,
+                secret_access_key: None,
             },
             schema_registry: None,
             namespace: "kafka".to_owned(),
@@ -235,7 +235,13 @@ impl Config {
                     .map_or("none".to_owned(), |sasl| sasl.mechanism.name().to_owned()),
             ),
             ("warehouse", self.warehouse.clone()),
-            ("storage", self.storage.endpoint.clone()),
+            (
+                "storage",
+                self.storage
+                    .endpoint
+                    .clone()
+                    .unwrap_or_else(|| format!("AWS S3 in {}", self.storage.region)),
+            ),
             (
                 "schema_registry",
                 self.schema_registry
@@ -293,6 +299,9 @@ impl Config {
         if self.statistics_interval >= self.snapshot_retention {
             return Err(ConfigError::StatisticsInterval);
         }
+        if self.storage.access_key_id.is_some() != self.storage.secret_access_key.is_some() {
+            return Err(ConfigError::StorageCredentials);
+        }
 
         Ok(())
     }
@@ -304,6 +313,14 @@ impl Config {
             return Err(ConfigError::RemoteAdmin(self.admin_address));
         }
         Ok(())
+    }
+}
+
+impl Storage {
+    pub(crate) fn credentials(&self) -> Option<(&str, &str)> {
+        self.access_key_id
+            .as_deref()
+            .zip(self.secret_access_key.as_deref())
     }
 }
 
@@ -605,6 +622,31 @@ mod tests {
         assert_eq!(described["kafka_tls"], "system CA certificates");
         assert_eq!(described["kafka_sasl"], "PLAIN");
         assert!(described.values().all(|value| !value.contains("hunter2")));
+    }
+
+    #[test]
+    fn storage_defaults_to_aws_s3_and_keys_are_set_together_or_not_at_all() {
+        figment::Jail::expect_with(|jail| {
+            jail.create_file(
+                "keys.toml",
+                "[storage]\naccess_key_id = \"mink\"\nsecret_access_key = \"minkminkmink\"",
+            )?;
+            jail.create_file("half.toml", "[storage]\naccess_key_id = \"mink\"")?;
+
+            let chain = Config::load(None).unwrap();
+            let keys = Config::load(Some(Path::new("keys.toml"))).unwrap();
+            let half = Config::load(Some(Path::new("half.toml")));
+
+            assert_eq!(chain.storage.endpoint, None);
+            assert_eq!(chain.describe()["storage"], "AWS S3 in us-east-1");
+            assert_eq!(chain.storage.credentials(), None);
+            assert_eq!(keys.storage.credentials(), Some(("mink", "minkminkmink")));
+            assert!(
+                matches!(half, Err(ConfigError::StorageCredentials)),
+                "{half:?}"
+            );
+            Ok(())
+        });
     }
 
     #[test]

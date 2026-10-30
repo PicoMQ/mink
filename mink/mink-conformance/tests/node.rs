@@ -132,7 +132,6 @@ async fn start(env: &TestEnv, roles: &[Role], settings: &str) -> TestNode {
         region = "us-east-1"
         access_key_id = "mink"
         secret_access_key = "minkminkmink"
-        path_style = true
 
         {schema_registry}
         "#

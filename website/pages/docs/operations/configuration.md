@@ -10,11 +10,7 @@ warehouse = "s3://lake/mink"
 bootstrap = ["kafka-1:9092", "kafka-2:9092"]
 
 [storage]
-endpoint = "https://s3.us-east-1.amazonaws.com"
 region = "us-east-1"
-access_key_id = "..."
-secret_access_key = "..."
-path_style = false
 
 [schema_registry]
 url = "http://registry:8081"
@@ -60,10 +56,9 @@ Durations are a number and a unit: `ms`, `s`, `m` or `h`. Sizes are bytes. Every
 | `kafka.sasl.mechanism` | none | `PLAIN`, `SCRAM-SHA-256` or `SCRAM-SHA-512`, as Kafka names them |
 | `kafka.sasl.username`, `kafka.sasl.password` | none | The SASL credentials |
 | `warehouse` | `s3://mink/warehouse` | Where Iceberg metadata lives, and the root of every table location |
-| `storage.endpoint` | `http://localhost:9000` | The S3-compatible store that holds the warehouse |
-| `storage.region` | `us-east-1` | Its region |
-| `storage.access_key_id`, `storage.secret_access_key` | `mink`, `minkminkmink` | Its credentials |
-| `storage.path_style` | `true` | Path-style addressing |
+| `storage.endpoint` | none | An S3-compatible store such as RustFS or MinIO, addressed in path style. Without it, AWS S3 in `storage.region`. |
+| `storage.region` | `us-east-1` | The bucket's region |
+| `storage.access_key_id`, `storage.secret_access_key` | none | Its credentials, set together. Without them, credentials come from `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, web identity, the ECS task role, EKS Pod Identity, or the instance profile, in that order. Other `AWS_*` variables are ignored. |
 | `schema_registry.url` | none | The Schema Registry. Without it, new records keep their raw bytes. |
 | `schema_registry.username`, `schema_registry.password` | none | Basic authentication for the registry |
 | `namespace` | `kafka` | The catalog's one namespace |

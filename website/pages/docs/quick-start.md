@@ -29,6 +29,11 @@ Save this as `mink.toml`. Every other setting has a default that matches the com
 [kafka]
 bootstrap = ["localhost:29092"]
 
+[storage]
+endpoint = "http://localhost:9000"
+access_key_id = "mink"
+secret_access_key = "minkminkmink"
+
 [schema_registry]
 url = "http://localhost:8081"
 ```
