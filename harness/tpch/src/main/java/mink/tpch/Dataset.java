@@ -10,6 +10,7 @@ import java.util.function.Consumer;
 
 final class Dataset implements AutoCloseable {
     static final String TABLE = "lineitem";
+    static final String REFERENCE = "reference";
 
     static final String SCHEMA = """
             {
@@ -57,19 +58,19 @@ final class Dataset implements AutoCloseable {
         execute("LOAD tpch");
         execute("CALL dbgen(sf = %s)".formatted(scale));
         execute("""
-                CREATE VIEW reference AS SELECT * REPLACE (
+                CREATE VIEW %s AS SELECT * REPLACE (
                     CAST(l_quantity AS DOUBLE) AS l_quantity,
                     CAST(l_extendedprice AS DOUBLE) AS l_extendedprice,
                     CAST(l_discount AS DOUBLE) AS l_discount,
                     CAST(l_tax AS DOUBLE) AS l_tax
-                ) FROM lineitem
-                """);
+                ) FROM %s
+                """.formatted(REFERENCE, TABLE));
 
-        return ((Number) query("SELECT count(*) FROM reference").getFirst().getFirst()).longValue();
+        return ((Number) query("SELECT count(*) FROM " + REFERENCE).getFirst().getFirst()).longValue();
     }
 
     void rows(Consumer<Row> sink) throws SQLException {
-        var sql = "SELECT l_orderkey || '-' || l_linenumber, to_json(reference)::VARCHAR FROM reference";
+        var sql = "SELECT l_orderkey || '-' || l_linenumber, to_json(%1$s)::VARCHAR FROM %1$s".formatted(REFERENCE);
 
         try (var statement = duckdb.createStatement(); var results = statement.executeQuery(sql)) {
             while (results.next()) {
@@ -79,20 +80,20 @@ final class Dataset implements AutoCloseable {
     }
 
     String attach(Mink mink) throws SQLException {
-        var address = mink.address();
+        var s3 = mink.s3();
 
         execute("INSTALL iceberg");
         execute("LOAD iceberg");
         execute("INSTALL httpfs");
         execute("LOAD httpfs");
         execute("""
-                CREATE SECRET mink (TYPE S3, KEY_ID 'mink', SECRET 'mink', ENDPOINT '%s/s3',
+                CREATE SECRET mink (TYPE S3, KEY_ID 'mink', SECRET 'mink', ENDPOINT '%s%s',
                     URL_STYLE 'path', USE_SSL %s)
-                """.formatted(address.getAuthority(), address.getScheme().equals("https")));
+                """.formatted(s3.getAuthority(), s3.getPath(), s3.getScheme().equals("https")));
         execute("""
-                ATTACH '%s' AS mink (TYPE iceberg, ENDPOINT '%s/catalog',
+                ATTACH '%s' AS mink (TYPE iceberg, ENDPOINT '%s',
                     AUTHORIZATION_TYPE 'none', ACCESS_DELEGATION_MODE 'none')
-                """.formatted(mink.warehouse(), address));
+                """.formatted(mink.warehouse(), mink.catalog()));
 
         return "mink.%s.%s".formatted(mink.namespace(), TABLE);
     }

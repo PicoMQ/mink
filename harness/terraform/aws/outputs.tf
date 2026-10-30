@@ -39,6 +39,14 @@ output "client_instance_id" {
   value = var.client ? aws_instance.client[0].id : null
 }
 
+output "emr_application_id" {
+  value = var.emr ? aws_emrserverless_application.this[0].id : null
+}
+
+output "emr_role_arn" {
+  value = var.emr ? aws_iam_role.emr[0].arn : null
+}
+
 output "repository_url" {
   value = var.create_repository ? aws_ecr_repository.mink[0].repository_url : null
 }

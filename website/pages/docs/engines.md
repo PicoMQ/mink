@@ -8,6 +8,7 @@ Any engine with an Iceberg REST catalog connects to Mink with two addresses: the
 | PyIceberg | 0.12 | `RestCatalog` |
 | Spark | 4.1, with Iceberg 1.12 | `SparkCatalog` of type `rest` |
 | Trino | 484 | `iceberg` connector, catalog type `rest` |
+| EMR Serverless | 7.14.0, with Spark 3.5.8 and Iceberg 1.10.1 | `SparkCatalog` of type `rest`, see [AWS](/docs/operations/aws#query-from-emr-serverless) |
 
 Mink's S3 endpoint accepts any access key and secret. Most S3 clients require one, so the snippets set both to `mink`.
 

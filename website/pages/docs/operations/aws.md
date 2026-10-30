@@ -2,6 +2,10 @@
 
 The Terraform stack in `harness/terraform/aws` runs Mink on ECS Fargate. It creates what a deployment needs, or takes existing pieces in their place.
 
+::: info
+This stack is a demo. It runs Mink on AWS end to end, and DuckDB, the console and Spark on EMR Serverless query Kafka topics through it as Iceberg tables. Mink runs next to any Kafka cluster, Postgres and S3-compatible store, on AWS or elsewhere, see [Deployment](/docs/operations/deployment).
+:::
+
 ## What it creates
 
 | Piece | Created | Or existing |
@@ -16,11 +20,12 @@ The Terraform stack in `harness/terraform/aws` runs Mink on ECS Fargate. It crea
 | DNS | A private Route 53 zone, `domain` (default `mink.internal`), for the ALB and each node | |
 | Client | With `client = true`, an EC2 instance with Docker, the Kafka CLI and DuckDB, reached only through SSM | |
 | Image repository | With `create_repository = true`, an ECR repository for images built from source | |
+| EMR | With `emr = true`, an EMR Serverless Spark application, `emr-7.14.0`, in the private subnets. Its job role reads and writes only the bucket's `emr/` prefix. | |
 
 The Postgres URL and the Kafka and Schema Registry passwords reach the containers from Secrets Manager. Nothing in the stack accepts connections from the internet. The NAT gateway's address is for outbound traffic only.
 
 <div class="mink-diagram">
-<svg viewBox="0 0 660 426" width="660" role="img" aria-label="allowed_cidrs reach the internal ALB on 8181, 9100, 9180 and 8081. The ALB reaches the nodes and the Schema Registry. Nodes reach the ALB, RDS on 5432 and MSK on 9096. The Schema Registry and the client reach MSK. The client reaches the ALB, and is reached only through SSM.">
+<svg viewBox="0 0 660 516" width="660" role="img" aria-label="allowed_cidrs reach the internal ALB on 8181, 9100, 9180 and 8081. EMR Serverless and the client reach the ALB. The ALB reaches the nodes and the Schema Registry. Nodes reach the ALB, RDS on 5432 and MSK on 9096. The Schema Registry and the client reach MSK. The client is reached only through SSM.">
   <defs>
     <marker id="aws-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0 0.5 L7.5 4 L0 7.5 Z" class="arrow"/>
@@ -32,44 +37,49 @@ The Postgres URL and the Kafka and Schema Registry passwords reach the container
   <rect x="470" y="10" width="160" height="56" class="box"/>
   <text x="550" y="34" text-anchor="middle" class="label">SSM</text>
   <text x="550" y="52" text-anchor="middle" class="sub">Session Manager</text>
-  <rect x="10" y="90" width="640" height="326" class="edge-soft"/>
-  <text x="22" y="108" class="sub">VPC, private subnets</text>
-  <rect x="230" y="110" width="200" height="56" class="box"/>
-  <text x="330" y="134" text-anchor="middle" class="label">ALB</text>
-  <text x="330" y="152" text-anchor="middle" class="sub">internal</text>
+  <rect x="10" y="90" width="640" height="416" class="edge-soft"/>
+  <text x="22" y="104" class="sub">VPC, private subnets</text>
+  <rect x="30" y="110" width="160" height="56" class="box"/>
+  <text x="110" y="134" text-anchor="middle" class="label">EMR Serverless</text>
+  <text x="110" y="152" text-anchor="middle" class="sub">Spark, optional</text>
   <rect x="470" y="110" width="160" height="56" class="box"/>
   <text x="550" y="134" text-anchor="middle" class="label">client</text>
   <text x="550" y="152" text-anchor="middle" class="sub">EC2, optional</text>
-  <rect x="30" y="230" width="160" height="56" class="box"/>
-  <text x="110" y="254" text-anchor="middle" class="label">Schema Registry</text>
-  <text x="110" y="272" text-anchor="middle" class="sub">Confluent, optional</text>
-  <rect x="230" y="230" width="200" height="56" class="box-accent"/>
-  <text x="330" y="254" text-anchor="middle" class="label">nodes</text>
-  <text x="330" y="272" text-anchor="middle" class="sub">ECS tasks</text>
-  <rect x="470" y="230" width="100" height="56" class="box"/>
-  <text x="520" y="254" text-anchor="middle" class="label">RDS</text>
-  <text x="520" y="272" text-anchor="middle" class="sub">Postgres</text>
-  <rect x="30" y="350" width="600" height="56" class="box"/>
-  <text x="330" y="374" text-anchor="middle" class="label">MSK</text>
-  <text x="330" y="392" text-anchor="middle" class="sub">SASL/SCRAM over TLS</text>
-  <path d="M330 66 L330 106" class="edge" marker-end="url(#aws-arrow)"/>
+  <rect x="30" y="200" width="400" height="56" class="box"/>
+  <text x="230" y="224" text-anchor="middle" class="label">ALB</text>
+  <text x="230" y="242" text-anchor="middle" class="sub">internal</text>
+  <rect x="30" y="320" width="160" height="56" class="box"/>
+  <text x="110" y="344" text-anchor="middle" class="label">Schema Registry</text>
+  <text x="110" y="362" text-anchor="middle" class="sub">Confluent, optional</text>
+  <rect x="230" y="320" width="200" height="56" class="box-accent"/>
+  <text x="330" y="344" text-anchor="middle" class="label">nodes</text>
+  <text x="330" y="362" text-anchor="middle" class="sub">ECS tasks</text>
+  <rect x="470" y="320" width="100" height="56" class="box"/>
+  <text x="520" y="344" text-anchor="middle" class="label">RDS</text>
+  <text x="520" y="362" text-anchor="middle" class="sub">Postgres</text>
+  <rect x="30" y="440" width="600" height="56" class="box"/>
+  <text x="330" y="464" text-anchor="middle" class="label">MSK</text>
+  <text x="330" y="482" text-anchor="middle" class="sub">SASL/SCRAM over TLS</text>
+  <path d="M330 66 L330 196" class="edge" marker-end="url(#aws-arrow)"/>
   <path d="M550 66 L550 106" class="edge-soft" marker-end="url(#aws-arrow)"/>
-  <path d="M470 138 L434 138" class="edge" marker-end="url(#aws-arrow)"/>
-  <path d="M370 166 L370 226" class="edge" marker-end="url(#aws-arrow)"/>
-  <path d="M290 230 L290 170" class="edge" marker-end="url(#aws-arrow)"/>
-  <path d="M230 150 L110 150 L110 226" class="edge" marker-end="url(#aws-arrow)"/>
-  <path d="M430 258 L466 258" class="edge" marker-end="url(#aws-arrow)"/>
-  <path d="M110 286 L110 346" class="edge" marker-end="url(#aws-arrow)"/>
-  <path d="M330 286 L330 346" class="edge" marker-end="url(#aws-arrow)"/>
-  <path d="M610 166 L610 346" class="edge" marker-end="url(#aws-arrow)"/>
+  <path d="M110 166 L110 196" class="edge" marker-end="url(#aws-arrow)"/>
+  <path d="M550 166 L550 228 L434 228" class="edge" marker-end="url(#aws-arrow)"/>
+  <path d="M110 256 L110 316" class="edge" marker-end="url(#aws-arrow)"/>
+  <path d="M370 256 L370 316" class="edge" marker-end="url(#aws-arrow)"/>
+  <path d="M290 320 L290 260" class="edge" marker-end="url(#aws-arrow)"/>
+  <path d="M430 348 L466 348" class="edge" marker-end="url(#aws-arrow)"/>
+  <path d="M110 376 L110 436" class="edge" marker-end="url(#aws-arrow)"/>
+  <path d="M330 376 L330 436" class="edge" marker-end="url(#aws-arrow)"/>
+  <path d="M610 166 L610 436" class="edge" marker-end="url(#aws-arrow)"/>
   <text x="338" y="84" class="sub">8181, 9100, 9180, 8081</text>
-  <text x="378" y="200" class="sub">8181, 9100, 9180</text>
-  <text x="282" y="200" text-anchor="end" class="sub">forwards</text>
-  <text x="118" y="200" class="sub">8081</text>
-  <text x="448" y="250" text-anchor="middle" class="sub">5432</text>
-  <text x="118" y="322" class="sub">9096</text>
-  <text x="338" y="322" class="sub">9096</text>
-  <text x="602" y="322" text-anchor="end" class="sub">9096</text>
+  <text x="118" y="186" class="sub">8181, 9100</text>
+  <text x="118" y="290" class="sub">8081</text>
+  <text x="378" y="290" class="sub">8181, 9100, 9180</text>
+  <text x="282" y="290" text-anchor="end" class="sub">forwards</text>
+  <text x="448" y="340" text-anchor="middle" class="sub">5432</text>
+  <text x="118" y="412" class="sub">9096</text>
+  <text x="338" y="412" class="sub">9096</text>
+  <text x="602" y="412" text-anchor="end" class="sub">9096</text>
 </svg>
 </div>
 
@@ -197,7 +207,7 @@ EOF
 
 The table exists from the start. The console and engines show it fill as records are committed.
 
-Both sides compute prices in `double`. Sums agree to a relative 1e-9.
+Prices are `double` in Mink and in DuckDB's copy. Sums agree to a relative 1e-9.
 
 On the client, after writing the Kafka client config above:
 
@@ -222,6 +232,43 @@ With `create_schema_registry = "confluent"`, the registry arguments are `conflue
 | Scale | TPC-H scale, `0.5` by default |
 
 At scale `0.5` it loads 2,999,671 rows and ends with `Q1: match` and `Q6: match`, each followed by its result rows. Through Glue on the default stack the run takes about 27 minutes, most of it producing.
+
+## Query from EMR Serverless
+
+With `emr = true`, Spark on EMR Serverless reads tables through the catalog, with EMR's bundled Iceberg and no other packages. `harness/emr/queries.py` runs SQL files against a table and prints the rows.
+
+From `harness/terraform/aws`, upload the script and the TPC-H queries, then start a job:
+
+```bash
+BUCKET=$(terraform output -raw bucket)
+aws s3 cp ../../emr/queries.py "s3://$BUCKET/emr/queries.py"
+aws s3 cp ../../tpch/src/main/resources/queries/ "s3://$BUCKET/emr/queries/" --recursive
+cat > /tmp/job.json <<EOF
+{
+  "sparkSubmit": {
+    "entryPoint": "s3://$BUCKET/emr/queries.py",
+    "entryPointArguments": ["mink.kafka.lineitem", "s3://$BUCKET/emr/queries/q1.sql", "s3://$BUCKET/emr/queries/q6.sql"],
+    "sparkSubmitParameters": "--conf spark.jars=/usr/share/aws/iceberg/lib/iceberg-spark3-runtime.jar --conf spark.sql.catalog.mink=org.apache.iceberg.spark.SparkCatalog --conf spark.sql.catalog.mink.type=rest --conf spark.sql.catalog.mink.uri=http://mink.internal:8181 --conf spark.sql.catalog.mink.io-impl=org.apache.iceberg.aws.s3.S3FileIO"
+  }
+}
+EOF
+cat > /tmp/logs.json <<EOF
+{"monitoringConfiguration": {"s3MonitoringConfiguration": {"logUri": "s3://$BUCKET/emr/logs/"}}}
+EOF
+APPLICATION=$(terraform output -raw emr_application_id)
+JOB=$(aws emr-serverless start-job-run --application-id "$APPLICATION" \
+  --execution-role-arn "$(terraform output -raw emr_role_arn)" --name tpch \
+  --job-driver file:///tmp/job.json --configuration-overrides file:///tmp/logs.json \
+  --query jobRunId --output text)
+```
+
+When `aws emr-serverless get-job-run --application-id "$APPLICATION" --job-run-id "$JOB"` reports `SUCCESS`, read the rows:
+
+```bash
+aws s3 cp "s3://$BUCKET/emr/logs/applications/$APPLICATION/jobs/$JOB/SPARK_DRIVER/stdout.gz" - | gunzip
+```
+
+The rows match the ones `tpch` prints for the same scale.
 
 ## Destroy
 
@@ -254,4 +301,5 @@ With `force_destroy = false`, the default, the database keeps a final snapshot, 
 | `create_schema_registry` | none | `confluent` or `glue` |
 | `schema_registry` | none | An existing registry: `{ type = "confluent", url, username, password }` or `{ type = "glue", name, region }` |
 | `client`, `client_instance_type` | `false`, `t4g.small` | The client instance |
+| `emr` | `false` | An EMR Serverless Spark application |
 | `force_destroy` | `false` | Let destroy delete data |

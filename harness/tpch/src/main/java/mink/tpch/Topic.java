@@ -14,16 +14,8 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.serialization.StringSerializer;
 
-final class Topic {
+record Topic(Properties kafka, String name) {
     private static final long PROGRESS_EVERY = 250_000;
-
-    private final Properties kafka;
-    private final String name;
-
-    Topic(Properties kafka, String name) {
-        this.kafka = kafka;
-        this.name = name;
-    }
 
     void create(int partitions) throws ExecutionException, InterruptedException {
         try (var admin = Admin.create(kafka)) {

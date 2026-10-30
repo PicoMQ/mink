@@ -178,6 +178,11 @@ variable "client_instance_type" {
   default = "t4g.small"
 }
 
+variable "emr" {
+  type    = bool
+  default = false
+}
+
 variable "force_destroy" {
   type    = bool
   default = false

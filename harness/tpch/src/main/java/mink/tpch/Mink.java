@@ -7,6 +7,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Optional;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,9 +19,18 @@ record Mink(URI address, String warehouse, String namespace) {
     private static final Duration POLL = Duration.ofSeconds(10);
 
     static Mink at(URI address) throws IOException, InterruptedException {
-        var cluster = get(address.resolve("/admin/cluster"));
+        var uri = address.resolve("/admin/cluster");
+        var cluster = get(uri).orElseThrow(() -> new IOException(uri + " answered 404"));
 
         return new Mink(address, cluster.path("warehouse").asText(), cluster.path("namespace").asText());
+    }
+
+    URI catalog() {
+        return address.resolve("/catalog");
+    }
+
+    URI s3() {
+        return address.resolve("/s3");
     }
 
     void addTable(String topic) throws IOException, InterruptedException {
@@ -52,13 +62,13 @@ record Mink(URI address, String warehouse, String namespace) {
     }
 
     private long served(String table) throws IOException, InterruptedException {
-        var uri = address.resolve("/catalog/v1/namespaces/%s/tables/%s".formatted(namespace, table));
-        var response = HTTP.send(HttpRequest.newBuilder(uri).build(), HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() == 404) {
+        var uri = URI.create("%s/v1/namespaces/%s/tables/%s".formatted(catalog(), namespace, table));
+        var loaded = get(uri);
+        if (loaded.isEmpty()) {
             return 0;
         }
 
-        var metadata = JSON.readTree(response.body()).path("metadata");
+        var metadata = loaded.get().path("metadata");
         var current = metadata.path("current-snapshot-id").asLong();
         for (JsonNode snapshot : metadata.path("snapshots")) {
             if (snapshot.path("snapshot-id").asLong() == current) {
@@ -69,12 +79,13 @@ record Mink(URI address, String warehouse, String namespace) {
         return 0;
     }
 
-    private static JsonNode get(URI uri) throws IOException, InterruptedException {
+    private static Optional<JsonNode> get(URI uri) throws IOException, InterruptedException {
         var response = HTTP.send(HttpRequest.newBuilder(uri).build(), HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() != 200) {
-            throw new IOException(uri + " answered " + response.statusCode());
-        }
 
-        return JSON.readTree(response.body());
+        return switch (response.statusCode()) {
+            case 200 -> Optional.of(JSON.readTree(response.body()));
+            case 404 -> Optional.empty();
+            default -> throw new IOException(uri + " answered " + response.statusCode() + ": " + response.body());
+        };
     }
 }

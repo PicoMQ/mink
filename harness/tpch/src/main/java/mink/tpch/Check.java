@@ -1,32 +1,26 @@
 package mink.tpch;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.stream.Stream;
 
 final class Check {
     private static final double TOLERANCE = 1e-9;
 
-    private record Query(String name, String sql) {}
+    private record Query(String name, String sql) {
+        static Query load(String name) {
+            try (var sql = Check.class.getResourceAsStream("/queries/" + name.toLowerCase() + ".sql")) {
+                return new Query(name, new String(sql.readAllBytes(), StandardCharsets.UTF_8));
+            } catch (IOException error) {
+                throw new UncheckedIOException(error);
+            }
+        }
+    }
 
-    private static final List<Query> QUERIES = List.of(
-            new Query("Q1", """
-                    SELECT l_returnflag, l_linestatus,
-                        sum(l_quantity), sum(l_extendedprice),
-                        sum(l_extendedprice * (1 - l_discount)),
-                        sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)),
-                        avg(l_quantity), avg(l_extendedprice), avg(l_discount),
-                        count(*)
-                    FROM %s
-                    WHERE l_shipdate <= DATE '1998-12-01' - INTERVAL 90 DAY
-                    GROUP BY l_returnflag, l_linestatus
-                    ORDER BY l_returnflag, l_linestatus
-                    """),
-            new Query("Q6", """
-                    SELECT sum(l_extendedprice * l_discount)
-                    FROM %s
-                    WHERE l_shipdate >= DATE '1994-01-01' AND l_shipdate < DATE '1995-01-01'
-                        AND l_discount BETWEEN 0.05 AND 0.07 AND l_quantity < 24
-                    """));
+    private static final List<Query> QUERIES = Stream.of("Q1", "Q6").map(Query::load).toList();
 
     private Check() {}
 
@@ -34,16 +28,16 @@ final class Check {
         var matched = true;
 
         for (var query : QUERIES) {
-            var expected = dataset.query(query.sql().formatted("reference"));
+            var expected = dataset.query(query.sql().formatted(Dataset.REFERENCE));
             var actual = dataset.query(query.sql().formatted(table));
-            var same = same(expected, actual);
+            var matches = same(expected, actual);
 
-            System.out.println(query.name() + ": " + (same ? "match" : "MISMATCH"));
+            System.out.println(query.name() + ": " + (matches ? "match" : "MISMATCH"));
             actual.forEach(row -> System.out.println("  " + row));
-            if (!same) {
+            if (!matches) {
                 System.out.println("  expected " + expected);
             }
-            matched &= same;
+            matched &= matches;
         }
 
         return matched;
