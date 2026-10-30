@@ -130,8 +130,7 @@ async fn start(env: &TestEnv, roles: &[Role], settings: &str) -> TestNode {
         [storage]
         endpoint = "{s3}"
         region = "us-east-1"
-        access_key_id = "mink"
-        secret_access_key = "minkminkmink"
+        credentials = {{ access_key_id = "mink", secret_access_key = "minkminkmink" }}
 
         {schema_registry}
         "#

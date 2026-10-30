@@ -13,8 +13,7 @@ bootstrap = ["kafka:9092"]
 
 [storage]
 endpoint = "http://rustfs:9000"
-access_key_id = "mink"
-secret_access_key = "minkminkmink"
+credentials = { access_key_id = "mink", secret_access_key = "minkminkmink" }
 
 [schema_registry]
 url = "http://schema-registry:8081"

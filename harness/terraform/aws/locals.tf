@@ -14,7 +14,6 @@ locals {
 
   bucket    = local.create_bucket ? aws_s3_bucket.warehouse[0].bucket : var.bucket
   rds_ca    = "/certs/rds.pem"
-  user      = "mink"
   cache_dir = "/cache"
 
   nodes = {
@@ -38,34 +37,24 @@ locals {
     }
   }
 
+  scram = local.create_kafka ? jsondecode(aws_secretsmanager_secret_version.scram[0].secret_string) : null
+
   kafka = local.create_kafka ? {
     bootstrap = split(",", aws_msk_cluster.this[0].bootstrap_brokers_sasl_scram)
     tls       = true
     sasl = {
       mechanism = "SCRAM-SHA-512"
-      username  = local.user
-      password  = random_password.kafka[0].result
+      username  = local.scram.username
+      password  = local.scram.password
     }
   } : var.kafka
 
+  kafka_sasl        = nonsensitive(local.kafka.sasl != null)
+  registry_password = nonsensitive(try(var.schema_registry.password, null) != null)
+
   postgres_url = local.create_postgres ? join("", [
-    "postgres://${local.user}:${random_password.postgres[0].result}@${aws_db_instance.this[0].address}:5432/${local.user}",
+    "postgres://${aws_db_instance.this[0].username}:${random_password.postgres[0].result}",
+    "@${aws_db_instance.this[0].address}:5432/${aws_db_instance.this[0].db_name}",
     "?sslmode=verify-full&sslrootcert=${local.rds_ca}",
   ]) : var.postgres_url
-
-  storage = "{region = ${jsonencode(var.region)}}"
-
-  kafka_setting = join("", [
-    "{bootstrap = ${jsonencode(local.kafka.bootstrap)}",
-    local.kafka.tls ? ", tls = {}" : "",
-    local.kafka.sasl == null ? "" : ", sasl = {mechanism = ${jsonencode(local.kafka.sasl.mechanism)}, username = ${jsonencode(local.kafka.sasl.username)}, password = ${jsonencode(local.kafka.sasl.password)}}",
-    "}",
-  ])
-
-  registry_setting = !local.use_registry ? null : join("", [
-    "{url = ${jsonencode(var.schema_registry.url)}",
-    var.schema_registry.username == null ? "" : ", username = ${jsonencode(var.schema_registry.username)}",
-    var.schema_registry.password == null ? "" : ", password = ${jsonencode(var.schema_registry.password)}",
-    "}",
-  ])
 }

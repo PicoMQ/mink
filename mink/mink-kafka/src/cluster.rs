@@ -211,8 +211,7 @@ impl Cluster {
     }
 
     async fn refresh_once(&mut self) -> Result<Listing, Error> {
-        let mut errors = Vec::new();
-        let mut refused = None;
+        let mut failures = Vec::new();
 
         let brokers: Vec<BrokerId> = self.brokers.keys().copied().collect();
         for broker in brokers {
@@ -223,12 +222,7 @@ impl Cluster {
 
             match metadata {
                 Ok(metadata) => return Ok(self.apply_metadata(metadata)),
-                Err(error) => {
-                    errors.push(format!("broker {}: {error}", broker.0));
-                    if !retriable(&error) {
-                        refused.get_or_insert(error);
-                    }
-                }
+                Err(error) => failures.push((format!("broker {}", broker.0), error)),
             }
         }
 
@@ -243,16 +237,11 @@ impl Cluster {
 
             match metadata {
                 Ok(metadata) => return Ok(self.apply_metadata(metadata)),
-                Err(error) => {
-                    errors.push(format!("{address}: {error}"));
-                    if !retriable(&error) {
-                        refused.get_or_insert(error);
-                    }
-                }
+                Err(error) => failures.push((address, error)),
             }
         }
 
-        Err(refused.unwrap_or(Error::Unreachable(errors)))
+        Err(Error::Unreachable(failures))
     }
 
     fn apply_metadata(&mut self, metadata: MetadataResponse) -> Listing {
@@ -717,7 +706,7 @@ mod tests {
         let connected = Cluster::connect(config, Metrics::new()).await;
 
         assert!(
-            matches!(&connected, Err(Error::Authentication(message)) if message.contains("only PLAIN")),
+            matches!(&connected, Err(Error::Unreachable(failures)) if matches!(&failures[..], [(_, Error::Authentication(message))] if message.contains("only PLAIN"))),
             "{:?}",
             connected.err()
         );

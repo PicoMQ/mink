@@ -41,7 +41,7 @@ resource "aws_secretsmanager_secret_version" "scram" {
 
   secret_id = aws_secretsmanager_secret.scram[0].id
   secret_string = jsonencode({
-    username = local.user
+    username = "mink"
     password = random_password.kafka[0].result
   })
 }
@@ -61,6 +61,8 @@ resource "aws_secretsmanager_secret_version" "postgres" {
 }
 
 resource "aws_secretsmanager_secret" "kafka" {
+  count = local.kafka_sasl ? 1 : 0
+
   name_prefix             = "${var.project}-kafka-"
   recovery_window_in_days = var.force_destroy ? 0 : 7
 
@@ -70,12 +72,14 @@ resource "aws_secretsmanager_secret" "kafka" {
 }
 
 resource "aws_secretsmanager_secret_version" "kafka" {
-  secret_id     = aws_secretsmanager_secret.kafka.id
-  secret_string = local.kafka_setting
+  count = local.kafka_sasl ? 1 : 0
+
+  secret_id     = aws_secretsmanager_secret.kafka[0].id
+  secret_string = local.kafka.sasl.password
 }
 
 resource "aws_secretsmanager_secret" "registry" {
-  count = local.use_registry ? 1 : 0
+  count = local.registry_password ? 1 : 0
 
   name_prefix             = "${var.project}-registry-"
   recovery_window_in_days = var.force_destroy ? 0 : 7
@@ -86,8 +90,8 @@ resource "aws_secretsmanager_secret" "registry" {
 }
 
 resource "aws_secretsmanager_secret_version" "registry" {
-  count = local.use_registry ? 1 : 0
+  count = local.registry_password ? 1 : 0
 
   secret_id     = aws_secretsmanager_secret.registry[0].id
-  secret_string = local.registry_setting
+  secret_string = var.schema_registry.password
 }

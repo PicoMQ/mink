@@ -16,12 +16,13 @@ region = "us-east-1"
 url = "http://registry:8081"
 ```
 
-Every setting has a variable: `MINK_` and its name in capitals. Lists and tables take their TOML form.
+Every setting has a variable: `MINK_` and its name in capitals, with `__` between a table and its keys. Lists take their TOML form.
 
 ```bash
 MINK_POSTGRES=postgres://mink:mink@db:5432/mink
-MINK_KAFKA='{bootstrap = ["kafka-1:9092", "kafka-2:9092"]}'
-MINK_SCHEMA_REGISTRY='{url = "http://registry:8081"}'
+MINK_KAFKA__BOOTSTRAP='["kafka-1:9092", "kafka-2:9092"]'
+MINK_KAFKA__SASL__PASSWORD=secret
+MINK_SCHEMA_REGISTRY__URL=http://registry:8081
 ```
 
 Durations are a number and a unit: `ms`, `s`, `m` or `h`. Sizes are bytes. Every duration and size must be positive.
@@ -58,7 +59,7 @@ Durations are a number and a unit: `ms`, `s`, `m` or `h`. Sizes are bytes. Every
 | `warehouse` | `s3://mink/warehouse` | Where Iceberg metadata lives, and the root of every table location |
 | `storage.endpoint` | none | An S3-compatible store such as RustFS or MinIO, addressed in path style. Without it, AWS S3 in `storage.region`. |
 | `storage.region` | `us-east-1` | The bucket's region |
-| `storage.access_key_id`, `storage.secret_access_key` | none | Its credentials, set together. Without them, credentials come from `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, web identity, the ECS task role, EKS Pod Identity, or the instance profile, in that order. Other `AWS_*` variables are ignored. |
+| `storage.credentials` | none | `{ access_key_id, secret_access_key }`. Without them, AWS's own sources: the `AWS_*` environment variables, web identity, the ECS task role, EKS Pod Identity, or the instance profile. |
 | `schema_registry.url` | none | The Schema Registry. Without it, new records keep their raw bytes. |
 | `schema_registry.username`, `schema_registry.password` | none | Basic authentication for the registry |
 | `namespace` | `kafka` | The catalog's one namespace |

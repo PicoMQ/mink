@@ -4,36 +4,12 @@ use bytes::Bytes;
 use futures::{StreamExt, TryStreamExt};
 use mink_core::{Object, Snapshot, Topic};
 use mink_iceberg::{Change, ObjectReader, Table};
-use object_store::aws::{AmazonS3Builder, AmazonS3ConfigKey};
+use object_store::aws::AmazonS3Builder;
 use object_store::path::Path;
 use object_store::{ObjectStore, ObjectStoreExt, PutPayload};
 
 use crate::Error;
 use crate::config::Storage;
-
-const CREDENTIALS: [(&str, AmazonS3ConfigKey); 9] = [
-    ("AWS_ACCESS_KEY_ID", AmazonS3ConfigKey::AccessKeyId),
-    ("AWS_SECRET_ACCESS_KEY", AmazonS3ConfigKey::SecretAccessKey),
-    ("AWS_SESSION_TOKEN", AmazonS3ConfigKey::Token),
-    (
-        "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
-        AmazonS3ConfigKey::ContainerCredentialsRelativeUri,
-    ),
-    (
-        "AWS_CONTAINER_CREDENTIALS_FULL_URI",
-        AmazonS3ConfigKey::ContainerCredentialsFullUri,
-    ),
-    (
-        "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE",
-        AmazonS3ConfigKey::ContainerAuthorizationTokenFile,
-    ),
-    (
-        "AWS_WEB_IDENTITY_TOKEN_FILE",
-        AmazonS3ConfigKey::WebIdentityTokenFile,
-    ),
-    ("AWS_ROLE_ARN", AmazonS3ConfigKey::RoleArn),
-    ("AWS_ROLE_SESSION_NAME", AmazonS3ConfigKey::RoleSessionName),
-];
 
 #[derive(Clone)]
 pub(crate) struct Warehouse {
@@ -50,11 +26,11 @@ pub(crate) struct ListedObject {
 impl Warehouse {
     pub(crate) fn connect(root: &str, storage: &Storage) -> Result<Warehouse, Error> {
         let bucket = bucket(root)?;
-        let builder = match storage.credentials() {
-            Some((access_key_id, secret_access_key)) => AmazonS3Builder::new()
-                .with_access_key_id(access_key_id)
-                .with_secret_access_key(secret_access_key),
-            None => environment_credentials(),
+        let builder = match &storage.credentials {
+            Some(credentials) => AmazonS3Builder::new()
+                .with_access_key_id(&credentials.access_key_id)
+                .with_secret_access_key(&credentials.secret_access_key),
+            None => AmazonS3Builder::from_env(),
         };
 
         let builder = match &storage.endpoint {
@@ -191,15 +167,6 @@ impl ObjectReader for Warehouse {
                 message: error.to_string(),
             })
     }
-}
-
-fn environment_credentials() -> AmazonS3Builder {
-    CREDENTIALS
-        .into_iter()
-        .filter_map(|(variable, key)| Some((key, std::env::var(variable).ok()?)))
-        .fold(AmazonS3Builder::new(), |builder, (key, value)| {
-            builder.with_config(key, value)
-        })
 }
 
 fn bucket(root: &str) -> Result<String, Error> {

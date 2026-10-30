@@ -91,8 +91,14 @@ pub struct Tls {
 pub struct Storage {
     pub(crate) endpoint: Option<String>,
     pub(crate) region: String,
-    pub(crate) access_key_id: Option<String>,
-    pub(crate) secret_access_key: Option<String>,
+    pub(crate) credentials: Option<Credentials>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Credentials {
+    pub(crate) access_key_id: String,
+    pub(crate) secret_access_key: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -125,8 +131,6 @@ pub enum ConfigError {
     StatisticsInterval,
     #[error("admin_address {0} is not a loopback address; set admin_remote to allow it")]
     RemoteAdmin(SocketAddr),
-    #[error("storage.access_key_id and storage.secret_access_key are set together or not at all")]
-    StorageCredentials,
 }
 
 impl Default for Config {
@@ -153,8 +157,7 @@ impl Default for Config {
             storage: Storage {
                 endpoint: None,
                 region: "us-east-1".to_owned(),
-                access_key_id: None,
-                secret_access_key: None,
+                credentials: None,
             },
             schema_registry: None,
             namespace: "kafka".to_owned(),
@@ -190,7 +193,7 @@ impl Config {
         }
 
         let config: Config = figment
-            .merge(Env::prefixed("MINK_"))
+            .merge(Env::prefixed("MINK_").split("__"))
             .extract()
             .map_err(Box::new)?;
 
@@ -217,23 +220,7 @@ impl Config {
             ("s3_endpoint", self.s3_endpoint.clone()),
             ("roles", roles.join(",")),
             ("kafka_bootstrap", self.kafka.bootstrap.join(",")),
-            (
-                "kafka_tls",
-                self.kafka.tls.as_ref().map_or("none".to_owned(), |tls| {
-                    tls.ca
-                        .as_ref()
-                        .map_or("system CA certificates".to_owned(), |ca| {
-                            ca.display().to_string()
-                        })
-                }),
-            ),
-            (
-                "kafka_sasl",
-                self.kafka
-                    .sasl
-                    .as_ref()
-                    .map_or("none".to_owned(), |sasl| sasl.mechanism.name().to_owned()),
-            ),
+            ("kafka_security", self.kafka.security()),
             ("warehouse", self.warehouse.clone()),
             (
                 "storage",
@@ -299,9 +286,6 @@ impl Config {
         if self.statistics_interval >= self.snapshot_retention {
             return Err(ConfigError::StatisticsInterval);
         }
-        if self.storage.access_key_id.is_some() != self.storage.secret_access_key.is_some() {
-            return Err(ConfigError::StorageCredentials);
-        }
 
         Ok(())
     }
@@ -316,15 +300,21 @@ impl Config {
     }
 }
 
-impl Storage {
-    pub(crate) fn credentials(&self) -> Option<(&str, &str)> {
-        self.access_key_id
-            .as_deref()
-            .zip(self.secret_access_key.as_deref())
-    }
-}
-
 impl Kafka {
+    fn security(&self) -> String {
+        let protocol = match (&self.tls, &self.sasl) {
+            (None, None) => "PLAINTEXT",
+            (Some(_), None) => "SSL",
+            (None, Some(_)) => "SASL_PLAINTEXT",
+            (Some(_), Some(_)) => "SASL_SSL",
+        };
+
+        match &self.sasl {
+            Some(sasl) => format!("{protocol} {}", sasl.mechanism.name()),
+            None => protocol.to_owned(),
+        }
+    }
+
     pub(crate) fn client_config(&self) -> Result<mink_kafka::Config, mink_kafka::Error> {
         let mut config = mink_kafka::Config::new(self.bootstrap.clone())?;
 
@@ -619,32 +609,38 @@ mod tests {
 
         let described = config.describe();
 
-        assert_eq!(described["kafka_tls"], "system CA certificates");
-        assert_eq!(described["kafka_sasl"], "PLAIN");
+        assert_eq!(described["kafka_security"], "SASL_SSL PLAIN");
         assert!(described.values().all(|value| !value.contains("hunter2")));
     }
 
     #[test]
-    fn storage_defaults_to_aws_s3_and_keys_are_set_together_or_not_at_all() {
+    fn storage_defaults_to_aws_s3_and_credentials_come_from_a_file_or_nested_variables() {
         figment::Jail::expect_with(|jail| {
             jail.create_file(
                 "keys.toml",
-                "[storage]\naccess_key_id = \"mink\"\nsecret_access_key = \"minkminkmink\"",
+                "[storage]\ncredentials = { access_key_id = \"mink\", secret_access_key = \"minkminkmink\" }",
             )?;
-            jail.create_file("half.toml", "[storage]\naccess_key_id = \"mink\"")?;
 
             let chain = Config::load(None).unwrap();
-            let keys = Config::load(Some(Path::new("keys.toml"))).unwrap();
-            let half = Config::load(Some(Path::new("half.toml")));
+            let file = Config::load(Some(Path::new("keys.toml"))).unwrap();
+            jail.set_env("MINK_STORAGE__CREDENTIALS__ACCESS_KEY_ID", "env");
+            jail.set_env("MINK_STORAGE__CREDENTIALS__SECRET_ACCESS_KEY", "secret");
+            let env = Config::load(None).unwrap();
 
+            let credentials = |access_key_id: &str, secret_access_key: &str| {
+                Some(Credentials {
+                    access_key_id: access_key_id.to_owned(),
+                    secret_access_key: secret_access_key.to_owned(),
+                })
+            };
             assert_eq!(chain.storage.endpoint, None);
             assert_eq!(chain.describe()["storage"], "AWS S3 in us-east-1");
-            assert_eq!(chain.storage.credentials(), None);
-            assert_eq!(keys.storage.credentials(), Some(("mink", "minkminkmink")));
-            assert!(
-                matches!(half, Err(ConfigError::StorageCredentials)),
-                "{half:?}"
+            assert_eq!(chain.storage.credentials, None);
+            assert_eq!(
+                file.storage.credentials,
+                credentials("mink", "minkminkmink")
             );
+            assert_eq!(env.storage.credentials, credentials("env", "secret"));
             Ok(())
         });
     }

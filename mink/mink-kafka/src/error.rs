@@ -35,8 +35,8 @@ pub enum Error {
     UnknownBroker(BrokerId),
     #[error("{0:?} is not in the cluster metadata")]
     UnknownPartition(Partition),
-    #[error("no broker answered: {0:?}")]
-    Unreachable(Vec<String>),
+    #[error("no broker answered: {}", listed(.0))]
+    Unreachable(Vec<(String, Error)>),
     #[error("timestamp {0} is negative")]
     InvalidTimestamp(i64),
     #[error("cannot read to offset {end}, past the last stable offset {stable}")]
@@ -63,4 +63,13 @@ pub enum Error {
     Authentication(String),
     #[error("scram: {0}")]
     Scram(&'static str),
+}
+
+fn listed(failures: &[(String, Error)]) -> String {
+    let listed: Vec<_> = failures
+        .iter()
+        .map(|(address, error)| format!("{address}: {error}"))
+        .collect();
+
+    listed.join(", ")
 }

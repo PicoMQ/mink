@@ -22,8 +22,8 @@ resource "aws_db_instance" "this" {
   storage_type          = "gp3"
   storage_encrypted     = true
 
-  db_name  = local.user
-  username = local.user
+  db_name  = "mink"
+  username = "mink"
   password = random_password.postgres[0].result
 
   db_subnet_group_name   = aws_db_subnet_group.this[0].name

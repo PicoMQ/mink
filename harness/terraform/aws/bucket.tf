@@ -41,34 +41,3 @@ resource "aws_s3_bucket_ownership_controls" "warehouse" {
     object_ownership = "BucketOwnerEnforced"
   }
 }
-
-data "aws_iam_policy_document" "warehouse" {
-  count = local.create_bucket ? 1 : 0
-
-  statement {
-    sid       = "DenyInsecureTransport"
-    effect    = "Deny"
-    actions   = ["s3:*"]
-    resources = [aws_s3_bucket.warehouse[0].arn, "${aws_s3_bucket.warehouse[0].arn}/*"]
-
-    principals {
-      type        = "*"
-      identifiers = ["*"]
-    }
-
-    condition {
-      test     = "Bool"
-      variable = "aws:SecureTransport"
-      values   = ["false"]
-    }
-  }
-}
-
-resource "aws_s3_bucket_policy" "warehouse" {
-  count = local.create_bucket ? 1 : 0
-
-  bucket = aws_s3_bucket.warehouse[0].id
-  policy = data.aws_iam_policy_document.warehouse[0].json
-
-  depends_on = [aws_s3_bucket_public_access_block.warehouse]
-}

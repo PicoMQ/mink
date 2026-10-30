@@ -9,7 +9,7 @@ The Terraform stack in `harness/terraform/aws` runs Mink on ECS Fargate. It crea
 | Network | A VPC with two public and two private subnets, a NAT gateway and an S3 gateway endpoint | `vpc_id` and at least two `private_subnet_ids`, with outbound internet access for images, the RDS CA bundle and AWS APIs |
 | Kafka | MSK, one broker in each of the first three private subnets, SASL/SCRAM-SHA-512 over TLS on port 9096. The SCRAM user lives in Secrets Manager under its own KMS key. | `kafka`: bootstrap brokers, TLS and SASL. With TLS, the brokers' certificates must chain to a public CA, as Confluent Cloud's and MSK's do. |
 | Postgres | RDS PostgreSQL 17. Nodes connect with `sslmode=verify-full` against the RDS CA bundle. | `postgres_url`. For RDS, add `sslmode=verify-full&sslrootcert=/certs/rds.pem`: each node downloads the bundle there before it starts. |
-| Bucket | A private, encrypted bucket for the warehouse that refuses requests without TLS | `bucket`, in `region` |
+| Bucket | A private, encrypted bucket for the warehouse | `bucket`, in `region` |
 | Schema Registry | None | `schema_registry`: URL and credentials |
 | Nodes | `node_count` ECS services, one task each. They reach S3 with their task role. | |
 | Load balancer | An internal ALB on 8181 (catalog), 9100 (S3 endpoint) and 9180 (admin API and console), with a host name per node | |
@@ -17,7 +17,7 @@ The Terraform stack in `harness/terraform/aws` runs Mink on ECS Fargate. It crea
 | Client | With `client = true`, an EC2 instance with Docker, the Kafka CLI and DuckDB, reached only through SSM | |
 | Image repository | With `create_repository = true`, an ECR repository for images built from source | |
 
-Passwords and the Kafka and Postgres settings reach the nodes from Secrets Manager. Nothing in the stack accepts connections from the internet. The NAT gateway's address is for outbound traffic only.
+The Postgres URL and the Kafka and Schema Registry passwords reach the nodes from Secrets Manager. Nothing in the stack accepts connections from the internet. The NAT gateway's address is for outbound traffic only.
 
 | Reaches | From |
 | --- | --- |

@@ -50,9 +50,10 @@ resource "aws_ecs_task_definition" "node" {
       portMappings = [
         for port in values(local.ports) : { containerPort = port, hostPort = port, protocol = "tcp" }
       ]
-      environment = [
+      environment = concat([
         { name = "MINK_WAREHOUSE", value = "s3://${local.bucket}/warehouse" },
-        { name = "MINK_STORAGE", value = local.storage },
+        { name = "MINK_STORAGE__REGION", value = var.region },
+        { name = "MINK_KAFKA__BOOTSTRAP", value = jsonencode(local.kafka.bootstrap) },
         { name = "MINK_CATALOG_ADDRESS", value = "0.0.0.0:${local.ports.catalog}" },
         { name = "MINK_S3_ADDRESS", value = "0.0.0.0:${local.ports.s3}" },
         { name = "MINK_ADMIN_ADDRESS", value = "0.0.0.0:${local.ports.admin}" },
@@ -64,13 +65,21 @@ resource "aws_ecs_task_definition" "node" {
         { name = "MINK_CACHE_DIR", value = local.cache_dir },
         { name = "MINK_CACHE_BYTES", value = tostring(var.task_memory * 1024 * 1024 / 4) },
         { name = "MINK_CACHE_DISK_BYTES", value = tostring(10 * 1024 * 1024 * 1024) },
-      ]
-      secrets = concat(
-        [
-          { name = "MINK_POSTGRES", valueFrom = aws_secretsmanager_secret.postgres.arn },
-          { name = "MINK_KAFKA", valueFrom = aws_secretsmanager_secret.kafka.arn },
         ],
-        [for secret in aws_secretsmanager_secret.registry : { name = "MINK_SCHEMA_REGISTRY", valueFrom = secret.arn }],
+        local.kafka.tls ? [{ name = "MINK_KAFKA__TLS", value = "{}" }] : [],
+        local.kafka_sasl ? [
+          { name = "MINK_KAFKA__SASL__MECHANISM", value = local.kafka.sasl.mechanism },
+          { name = "MINK_KAFKA__SASL__USERNAME", value = local.kafka.sasl.username },
+        ] : [],
+        local.use_registry ? [{ name = "MINK_SCHEMA_REGISTRY__URL", value = var.schema_registry.url }] : [],
+        try(var.schema_registry.username, null) == null ? [] : [
+          { name = "MINK_SCHEMA_REGISTRY__USERNAME", value = var.schema_registry.username },
+        ],
+      )
+      secrets = concat(
+        [{ name = "MINK_POSTGRES", valueFrom = aws_secretsmanager_secret.postgres.arn }],
+        [for secret in aws_secretsmanager_secret.kafka : { name = "MINK_KAFKA__SASL__PASSWORD", valueFrom = secret.arn }],
+        [for secret in aws_secretsmanager_secret.registry : { name = "MINK_SCHEMA_REGISTRY__PASSWORD", valueFrom = secret.arn }],
       )
       mountPoints = [
         { sourceVolume = "certs", containerPath = dirname(local.rds_ca), readOnly = true },

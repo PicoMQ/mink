@@ -1,5 +1,3 @@
-data "aws_partition" "current" {}
-
 data "aws_iam_policy_document" "ecs_task_assume" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -29,7 +27,8 @@ data "aws_iam_policy_document" "execution_secrets" {
   statement {
     actions = ["secretsmanager:GetSecretValue"]
     resources = concat(
-      [aws_secretsmanager_secret.postgres.arn, aws_secretsmanager_secret.kafka.arn],
+      [aws_secretsmanager_secret.postgres.arn],
+      aws_secretsmanager_secret.kafka[*].arn,
       aws_secretsmanager_secret.registry[*].arn,
     )
   }
@@ -61,8 +60,8 @@ data "aws_iam_policy_document" "task_s3" {
       "s3:ListBucketMultipartUploads",
     ]
     resources = [
-      "arn:${data.aws_partition.current.partition}:s3:::${local.bucket}",
-      "arn:${data.aws_partition.current.partition}:s3:::${local.bucket}/*",
+      "arn:aws:s3:::${local.bucket}",
+      "arn:aws:s3:::${local.bucket}/*",
     ]
   }
 }

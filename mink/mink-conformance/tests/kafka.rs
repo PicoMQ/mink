@@ -345,11 +345,11 @@ async fn a_wrong_password_or_an_untrusted_certificate_is_refused() {
     let certificate = Cluster::connect(untrusted, Metrics::new()).await.err();
 
     assert!(
-        matches!(password, Some(Error::Authentication(_))),
+        matches!(&password, Some(Error::Unreachable(failures)) if failures.iter().all(|(_, error)| matches!(error, Error::Authentication(_)))),
         "{password:?}"
     );
     assert!(
-        matches!(certificate, Some(Error::Tls(_))),
+        matches!(&certificate, Some(Error::Unreachable(failures)) if failures.iter().all(|(_, error)| matches!(error, Error::Tls(_)))),
         "{certificate:?}"
     );
 }
