@@ -14,9 +14,9 @@ const Editor = lazy(() => import('../components/editor'))
 
 export default function Definition() {
   const { params } = useRoute()
-  const id = Number(params.id)
-  const detail = useQuery(schema(id))
-  const trail = [{ label: 'Registry', href: '/registry' }, { label: `schema ${params.id ?? ''}` }]
+  const key = params.key ?? ''
+  const detail = useQuery(schema(key))
+  const trail = [{ label: 'Registry', href: '/registry' }, { label: `schema ${key}` }]
 
   if (!detail.data) {
     return (
@@ -30,7 +30,7 @@ export default function Definition() {
   const json = indent(data.definition)
   return (
     <View trail={trail}>
-      <Heading title={`Schema ${data.id}`} icon={FileCode} />
+      <Heading title={`Schema ${data.key}`} icon={FileCode} />
       <Properties
         items={[
           { label: 'Format', value: data.format },
@@ -40,9 +40,9 @@ export default function Definition() {
               data.references.length === 0
                 ? 'none'
                 : data.references.map((reference, index) => (
-                    <span key={reference.id}>
+                    <span key={reference.key}>
                       {index > 0 && ', '}
-                      <a href={page('registry', reference.id)}>{reference.name}</a>
+                      <a href={page('registry', reference.key)}>{reference.name}</a>
                     </span>
                   )),
           },

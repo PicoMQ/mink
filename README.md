@@ -28,9 +28,15 @@ mink serve -c mink.toml
 
 ```toml
 # mink.toml
-kafka_bootstrap = ["localhost:29092"]
+[kafka]
+bootstrap = ["localhost:29092"]
+
+[storage]
+endpoint = "http://localhost:9000"
+credentials = { access_key_id = "mink", secret_access_key = "minkminkmink" }
 
 [schema_registry]
+type = "confluent"
 url = "http://localhost:8081"
 ```
 

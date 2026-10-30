@@ -12,6 +12,7 @@ mink-core = { workspace = true }
 
 apache-avro = { workspace = true }
 chrono = { workspace = true }
+flate2 = { workspace = true }
 iceberg = { workspace = true }
 prost-reflect = { workspace = true }
 protox = { workspace = true }

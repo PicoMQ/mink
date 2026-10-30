@@ -54,6 +54,7 @@ uuid = { version = "1.29.0", features = ["v4"] }
 crc32c = "0.6.8"
 fastrand = "2.5.0"
 hex = "0.4.3"
+flate2 = "1.1.10"
 axum = "0.8.9"
 apache-avro = { version = "0.22.0", default-features = false }
 prost-reflect = { version = "0.16.5", features = ["serde"] }
@@ -64,6 +65,12 @@ nestor-store = { git = "https://github.com/PicoMQ/nestor", branch = "main" }
 metrics = "0.24.6"
 metrics-exporter-prometheus = { version = "0.18.3", default-features = false }
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls", "stream"] }
+tokio-rustls = "0.26.6"
+rustls-platform-verifier = "0.7.1"
+hmac = "0.13.0"
+getrandom = "0.3.4"
+aws-config = { version = "1.13.0", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }
+aws-sdk-glue = { version = "1.181.0", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }
 
 arrow-array = "58.4.1"
 arrow-schema = "58.4.1"
@@ -78,6 +85,7 @@ sqlx = { version = "0.9.0", default-features = false, features = [
     "macros",
     "json",
     "uuid",
+    "tls-rustls-aws-lc-rs",
 ] }
 
 iceberg = "0.10.1"

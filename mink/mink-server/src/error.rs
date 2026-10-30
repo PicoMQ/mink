@@ -1,5 +1,6 @@
 use std::io;
 
+use mink_schema::SchemaKey;
 use nestor::{NestorError, OriginError};
 
 use crate::config::ConfigError;
@@ -38,12 +39,14 @@ pub enum Error {
     NotIndexing(String),
     #[error("Kafka has no topic {0}")]
     NoSuchTopic(String),
+    #[error("Kafka reports topic {0} as unavailable")]
+    TopicUnavailable(String),
     #[error("the schema registry is unavailable: {0}")]
     RegistryUnavailable(String),
     #[error("the schema registry answered unexpectedly: {0}")]
     RegistryResponse(String),
     #[error("registry schema {0} is not stored")]
-    UnstoredRegistrySchema(i32),
+    UnstoredRegistrySchema(SchemaKey),
     #[error("topic {topic} has no table schema {id}")]
     UnknownTableSchema { topic: String, id: i32 },
     #[error("no namespace {0}")]

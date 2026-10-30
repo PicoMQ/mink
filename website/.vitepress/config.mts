@@ -46,6 +46,7 @@ const docsSidebar = [
     collapsed: false,
     items: [
       { text: 'Deployment', link: '/docs/operations/deployment' },
+      { text: 'AWS', link: '/docs/operations/aws' },
       { text: 'CLI', link: '/docs/operations/cli' },
       { text: 'Configuration', link: '/docs/operations/configuration' },
       { text: 'Console', link: '/docs/operations/console' },

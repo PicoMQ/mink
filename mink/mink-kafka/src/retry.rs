@@ -44,9 +44,9 @@ impl Backoff {
 pub(crate) fn retriable(error: &Error) -> bool {
     match error {
         Error::Broker { code } => RETRIABLE.contains(code),
+        Error::Unreachable(failures) => failures.iter().any(|(_, error)| retriable(error)),
         Error::NoLeader(_)
         | Error::UnknownBroker(_)
-        | Error::Unreachable(_)
         | Error::Io(_)
         | Error::Timeout
         | Error::Closed
@@ -65,7 +65,12 @@ pub(crate) fn retriable(error: &Error) -> bool {
         | Error::InvalidHeaderKey { .. }
         | Error::EmptyBootstrap
         | Error::MaxBytes(_)
-        | Error::MaxWait(_) => false,
+        | Error::MaxWait(_)
+        | Error::Tls(_)
+        | Error::CaFile { .. }
+        | Error::ServerName(_)
+        | Error::Authentication(_)
+        | Error::Scram(_) => false,
     }
 }
 
@@ -102,7 +107,13 @@ mod tests {
             },
             Error::NoLeader(orders()),
             Error::UnknownBroker(BrokerId(3)),
-            Error::Unreachable(Vec::new()),
+            Error::Unreachable(vec![
+                (
+                    "a:9092".to_owned(),
+                    Error::Authentication("refused".to_owned()),
+                ),
+                ("b:9092".to_owned(), Error::Timeout),
+            ]),
             Error::Io(io::Error::other("lost")),
             Error::Timeout,
             Error::Closed,
@@ -114,6 +125,10 @@ mod tests {
             Error::FrameSize { length: -1 },
         ];
         let returned = [
+            Error::Unreachable(vec![(
+                "a:9092".to_owned(),
+                Error::Authentication("refused".to_owned()),
+            )]),
             Error::Broker { code: 1 },
             Error::Broker { code: 2 },
             Error::Encode(anyhow::anyhow!("bad")),

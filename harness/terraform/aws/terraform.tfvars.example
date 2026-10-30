@@ -1,0 +1,43 @@
+# Existing VPC. Omit vpc_id and private_subnet_ids to create a network instead.
+# vpc_id = "vpc-xxxxxxxx"
+# private_subnet_ids = [
+#   "subnet-aaaaaaaa",
+#   "subnet-bbbbbbbb",
+# ]
+# create_s3_endpoint = true
+
+# Networks allowed to reach the catalog, S3 endpoint and admin API. Defaults to the VPC.
+# allowed_cidrs = ["10.42.0.0/16"]
+
+# Existing Kafka. Omit to create an MSK cluster with SASL/SCRAM.
+# kafka = {
+#   bootstrap = ["pkc-xxxxx.us-east-1.aws.confluent.cloud:9092"]
+#   tls       = true
+#   sasl = {
+#     mechanism = "PLAIN"
+#     username  = "API_KEY"
+#     password  = "API_SECRET"
+#   }
+# }
+
+# Existing Postgres. Omit to create an RDS instance.
+# postgres_url = "postgres://mink:secret@db.example.com:5432/mink?sslmode=verify-full"
+
+# Existing bucket. Omit to create one.
+# bucket = "my-warehouse"
+
+# Schema registry: create one, confluent or glue, or use an existing one.
+# create_schema_registry = "confluent"
+# schema_registry = {
+#   type     = "confluent"
+#   url      = "https://psrc-xxxxx.us-east-1.aws.confluent.cloud"
+#   username = "API_KEY"
+#   password = "API_SECRET"
+# }
+# schema_registry = {
+#   type = "glue"
+#   name = "my-registry"
+# }
+
+# client            = true
+# create_repository = true

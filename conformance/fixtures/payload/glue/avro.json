@@ -1,0 +1,129 @@
+{
+  "records" : [ {
+    "case" : "types",
+    "record" : 0,
+    "part" : "value",
+    "confluent_id" : 38,
+    "version" : "d117859f-6683-4da5-8f84-20444e21818a",
+    "bytes" : "0300d117859f66834da58f8420444e21818a010d9693d89fee470000c03f00000000000002c00c68c3a96c6c6f0400ff020102030400060204060004026102026204000a02067768790601e2404866383164346661652d376465632d313164302d613736352d303061306339316536626636a4c402aab2992baac4fbde1bf6998da6b06880c992d7a9b9af06e2b7ade7cbb8af0601000000020000000300000002540202040000"
+  }, {
+    "case" : "types",
+    "record" : 0,
+    "part" : "value",
+    "confluent_id" : 38,
+    "version" : "d117859f-6683-4da5-8f84-20444e21818a",
+    "bytes" : "0305d117859f66834da58f8420444e21818a789c63e49d36f9c6fc77ee0c0c07ec19c080e9004fc6e1953939f92c0cff991899985918d89858d8185898129998925818b898d8ca332ad9181f3978a45918a698a425a6ea9aa7a426eb1a1aa618e8269a9b99ea1a18241a245b1aa69a25a5992d39c2b46ad34ced55477edf93fe36b377d9868c869393aeafdcb99eedd1f6b5cf4fef58cfc608b213889941740813130b0303005c112ceb"
+  }, {
+    "case" : "types",
+    "record" : 1,
+    "part" : "value",
+    "confluent_id" : 38,
+    "version" : "d117859f-6683-4da5-8f84-20444e21818a",
+    "bytes" : "0300d117859f66834da58f8420444e21818a010d9693d89fee470000c03f00000000000002c00c68c3a96c6c6f0400ff02010203040206736574060204060004026102026204000a02067768790601e2404866383164346661652d376465632d313164302d613736352d303061306339316536626636a4c402aab2992baac4fbde1bf6998da6b06880c992d7a9b9af06e2b7ade7cbb8af06010000000200000003000000000202040000"
+  }, {
+    "case" : "types",
+    "record" : 1,
+    "part" : "value",
+    "confluent_id" : 38,
+    "version" : "d117859f-6683-4da5-8f84-20444e21818a",
+    "bytes" : "0305d117859f66834da58f8420444e21818a789c63e49d36f9c6fc77ee0c0c07ec19c080e9004fc6e1953939f92c0cff991899985998d88a534bd89858d8185898129998925818b898d8ca332ad9181f3978a45918a698a425a6ea9aa7a426eb1a1aa618e8269a9b99ea1a18241a245b1aa69a25a5992d39c2b46ad34ced55477edf93fe36b377d9868c869393aeafdcb99eedd1f6b5cf4fef58cfc608b2178899c10e606261600000ec632de9"
+  }, {
+    "case" : "evolution",
+    "record" : 0,
+    "part" : "value",
+    "confluent_id" : 39,
+    "version" : "dbe28b3e-388a-4d4e-a5a6-ad4fce151189",
+    "bytes" : "0300dbe28b3e388a4d4ea5a6ad4fce151189020000c03f066e65770e"
+  }, {
+    "case" : "evolution",
+    "record" : 0,
+    "part" : "value",
+    "confluent_id" : 39,
+    "version" : "dbe28b3e-388a-4d4e-a5a6-ad4fce151189",
+    "bytes" : "0305dbe28b3e388a4d4ea5a6ad4fce151189789c6362603860cf96975ace07000ad90260"
+  }, {
+    "case" : "evolution",
+    "record" : 1,
+    "part" : "value",
+    "confluent_id" : 40,
+    "version" : "212abea5-f0d8-4c9b-a932-ca527b54cf44",
+    "bytes" : "0300212abea5f0d84c9ba932ca527b54cf440400000000000002400870616964100206455552"
+  }, {
+    "case" : "evolution",
+    "record" : 1,
+    "part" : "value",
+    "confluent_id" : 40,
+    "version" : "212abea5-f0d8-4c9b-a932-ca527b54cf44",
+    "bytes" : "0305212abea5f0d84c9ba932ca527b54cf44789c6361000326078e82c4cc14012636d7d0200013f002f1"
+  }, {
+    "case" : "evolution",
+    "record" : 2,
+    "part" : "value",
+    "confluent_id" : 41,
+    "version" : "b4dcb414-77a1-45af-a6b0-d00e28144a75",
+    "bytes" : "0300b4dcb41477a145afa6b0d00e28144a75060000000000000c400873656e740278"
+  }, {
+    "case" : "evolution",
+    "record" : 2,
+    "part" : "value",
+    "confluent_id" : 41,
+    "version" : "b4dcb414-77a1-45af-a6b0-d00e28144a75",
+    "bytes" : "0305b4dcb41477a145afa6b0d00e28144a75789c636300031e078ee2d4bc12a60a000b4f028f"
+  }, {
+    "case" : "keys",
+    "record" : 0,
+    "part" : "key",
+    "confluent_id" : 42,
+    "version" : "54f51acf-81ac-4724-8b4b-7556bbf130b2",
+    "bytes" : "030054f51acf81ac47248b4b7556bbf130b212"
+  }, {
+    "case" : "keys",
+    "record" : 0,
+    "part" : "key",
+    "confluent_id" : 42,
+    "version" : "54f51acf-81ac-4724-8b4b-7556bbf130b2",
+    "bytes" : "030554f51acf81ac47248b4b7556bbf130b2789c13020000130013"
+  }, {
+    "case" : "keys",
+    "record" : 2,
+    "part" : "key",
+    "confluent_id" : 42,
+    "version" : "54f51acf-81ac-4724-8b4b-7556bbf130b2",
+    "bytes" : "030054f51acf81ac47248b4b7556bbf130b214"
+  }, {
+    "case" : "keys",
+    "record" : 2,
+    "part" : "key",
+    "confluent_id" : 42,
+    "version" : "54f51acf-81ac-4724-8b4b-7556bbf130b2",
+    "bytes" : "030554f51acf81ac47248b4b7556bbf130b2789c13010000150015"
+  }, {
+    "case" : "wire",
+    "record" : 0,
+    "part" : "value",
+    "confluent_id" : 44,
+    "version" : "646ac2c0-e4cb-4764-95e9-7d98d4341d74",
+    "bytes" : "0300646ac2c0e4cb476495e97d98d4341d7402"
+  }, {
+    "case" : "wire",
+    "record" : 0,
+    "part" : "value",
+    "confluent_id" : 44,
+    "version" : "646ac2c0-e4cb-4764-95e9-7d98d4341d74",
+    "bytes" : "0305646ac2c0e4cb476495e97d98d4341d74789c63020000030003"
+  }, {
+    "case" : "wire",
+    "record" : 1,
+    "part" : "value",
+    "confluent_id" : 44,
+    "version" : "646ac2c0-e4cb-4764-95e9-7d98d4341d74",
+    "bytes" : "0300646ac2c0e4cb476495e97d98d4341d7404"
+  }, {
+    "case" : "wire",
+    "record" : 1,
+    "part" : "value",
+    "confluent_id" : 44,
+    "version" : "646ac2c0-e4cb-4764-95e9-7d98d4341d74",
+    "bytes" : "0305646ac2c0e4cb476495e97d98d4341d74789c63010000050005"
+  } ]
+}

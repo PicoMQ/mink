@@ -34,24 +34,24 @@ async fn schemas(
         .max()
         .unwrap_or_default();
 
-    let references: Vec<Value> = merged
+    let merges: Vec<Value> = merged
         .iter()
         .map(|merged| {
-            let schema_ref = merged.schema_ref();
-            let (registry_id, schema_id, rejection) = match merged.result() {
+            let schema_id = merged.schema_id();
+            let (registry_key, table_schema_id, rejection) = match merged.result() {
                 MergeResult::Merged {
-                    registry_id,
+                    registry_key,
                     table_schema_id,
                     ..
-                } => (Some(*registry_id), Some(*table_schema_id), None),
+                } => (Some(registry_key.to_string()), Some(*table_schema_id), None),
                 MergeResult::Rejected(rejection) => (None, None, Some(rejection.name())),
             };
 
             json!({
-                "part": schema_ref.part().name(),
-                "reference": schema_ref.schema_ref().to_string(),
-                "registryId": registry_id,
-                "schemaId": schema_id,
+                "part": schema_id.part().name(),
+                "schemaId": schema_id.schema_id().to_string(),
+                "registryKey": registry_key,
+                "tableSchemaId": table_schema_id,
                 "rejection": rejection,
             })
         })
@@ -63,7 +63,7 @@ async fn schemas(
             .iter()
             .map(|schema| json!({ "id": schema.schema_id(), "fields": fields(schema.as_struct().fields()) }))
             .collect::<Vec<_>>(),
-        "references": references,
+        "merges": merges,
     })))
 }
 
@@ -107,7 +107,7 @@ mod tests {
     use crate::admin::tests::{get, with_registry};
 
     #[tokio::test]
-    async fn references_show_merges_and_rejections() {
+    async fn schema_ids_show_merges_and_rejections() {
         let Some(setup) = with_registry().await else {
             return;
         };
@@ -133,19 +133,19 @@ mod tests {
         let field = typed.iter().find(|field| field["name"] == "a").unwrap();
         assert_eq!(field["type"], "long");
         assert!(field["id"].as_i64().unwrap() > 9);
-        let references = schemas["references"].as_array().unwrap();
-        let merged = references
+        let merges = schemas["merges"].as_array().unwrap();
+        let merged = merges
             .iter()
-            .find(|reference| reference["reference"] == format!("id:{first}"))
+            .find(|merge| merge["schemaId"] == format!("confluent:{first}"))
             .unwrap();
-        let rejected = references
+        let rejected = merges
             .iter()
-            .find(|reference| reference["reference"] == format!("id:{}", i32::MAX - 7))
+            .find(|merge| merge["schemaId"] == format!("confluent:{}", i32::MAX - 7))
             .unwrap();
         assert_eq!(merged["part"], "value");
-        assert_eq!(merged["registryId"], first);
-        assert_eq!(merged["schemaId"], 1);
+        assert_eq!(merged["registryKey"], format!("confluent:{first}"));
+        assert_eq!(merged["tableSchemaId"], 1);
         assert_eq!(rejected["rejection"], "missing");
-        assert_eq!(rejected["schemaId"], serde_json::Value::Null);
+        assert_eq!(rejected["tableSchemaId"], serde_json::Value::Null);
     }
 }

@@ -26,14 +26,21 @@ pub(crate) struct ListedObject {
 impl Warehouse {
     pub(crate) fn connect(root: &str, storage: &Storage) -> Result<Warehouse, Error> {
         let bucket = bucket(root)?;
-        let store = AmazonS3Builder::new()
+        let builder = match &storage.credentials {
+            Some(credentials) => AmazonS3Builder::new()
+                .with_access_key_id(&credentials.access_key_id)
+                .with_secret_access_key(&credentials.secret_access_key),
+            None => AmazonS3Builder::from_env(),
+        };
+
+        let builder = match &storage.endpoint {
+            Some(endpoint) => builder.with_endpoint(endpoint).with_allow_http(true),
+            None => builder.with_virtual_hosted_style_request(true),
+        };
+
+        let store = builder
             .with_bucket_name(&bucket)
-            .with_endpoint(&storage.endpoint)
             .with_region(&storage.region)
-            .with_access_key_id(&storage.access_key_id)
-            .with_secret_access_key(&storage.secret_access_key)
-            .with_virtual_hosted_style_request(!storage.path_style)
-            .with_allow_http(true)
             .build()?;
 
         Ok(Warehouse {

@@ -18,7 +18,7 @@ Apache Fluss replaces Kafka with its own streaming storage. Producers, consumers
 | --- | --- | --- |
 | Clients | A Fluss integration in every producer, consumer and engine | Kafka clients stay. Engines use Iceberg. |
 | Copies | The Fluss log, and the lake tables | Kafka only. The bucket holds metadata. |
-| Freshest data in Trino, DuckDB or PyIceberg | What the tiering job last committed | Every record committed when the table loads |
+| Freshness | What the tiering job last committed | Every record committed when the table loads |
 | Moving parts | Fluss cluster, ZooKeeper, Flink tiering job | Mink nodes and Postgres |
 | Updates | Primary key tables, written to Iceberg as equality deletes | None. One row per record. |
 | History | Lake tables outlive the log's TTL | As far back as Kafka's retention |

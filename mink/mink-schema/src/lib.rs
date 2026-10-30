@@ -22,7 +22,9 @@ pub use columns::ColumnValue;
 pub use decoders::{Decoders, PartValues};
 pub use error::Error;
 pub use merge::{FieldIds, Merge, MergeResult, Rejection, TopicSchema, merge};
-pub use payload::{PayloadSchema, accept};
-pub use registry::{Reference, RegistrySchema, SchemaFormat, SchemaRef, SchemaSet, subject};
+pub use payload::PayloadSchema;
+pub use registry::{
+    Reference, RegistrySchema, SchemaFormat, SchemaId, SchemaKey, SchemaSet, subject,
+};
 pub use value::PayloadValue;
-pub use wire::{PartSchemaRef, schema_refs};
+pub use wire::{PartSchemaId, schema_ids};

@@ -6,6 +6,7 @@ use std::time::Duration;
 use figment::Figment;
 use figment::providers::{Env, Format, Serialized, Toml};
 use mink_core::{Granularity, Role};
+use mink_kafka::{Sasl, Tls};
 use nestor::DiskAdmission;
 use serde::{Deserialize, Serialize};
 
@@ -25,7 +26,7 @@ pub struct Config {
     pub(crate) duckdb_extensions: Option<String>,
     #[serde(with = "roles")]
     pub(crate) roles: Vec<Role>,
-    pub(crate) kafka_bootstrap: Vec<String>,
+    pub(crate) kafka: Kafka,
     pub(crate) warehouse: String,
     pub(crate) storage: Storage,
     pub(crate) schema_registry: Option<SchemaRegistry>,
@@ -64,20 +65,39 @@ pub struct Config {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Storage {
-    pub(crate) endpoint: String,
-    pub(crate) region: String,
-    pub(crate) access_key_id: String,
-    pub(crate) secret_access_key: String,
-    pub(crate) path_style: bool,
+pub struct Kafka {
+    pub(crate) bootstrap: Vec<String>,
+    pub(crate) tls: Option<Tls>,
+    pub(crate) sasl: Option<Sasl>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct SchemaRegistry {
-    pub(crate) url: String,
-    pub(crate) username: Option<String>,
-    pub(crate) password: Option<String>,
+pub struct Storage {
+    pub(crate) endpoint: Option<String>,
+    pub(crate) region: String,
+    pub(crate) credentials: Option<Credentials>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Credentials {
+    pub(crate) access_key_id: String,
+    pub(crate) secret_access_key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
+pub enum SchemaRegistry {
+    Confluent {
+        url: String,
+        username: Option<String>,
+        password: Option<String>,
+    },
+    Glue {
+        name: String,
+        region: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -119,14 +139,16 @@ impl Default for Config {
             duckdb_engine: None,
             duckdb_extensions: None,
             roles: Role::ALL.to_vec(),
-            kafka_bootstrap: vec!["localhost:9092".to_owned()],
+            kafka: Kafka {
+                bootstrap: vec!["localhost:9092".to_owned()],
+                tls: None,
+                sasl: None,
+            },
             warehouse: "s3://mink/warehouse".to_owned(),
             storage: Storage {
-                endpoint: "http://localhost:9000".to_owned(),
+                endpoint: None,
                 region: "us-east-1".to_owned(),
-                access_key_id: "mink".to_owned(),
-                secret_access_key: "minkminkmink".to_owned(),
-                path_style: true,
+                credentials: None,
             },
             schema_registry: None,
             namespace: "kafka".to_owned(),
@@ -162,7 +184,7 @@ impl Config {
         }
 
         let config: Config = figment
-            .merge(Env::prefixed("MINK_"))
+            .merge(Env::prefixed("MINK_").split("__"))
             .extract()
             .map_err(Box::new)?;
 
@@ -188,14 +210,29 @@ impl Config {
             ("s3_address", self.s3_address.to_string()),
             ("s3_endpoint", self.s3_endpoint.clone()),
             ("roles", roles.join(",")),
-            ("kafka_bootstrap", self.kafka_bootstrap.join(",")),
+            ("kafka_bootstrap", self.kafka.bootstrap.join(",")),
+            ("kafka_security", self.kafka.security()),
             ("warehouse", self.warehouse.clone()),
-            ("storage", self.storage.endpoint.clone()),
+            (
+                "storage",
+                self.storage
+                    .endpoint
+                    .clone()
+                    .unwrap_or_else(|| format!("AWS S3 in {}", self.storage.region)),
+            ),
             (
                 "schema_registry",
-                self.schema_registry
-                    .as_ref()
-                    .map_or("none".to_owned(), |registry| registry.url.clone()),
+                match &self.schema_registry {
+                    None => "none".to_owned(),
+                    Some(SchemaRegistry::Confluent { url, .. }) => url.clone(),
+                    Some(SchemaRegistry::Glue {
+                        name,
+                        region: Some(region),
+                    }) => format!("AWS Glue registry {name} in {region}"),
+                    Some(SchemaRegistry::Glue { name, region: None }) => {
+                        format!("AWS Glue registry {name}")
+                    }
+                },
             ),
             ("namespace", self.namespace.clone()),
             ("admin_address", self.admin_address.to_string()),
@@ -259,6 +296,35 @@ impl Config {
             return Err(ConfigError::RemoteAdmin(self.admin_address));
         }
         Ok(())
+    }
+}
+
+impl Kafka {
+    fn security(&self) -> String {
+        let protocol = match (&self.tls, &self.sasl) {
+            (None, None) => "PLAINTEXT",
+            (Some(_), None) => "SSL",
+            (None, Some(_)) => "SASL_PLAINTEXT",
+            (Some(_), Some(_)) => "SASL_SSL",
+        };
+
+        match &self.sasl {
+            Some(sasl) => format!("{protocol} {}", sasl.mechanism().name()),
+            None => protocol.to_owned(),
+        }
+    }
+
+    pub(crate) fn client_config(&self) -> Result<mink_kafka::Config, mink_kafka::Error> {
+        let mut config = mink_kafka::Config::new(self.bootstrap.clone())?;
+
+        if let Some(tls) = &self.tls {
+            config = config.with_tls(tls.clone());
+        }
+        if let Some(sasl) = &self.sasl {
+            config = config.with_sasl(sasl.clone());
+        }
+
+        Ok(config)
     }
 }
 
@@ -399,6 +465,8 @@ mod duration {
 #[cfg(test)]
 #[allow(clippy::result_large_err)]
 mod tests {
+    use mink_kafka::Mechanism;
+
     use super::*;
 
     #[test]
@@ -459,6 +527,134 @@ mod tests {
                 parse_granularity("week"),
                 Err(ConfigError::Granularity(_))
             ));
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn kafka_loads_tls_and_sasl_by_kafka_mechanism_names() {
+        figment::Jail::expect_with(|jail| {
+            jail.create_file(
+                "mink.toml",
+                r#"
+                [kafka]
+                bootstrap = ["b-1.msk:9096"]
+                tls = {}
+                sasl = { mechanism = "SCRAM-SHA-512", username = "mink", password = "secret" }
+                "#,
+            )?;
+            jail.create_file(
+                "lower.toml",
+                "[kafka]\nbootstrap = [\"b-1:9096\"]\nsasl = { mechanism = \"scram-sha-512\", username = \"a\", password = \"b\" }",
+            )?;
+
+            let config = Config::load(Some(Path::new("mink.toml"))).unwrap();
+            let lower = Config::load(Some(Path::new("lower.toml")));
+
+            assert_eq!(config.kafka.bootstrap, ["b-1.msk:9096"]);
+            assert_eq!(config.kafka.tls, Some(Tls::new(None)));
+            assert_eq!(
+                config.kafka.sasl.as_ref().map(Sasl::mechanism),
+                Some(Mechanism::ScramSha512)
+            );
+            assert!(
+                matches!(&lower, Err(ConfigError::Load(error)) if error.to_string().contains("not a SASL mechanism")),
+                "{lower:?}"
+            );
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn describe_shows_kafka_security_without_the_password() {
+        let config = Config {
+            kafka: Kafka {
+                bootstrap: vec!["b-1:9096".to_owned()],
+                tls: Some(Tls::new(None)),
+                sasl: Some(Sasl::new(
+                    Mechanism::Plain,
+                    "key".to_owned(),
+                    "hunter2".to_owned(),
+                )),
+            },
+            ..Config::default()
+        };
+
+        let described = config.describe();
+
+        assert_eq!(described["kafka_security"], "SASL_SSL PLAIN");
+        assert!(described.values().all(|value| !value.contains("hunter2")));
+    }
+
+    #[test]
+    fn storage_defaults_to_aws_s3_and_credentials_come_from_a_file_or_nested_variables() {
+        figment::Jail::expect_with(|jail| {
+            jail.create_file(
+                "keys.toml",
+                "[storage]\ncredentials = { access_key_id = \"mink\", secret_access_key = \"minkminkmink\" }",
+            )?;
+
+            let chain = Config::load(None).unwrap();
+            let file = Config::load(Some(Path::new("keys.toml"))).unwrap();
+            jail.set_env("MINK_STORAGE__CREDENTIALS__ACCESS_KEY_ID", "env");
+            jail.set_env("MINK_STORAGE__CREDENTIALS__SECRET_ACCESS_KEY", "secret");
+            let env = Config::load(None).unwrap();
+
+            let credentials = |access_key_id: &str, secret_access_key: &str| {
+                Some(Credentials {
+                    access_key_id: access_key_id.to_owned(),
+                    secret_access_key: secret_access_key.to_owned(),
+                })
+            };
+            assert_eq!(chain.storage.endpoint, None);
+            assert_eq!(chain.describe()["storage"], "AWS S3 in us-east-1");
+            assert_eq!(chain.storage.credentials, None);
+            assert_eq!(
+                file.storage.credentials,
+                credentials("mink", "minkminkmink")
+            );
+            assert_eq!(env.storage.credentials, credentials("env", "secret"));
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn the_schema_registry_is_chosen_by_its_type() {
+        figment::Jail::expect_with(|jail| {
+            jail.create_file(
+                "confluent.toml",
+                "[schema_registry]\ntype = \"confluent\"\nurl = \"http://registry:8081\"",
+            )?;
+            jail.create_file(
+                "glue.toml",
+                "[schema_registry]\ntype = \"glue\"\nname = \"mink\"\nregion = \"us-east-1\"",
+            )?;
+            jail.create_file(
+                "unknown.toml",
+                "[schema_registry]\ntype = \"other\"\nurl = \"http://registry:8081\"",
+            )?;
+
+            let confluent = Config::load(Some(Path::new("confluent.toml"))).unwrap();
+            let glue = Config::load(Some(Path::new("glue.toml"))).unwrap();
+            let unknown = Config::load(Some(Path::new("unknown.toml")));
+
+            assert_eq!(
+                confluent.schema_registry,
+                Some(SchemaRegistry::Confluent {
+                    url: "http://registry:8081".to_owned(),
+                    username: None,
+                    password: None,
+                })
+            );
+            assert_eq!(
+                confluent.describe()["schema_registry"],
+                "http://registry:8081"
+            );
+            assert_eq!(
+                glue.describe()["schema_registry"],
+                "AWS Glue registry mink in us-east-1"
+            );
+            assert!(matches!(unknown, Err(ConfigError::Load(_))), "{unknown:?}");
             Ok(())
         });
     }

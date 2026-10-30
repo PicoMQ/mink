@@ -14,6 +14,10 @@ pub(crate) async fn add(
     granularity: Granularity,
 ) -> Result<Topic, Error> {
     let listing = kafka.cluster().await?.topics().await?;
+    if listing.unavailable(name) {
+        return Err(Error::TopicUnavailable(name.to_owned()));
+    }
+
     let topic = listing
         .find(name)
         .cloned()

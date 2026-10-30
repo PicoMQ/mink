@@ -17,7 +17,7 @@ async fn cluster(State(admin): State<Arc<Admin>>) -> Json<Value> {
     let roles: Vec<&str> = config.roles.iter().map(|role| role.name()).collect();
 
     let registry = match services.schemas.registry() {
-        Some(registry) => json!({ "url": registry.url(), "reachable": registry.reachable().await }),
+        Some(registry) => json!({ "reachable": registry.reachable().await }),
         None => Value::Null,
     };
 

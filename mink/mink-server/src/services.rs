@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::Error;
 use crate::config::Config;
 use crate::membership::Membership;
-use crate::registry::Registry;
+use crate::registry;
 use crate::schemas::Schemas;
 use crate::warehouse::Warehouse;
 
@@ -32,13 +32,12 @@ impl Services {
     pub(crate) async fn new(config: Config, warehouse: Warehouse) -> Result<Arc<Services>, Error> {
         let metrics = Metrics::new();
         let store = Store::connect(&config.postgres).await?;
-        let kafka_config = mink_kafka::Config::new(config.kafka_bootstrap.clone())?;
+        let kafka_config = config.kafka.client_config()?;
         let kafka = Pool::new(kafka_config, metrics.clone());
-        let registry = config
-            .schema_registry
-            .clone()
-            .map(|settings| Registry::new(settings, metrics.clone()))
-            .transpose()?;
+        let registry = match &config.schema_registry {
+            Some(settings) => Some(registry::connect(settings, metrics.clone()).await?),
+            None => None,
+        };
         let schemas = Schemas::new(store.clone(), registry);
 
         Ok(Arc::new(Services {

@@ -1,6 +1,6 @@
 # File formats
 
-Every file Mink writes is pinned by a specification in the repository, with conformance fixtures that tests check byte for byte.
+Every file Mink serves is pinned by a specification in the repository, with conformance fixtures that tests check byte for byte.
 
 | Specification | Pins |
 | --- | --- |

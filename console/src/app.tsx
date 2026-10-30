@@ -64,7 +64,7 @@ export function App() {
               <Route path="/nodes" component={Nodes} />
               <Route path="/nodes/:id" component={NodeView} />
               <Route path="/registry" component={Registry} />
-              <Route path="/registry/:id" component={Definition} />
+              <Route path="/registry/:key" component={Definition} />
               <Route path="/sql" component={SqlView} />
               <Route path="/connect" component={Connect} />
               <Route default component={Missing} />

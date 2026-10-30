@@ -1,4 +1,5 @@
 use std::io;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use kafka_protocol::messages::BrokerId;
@@ -34,8 +35,8 @@ pub enum Error {
     UnknownBroker(BrokerId),
     #[error("{0:?} is not in the cluster metadata")]
     UnknownPartition(Partition),
-    #[error("no broker answered: {0:?}")]
-    Unreachable(Vec<String>),
+    #[error("every broker failed: {}", listed(.0))]
+    Unreachable(Vec<(String, Error)>),
     #[error("timestamp {0} is negative")]
     InvalidTimestamp(i64),
     #[error("cannot read to offset {end}, past the last stable offset {stable}")]
@@ -52,4 +53,23 @@ pub enum Error {
     MaxBytes(i32),
     #[error("max_wait {0:?} does not fit in 32-bit milliseconds")]
     MaxWait(Duration),
+    #[error("tls: {0}")]
+    Tls(#[from] tokio_rustls::rustls::Error),
+    #[error("cannot read the CA file {}: {reason}", path.display())]
+    CaFile { path: PathBuf, reason: String },
+    #[error("{0} has no valid TLS server name")]
+    ServerName(String),
+    #[error("authentication failed: {0}")]
+    Authentication(String),
+    #[error("scram: {0}")]
+    Scram(&'static str),
+}
+
+fn listed(failures: &[(String, Error)]) -> String {
+    let listed: Vec<_> = failures
+        .iter()
+        .map(|(address, error)| format!("{address}: {error}"))
+        .collect();
+
+    listed.join(", ")
 }

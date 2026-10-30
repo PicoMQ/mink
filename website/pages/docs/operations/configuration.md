@@ -4,26 +4,27 @@ A node reads its settings from the defaults, then a TOML file given with `-c`, t
 
 ```toml
 postgres = "postgres://mink:mink@db:5432/mink"
-kafka_bootstrap = ["kafka-1:9092", "kafka-2:9092"]
 warehouse = "s3://lake/mink"
 
+[kafka]
+bootstrap = ["kafka-1:9092", "kafka-2:9092"]
+
 [storage]
-endpoint = "https://s3.us-east-1.amazonaws.com"
 region = "us-east-1"
-access_key_id = "..."
-secret_access_key = "..."
-path_style = false
 
 [schema_registry]
+type = "confluent"
 url = "http://registry:8081"
 ```
 
-Every setting has a variable: `MINK_` and its name in capitals. Lists and tables take their TOML form.
+Every setting has a variable: `MINK_` and its name in capitals, with `__` between a table and its keys. Lists take their TOML form.
 
 ```bash
 MINK_POSTGRES=postgres://mink:mink@db:5432/mink
-MINK_KAFKA_BOOTSTRAP='["kafka-1:9092", "kafka-2:9092"]'
-MINK_SCHEMA_REGISTRY='{url = "http://registry:8081"}'
+MINK_KAFKA__BOOTSTRAP='["kafka-1:9092", "kafka-2:9092"]'
+MINK_KAFKA__SASL__PASSWORD=secret
+MINK_SCHEMA_REGISTRY__TYPE=confluent
+MINK_SCHEMA_REGISTRY__URL=http://registry:8081
 ```
 
 Durations are a number and a unit: `ms`, `s`, `m` or `h`. Sizes are bytes. Every duration and size must be positive.
@@ -51,15 +52,21 @@ Durations are a number and a unit: `ms`, `s`, `m` or `h`. Sizes are bytes. Every
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| `postgres` | `postgres://mink:mink@localhost:5432/mink` | Postgres connection URL |
-| `kafka_bootstrap` | `["localhost:9092"]` | Kafka brokers to bootstrap from |
+| `postgres` | `postgres://mink:mink@localhost:5432/mink` | Postgres connection URL. TLS is set in the URL: `sslmode=verify-full` checks the server's certificate against `sslrootcert`, or the Mozilla CA certificates without it. `require` encrypts without checking the certificate. |
+| `kafka.bootstrap` | `["localhost:9092"]` | Kafka brokers to bootstrap from |
+| `kafka.tls` | none | TLS to the brokers, verified against the system's CA certificates. `{}` turns it on. |
+| `kafka.tls.ca` | none | A PEM file of more CA certificates to trust |
+| `kafka.sasl.mechanism` | none | `PLAIN`, `SCRAM-SHA-256` or `SCRAM-SHA-512`, as Kafka names them |
+| `kafka.sasl.username`, `kafka.sasl.password` | none | The SASL credentials |
 | `warehouse` | `s3://mink/warehouse` | Where Iceberg metadata lives, and the root of every table location |
-| `storage.endpoint` | `http://localhost:9000` | The S3-compatible store that holds the warehouse |
-| `storage.region` | `us-east-1` | Its region |
-| `storage.access_key_id`, `storage.secret_access_key` | `mink`, `minkminkmink` | Its credentials |
-| `storage.path_style` | `true` | Path-style addressing |
-| `schema_registry.url` | none | The Schema Registry. Without it, new records keep their raw bytes. |
-| `schema_registry.username`, `schema_registry.password` | none | Basic authentication for the registry |
+| `storage.endpoint` | none | An S3-compatible store such as RustFS or MinIO, addressed in path style. Without it, AWS S3 in `storage.region`. |
+| `storage.region` | `us-east-1` | The bucket's region |
+| `storage.credentials` | none | `{ access_key_id, secret_access_key }`. Without them, AWS's own sources: the `AWS_*` environment variables, web identity, the ECS task role, EKS Pod Identity, or the instance profile. |
+| `schema_registry.type` | none | `confluent`, for Confluent Schema Registry or a registry with its API, or `glue`, for AWS Glue Schema Registry. |
+| `schema_registry.url` | none | For `confluent`: the registry's URL |
+| `schema_registry.username`, `schema_registry.password` | none | For `confluent`: Basic authentication |
+| `schema_registry.name` | none | For `glue`: the registry's name. A record's schema must be a version of the schema named after its topic. |
+| `schema_registry.region` | none | For `glue`: the registry's region. Without it, the AWS SDK's own sources, such as `AWS_REGION`. Credentials come from AWS's own sources, as for `storage.credentials`. |
 | `namespace` | `kafka` | The catalog's one namespace |
 
 ## Indexing
@@ -68,7 +75,7 @@ Durations are a number and a unit: `ms`, `s`, `m` or `h`. Sizes are bytes. Every
 | --- | --- | --- |
 | `history` | `all` | How far backfill goes: `all`, `none`, or `{ since = "<RFC 3339 time>" }` |
 | `file_bytes` | `134217728` | A range of records becomes files when their key, value and header bytes reach this |
-| `file_window` | `60s` | Or when their timestamps span this, or its first record was read this long ago |
+| `file_window` | `60s` | A range ends when its timestamps span this, or its first record was read this long ago |
 | `backfill_offsets` | `100000` | Offsets per backfill chunk |
 | `retention_check` | `60s` | How often indexers check Kafka's earliest offsets |
 | `granularity` | `hour` | Time partitioning for tables added without one: `hour`, `day`, `month` or `none` |
@@ -103,5 +110,3 @@ Durations are a number and a unit: `ms`, `s`, `m` or `h`. Sizes are bytes. Every
 | --- | --- | --- |
 | `duckdb_engine` | none, jsDelivr | Base URL of the DuckDB-Wasm files the SQL page loads |
 | `duckdb_extensions` | none, DuckDB's own | DuckDB extension repository for the SQL page. A mirror holds `iceberg`, `httpfs`, `parquet`, `avro` and `json`. |
-
-The SQL page runs only DuckDB files whose hashes match the version the console was built with. See [Console](/docs/operations/console).

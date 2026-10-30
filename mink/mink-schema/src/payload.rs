@@ -1,7 +1,6 @@
 use crate::Error;
 use crate::avro::AvroSchema;
 use crate::json::JsonSchema;
-use crate::merge::Rejection;
 use crate::protobuf::ProtobufSchema;
 use crate::registry::{SchemaFormat, SchemaSet};
 use crate::types::PayloadType;
@@ -43,12 +42,4 @@ impl PayloadSchema {
             Parsed::Json(json) => json.decode(payload),
         }
     }
-}
-
-pub fn accept(set: &SchemaSet, registered_under_subject: bool) -> Result<PayloadSchema, Rejection> {
-    if !registered_under_subject {
-        return Err(Rejection::NotAccepted);
-    }
-
-    PayloadSchema::parse(set).map_err(|_| Rejection::Unsupported)
 }

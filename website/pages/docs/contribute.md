@@ -1,10 +1,6 @@
 # Contribute
 
-Thank you for your interest in contributing to Mink. The project lives at [github.com/PicoMQ/mink](https://github.com/PicoMQ/mink). Bug reports, design discussion, and pull requests all go there.
-
-::: tip
-If you are new to the project, new to Rust, or just unsure whether a change belongs here, open a PR or an issue anyway. Review is part of how we learn, and there is always more to learn.
-:::
+The project lives at [github.com/PicoMQ/mink](https://github.com/PicoMQ/mink). Bug reports, design discussion, and pull requests all go there.
 
 ## Repository layout
 
@@ -71,7 +67,7 @@ The `e2e` workflow runs the same script on demand from GitHub Actions.
 
 ## File formats
 
-Every file Mink writes has a specification in `specification/` and fixtures in `conformance/fixtures/`.
+Every file Mink serves has a specification in `specification/` and fixtures in `conformance/fixtures/`.
 
 - A change to a format updates its specification, its version and its fixtures in the same PR.
 - Never regenerate or edit fixtures to make a failing test pass. A failing fixture test means the format changed.
@@ -85,11 +81,11 @@ npm install
 npm run dev
 ```
 
-Pages are markdown under `website/pages/docs/`, and the sidebar is defined in `website/.vitepress/config.mts`. Docs follow the same review bar as code.
+Pages are markdown under `website/pages/docs/`, and the sidebar is defined in `website/.vitepress/config.mts`.
 
 ## Pull requests
 
-Small, focused PRs against `main`. A good PR description says *why* the change exists, not just what it touches. If it changes a file format, a catalog behavior, or an operational default, call that out explicitly.
+Small, focused PRs against `main`. Describe why the change exists. Call out changes to a file format, catalog behavior or default.
 
 AI-generated (or largely generated) pull requests are welcome, provided that you:
 
@@ -98,6 +94,6 @@ AI-generated (or largely generated) pull requests are welcome, provided that you
 - Keep PR discussion human. Descriptions, comments, and review replies.
 - Have reviewed the diff yourself before opening the PR.
 
-For anything larger than a bug fix (a new schema format, a catalog API change, a new role), [open an issue](https://github.com/PicoMQ/mink/issues) first so the design can be discussed before the code shows up.
+For anything larger than a bug fix (a new schema format, a catalog API change, a new role), [open an issue](https://github.com/PicoMQ/mink/issues) first.
 
 By contributing, you agree your work is licensed under Apache 2.0.

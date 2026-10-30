@@ -113,14 +113,15 @@ A topic merges a registry schema the first time a record that names it is indexe
 5. A column whose field the new schema no longer has stays; records of the new schema leave it null.
 6. If anything changed, the result is the topic's next table schema and becomes current; otherwise the registry schema maps into the current one.
 
-A reference is rejected, and its parts are undecodable, when the topic cannot merge its schema:
+A schema id is rejected, and its parts are undecodable, when the topic cannot merge its schema:
 
 | Rejection | When |
 | --- | --- |
-| `missing` | The registry does not have the schema |
-| `not_accepted` | The schema is not registered under the part's subject |
+| `missing` | The registry does not have the schema: a Confluent id or GUID it does not know, a schema a Confluent schema references, or a Glue version that is unknown, not available, or has no definition |
+| `not_accepted` | The schema is not the part's. For a Confluent registry, it is not registered under the subject `<topic>-key` or `<topic>-value`. For Glue, it is not a version of the schema named after the topic in the configured registry. |
 | `unsupported` | Mink cannot read the schema: a malformed definition, a format this version does not decode, a mapping of more than 10,000 fields or nested deeper than 64 levels, or a merged schema Iceberg rejects, such as a field named `a.b` beside a struct `a` with a field `b` |
 | `reserved_name` | The schema would add a top-level value column with a reserved name |
+| `other_registry` | The schema id is the other registry type's: a Glue version with a Confluent registry, or a Confluent id or GUID with Glue |
 
 Columns are never dropped, so every file the topic ever wrote reads under the current schema. A topic merges each registry schema once, and two merges racing on one topic are serialized by Postgres.
 

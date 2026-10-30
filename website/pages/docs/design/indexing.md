@@ -36,7 +36,7 @@ Indexing turns a partition's committed records into data files with exact statis
 | Partition | Start |
 | --- | --- |
 | Of a newly added table | Its last stable offset. Backfill reads what came before. |
-| Already indexed | The end of its stored range |
+| Already indexed | The end of its indexed range |
 | Added to the topic later | Its last stable offset |
 
 ## Data files
@@ -62,7 +62,7 @@ Backfill indexes history backwards from the range's start, `backfill_offsets` at
 | --- | --- |
 | `all`, the default | Kafka's earliest offset |
 | `{ since = <RFC 3339 time> }` | The first offset at or after that time |
-| `none` | Nothing. The table starts at the live end. |
+| `none` | Nothing. The table starts at the last stable offset. |
 
 ## Schemas
 
@@ -70,12 +70,12 @@ Before writing files, the indexer merges every new schema its records name into 
 
 ## Kafka retention
 
-Every `retention_check`, 60 seconds by default, the indexer reads Kafka's earliest offset. When retention has deleted records, the range's start moves up to the next file boundary. The records between leave the table with their file, at most one file per partition.
+Every `retention_check` the indexer reads Kafka's earliest offset. See [Retention](/docs/design/retention).
 
 ## Failures
 
 | Event | Effect |
 | --- | --- |
-| Indexer stops | Records read but not written are only in memory. The next indexer reads again from the stored end. |
+| Indexer stops | Records read but not written are only in memory. The next indexer reads again from the end of the indexed range. |
 | Node loses the lease | The indexer stops at once. Another node takes the partition when the lease expires, after `lease_ttl`, 30 seconds by default. |
 | Lost lease, late write | Rejected by Postgres. An indexer without its lease adds no file. |

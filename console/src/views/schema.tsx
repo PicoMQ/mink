@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/preact-query'
 import { useLocation } from 'preact-iso'
 
-import { schemas, type Reference, type TableDetail } from '../api/tables'
+import { schemas, type Merge, type TableDetail } from '../api/tables'
 import { Fields } from '../components/fields'
 import { Loading } from '../components/loading'
 import { Select } from '../components/select'
@@ -12,22 +12,21 @@ import { page, withQuery } from '../location'
 
 import './schema.css'
 
-const REFERENCE_COLUMNS: Column<Reference>[] = [
-  { name: 'part', header: 'Part', width: '7rem', cell: (reference) => reference.part },
-  { name: 'reference', header: 'Reference', cell: (reference) => reference.reference },
+const MERGE_COLUMNS: Column<Merge>[] = [
+  { name: 'part', header: 'Part', width: '7rem', cell: (merge) => merge.part },
+  { name: 'schemaId', header: 'Schema id', cell: (merge) => merge.schemaId },
   {
     name: 'registry',
     header: 'Registry schema',
     width: '12rem',
-    cell: (reference) =>
-      reference.registryId === null ? 'none' : <a href={page('registry', reference.registryId)}>{reference.registryId}</a>,
+    cell: (merge) => (merge.registryKey === null ? 'none' : <a href={page('registry', merge.registryKey)}>{merge.registryKey}</a>),
   },
   {
     name: 'result',
     header: 'Result',
     width: '16rem',
-    cell: (reference) =>
-      reference.rejection === null ? <Tag kind="success">merged into {reference.schemaId}</Tag> : <Tag kind="danger">{reference.rejection}</Tag>,
+    cell: (merge) =>
+      merge.rejection === null ? <Tag kind="success">merged into {merge.tableSchemaId}</Tag> : <Tag kind="danger">{merge.rejection}</Tag>,
   },
 ]
 
@@ -60,11 +59,11 @@ export function Schema({ name }: { name: string; table: TableDetail }) {
         </Select>
       </Toolbar>
       {shown && <Fields fields={shown.fields} />}
-      <h2>References</h2>
+      <h2>Schema ids</h2>
       <Table
-        columns={REFERENCE_COLUMNS}
-        rows={data.references}
-        rowKey={(reference) => `${reference.part}/${reference.reference}`}
+        columns={MERGE_COLUMNS}
+        rows={data.merges}
+        rowKey={(merge) => `${merge.part}/${merge.schemaId}`}
         empty="No record has named a registry schema"
       />
     </div>

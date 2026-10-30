@@ -1,4 +1,4 @@
-use mink_schema::{Reference, RegistrySchema, SchemaFormat};
+use mink_schema::{Reference, RegistrySchema, SchemaFormat, SchemaKey};
 use serde_json::{Value, json};
 use sqlx::types::Json;
 use sqlx::{FromRow, PgPool};
@@ -10,7 +10,7 @@ pub struct Registry<'a> {
 }
 
 pub struct ListedSchema {
-    id: i32,
+    key: SchemaKey,
     format: SchemaFormat,
     references: Vec<Reference>,
     tables: Vec<String>,
@@ -18,7 +18,7 @@ pub struct ListedSchema {
 
 #[derive(FromRow)]
 struct ListedRow {
-    id: i32,
+    key: String,
     format: String,
     referenced: Json<Value>,
     tables: Vec<String>,
@@ -26,21 +26,22 @@ struct ListedRow {
 
 impl ListedRow {
     fn listed(self) -> Result<ListedSchema, Error> {
-        let corrupt = || Error::Corrupt(format!("registry schema {}", self.id));
+        let corrupt = || Error::Corrupt(format!("registry schema {}", self.key));
+        let key = SchemaKey::parse(&self.key).ok_or_else(corrupt)?;
         let format = SchemaFormat::from_name(&self.format).ok_or_else(corrupt)?;
 
         Ok(ListedSchema {
-            id: self.id,
+            key,
             format,
-            references: references(self.id, &self.referenced)?,
+            references: references(key, &self.referenced)?,
             tables: self.tables,
         })
     }
 }
 
 impl ListedSchema {
-    pub fn id(&self) -> i32 {
-        self.id
+    pub fn key(&self) -> SchemaKey {
+        self.key
     }
 
     pub fn format(&self) -> SchemaFormat {
@@ -72,14 +73,16 @@ impl<'a> Registry<'a> {
         let references: Vec<Value> = schema
             .references()
             .iter()
-            .map(|reference| json!({ "name": reference.name(), "id": reference.id() }))
+            .map(
+                |reference| json!({ "name": reference.name(), "key": reference.key().to_string() }),
+            )
             .collect();
 
         sqlx::query(
-            "INSERT INTO registry_schema (id, format, definition, referenced) \
-             VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING",
+            "INSERT INTO registry_schema (key, format, definition, referenced) \
+             VALUES ($1, $2, $3, $4) ON CONFLICT (key) DO NOTHING",
         )
-        .bind(schema.id())
+        .bind(schema.key().to_string())
         .bind(schema.format().name())
         .bind(schema.definition())
         .bind(Json(references))
@@ -89,28 +92,32 @@ impl<'a> Registry<'a> {
         Ok(())
     }
 
-    pub async fn get(&self, id: i32) -> Result<Option<RegistrySchema>, Error> {
+    pub async fn get(&self, key: SchemaKey) -> Result<Option<RegistrySchema>, Error> {
         let row: Option<SchemaRow> = sqlx::query_as(
-            "SELECT format, definition, referenced FROM registry_schema WHERE id = $1",
+            "SELECT format, definition, referenced FROM registry_schema WHERE key = $1",
         )
-        .bind(id)
+        .bind(key.to_string())
         .fetch_optional(self.pool)
         .await?;
 
-        row.map(|row| schema(id, row)).transpose()
+        row.map(|row| schema(key, row)).transpose()
     }
 
-    pub async fn page(&self, after: Option<i32>, limit: i64) -> Result<Vec<ListedSchema>, Error> {
+    pub async fn page(
+        &self,
+        after: Option<SchemaKey>,
+        limit: i64,
+    ) -> Result<Vec<ListedSchema>, Error> {
         let rows: Vec<ListedRow> = sqlx::query_as(
-            "SELECT registry_schema.id, registry_schema.format, registry_schema.referenced, \
+            "SELECT registry_schema.key, registry_schema.format, registry_schema.referenced, \
                  coalesce(array_agg(DISTINCT topic_schema.topic ORDER BY topic_schema.topic) \
                      FILTER (WHERE topic_schema.topic IS NOT NULL), '{}') AS tables \
              FROM registry_schema \
-             LEFT JOIN topic_schema ON topic_schema.registry_id = registry_schema.id \
-             WHERE $1::INTEGER IS NULL OR registry_schema.id > $1 \
-             GROUP BY registry_schema.id ORDER BY registry_schema.id LIMIT $2",
+             LEFT JOIN topic_schema ON topic_schema.registry_key = registry_schema.key \
+             WHERE $1::TEXT IS NULL OR registry_schema.key > $1 \
+             GROUP BY registry_schema.key ORDER BY registry_schema.key LIMIT $2",
         )
-        .bind(after)
+        .bind(after.map(|key| key.to_string()))
         .bind(limit)
         .fetch_all(self.pool)
         .await?;
@@ -118,11 +125,11 @@ impl<'a> Registry<'a> {
         rows.into_iter().map(ListedRow::listed).collect()
     }
 
-    pub async fn tables(&self, id: i32) -> Result<Vec<String>, Error> {
+    pub async fn tables(&self, key: SchemaKey) -> Result<Vec<String>, Error> {
         let tables = sqlx::query_scalar(
-            "SELECT DISTINCT topic FROM topic_schema WHERE registry_id = $1 ORDER BY topic",
+            "SELECT DISTINCT topic FROM topic_schema WHERE registry_key = $1 ORDER BY topic",
         )
-        .bind(id)
+        .bind(key.to_string())
         .fetch_all(self.pool)
         .await?;
 
@@ -130,17 +137,17 @@ impl<'a> Registry<'a> {
     }
 }
 
-fn schema(id: i32, row: SchemaRow) -> Result<RegistrySchema, Error> {
-    let corrupt = || Error::Corrupt(format!("registry schema {id}"));
+fn schema(key: SchemaKey, row: SchemaRow) -> Result<RegistrySchema, Error> {
+    let corrupt = || Error::Corrupt(format!("registry schema {key}"));
     let format = SchemaFormat::from_name(&row.format).ok_or_else(corrupt)?;
 
-    let references = references(id, &row.referenced)?;
+    let references = references(key, &row.referenced)?;
 
-    Ok(RegistrySchema::new(id, format, row.definition, references))
+    Ok(RegistrySchema::new(key, format, row.definition, references))
 }
 
-fn references(id: i32, referenced: &Value) -> Result<Vec<Reference>, Error> {
-    let corrupt = || Error::Corrupt(format!("registry schema {id}"));
+fn references(key: SchemaKey, referenced: &Value) -> Result<Vec<Reference>, Error> {
+    let corrupt = || Error::Corrupt(format!("registry schema {key}"));
 
     referenced
         .as_array()
@@ -148,11 +155,9 @@ fn references(id: i32, referenced: &Value) -> Result<Vec<Reference>, Error> {
         .iter()
         .map(|reference| {
             let name = reference["name"].as_str().ok_or_else(corrupt)?;
-            let id = reference["id"]
-                .as_i64()
-                .and_then(|id| i32::try_from(id).ok());
+            let referenced = reference["key"].as_str().and_then(SchemaKey::parse);
 
-            Ok(Reference::new(name, id.ok_or_else(corrupt)?))
+            Ok(Reference::new(name, referenced.ok_or_else(corrupt)?))
         })
         .collect()
 }
@@ -170,18 +175,26 @@ mod tests {
             return;
         };
         let id = i32::try_from(Uuid::new_v4().as_u128() % 1_000_000_000).unwrap() + 1_000_000;
+        let key = SchemaKey::Confluent(id);
         let first = RegistrySchema::new(
-            id,
+            key,
             SchemaFormat::Avro,
             "\"int\"",
-            vec![Reference::new("a.B", 3)],
+            vec![Reference::new("a.B", SchemaKey::Confluent(3))],
         );
-        let second = RegistrySchema::new(id, SchemaFormat::Json, "{}", Vec::new());
+        let second = RegistrySchema::new(key, SchemaFormat::Json, "{}", Vec::new());
 
         store.registry().put(&first).await.unwrap();
         store.registry().put(&second).await.unwrap();
 
-        assert_eq!(store.registry().get(id).await.unwrap(), Some(first));
-        assert_eq!(store.registry().get(id + 1).await.unwrap(), None);
+        assert_eq!(store.registry().get(key).await.unwrap(), Some(first));
+        assert_eq!(
+            store
+                .registry()
+                .get(SchemaKey::Confluent(id + 1))
+                .await
+                .unwrap(),
+            None
+        );
     }
 }

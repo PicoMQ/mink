@@ -1,9 +1,9 @@
 import { listing, read } from './query'
 
 export interface RegistrySchema {
-  id: number
+  key: string
   format: string
-  references: { name: string; id: number }[]
+  references: { name: string; key: string }[]
   tables: string[]
 }
 
@@ -13,4 +13,4 @@ interface RegistryDetail extends RegistrySchema {
 
 export const schemas = () => listing<RegistrySchema>(['registry'])
 
-export const schema = (id: number) => read<RegistryDetail>(['registry', id])
+export const schema = (key: string) => read<RegistryDetail>(['registry', key])

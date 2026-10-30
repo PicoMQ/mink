@@ -2,6 +2,8 @@ use std::time::Duration;
 
 use crate::Error;
 use crate::connection::MAX_FRAME;
+use crate::sasl::Sasl;
+use crate::tls::Tls;
 
 const MAX_WAIT: Duration = Duration::from_millis(500);
 const MAX_BYTES: i32 = 8 * 1024 * 1024;
@@ -14,6 +16,8 @@ pub struct Config {
     max_wait: Duration,
     max_bytes: i32,
     retry_deadline: Duration,
+    tls: Option<Tls>,
+    sasl: Option<Sasl>,
 }
 
 impl Config {
@@ -27,7 +31,19 @@ impl Config {
             max_wait: MAX_WAIT,
             max_bytes: MAX_BYTES,
             retry_deadline: RETRY_DEADLINE,
+            tls: None,
+            sasl: None,
         })
+    }
+
+    pub fn with_tls(mut self, tls: Tls) -> Config {
+        self.tls = Some(tls);
+        self
+    }
+
+    pub fn with_sasl(mut self, sasl: Sasl) -> Config {
+        self.sasl = Some(sasl);
+        self
     }
 
     pub fn with_max_wait(mut self, max_wait: Duration) -> Result<Config, Error> {
@@ -71,6 +87,14 @@ impl Config {
 
     pub(crate) fn request_timeout(&self) -> Duration {
         self.max_wait + RESPONSE_MARGIN
+    }
+
+    pub(crate) fn tls(&self) -> Option<&Tls> {
+        self.tls.as_ref()
+    }
+
+    pub(crate) fn sasl(&self) -> Option<&Sasl> {
+        self.sasl.as_ref()
     }
 }
 

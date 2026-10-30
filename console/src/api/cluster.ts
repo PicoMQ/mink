@@ -8,7 +8,7 @@ export interface Cluster {
   catalogUrl: string
   s3Endpoint: string
   warehouse: string
-  registry: { url: string; reachable: boolean } | null
+  registry: { reachable: boolean } | null
   sql: Sql | null
 }
 

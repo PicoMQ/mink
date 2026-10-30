@@ -3,17 +3,18 @@ use std::path::Path;
 
 use iceberg::spec::PrimitiveType;
 use prost_reflect::{
-    DynamicMessage, FieldDescriptor, Kind, MapKey, MessageDescriptor, ReflectMessage, Value,
+    DynamicMessage, FieldDescriptor, FileDescriptor, Kind, MapKey, MessageDescriptor,
+    ReflectMessage, Value,
 };
 use protox::Compiler;
 use protox::file::{ChainFileResolver, File, FileResolver, GoogleFileResolver};
 
 use crate::Error;
 use crate::limits::{Limits, SCHEMA_TOO_LARGE};
-use crate::registry::SchemaSet;
+use crate::registry::{SchemaKey, SchemaSet};
 use crate::types::{PayloadField, PayloadType};
 use crate::value::PayloadValue;
-use crate::varint::zigzag;
+use crate::varint::{unsigned, zigzag};
 
 const MICROS_PER_SECOND: i64 = 1_000_000;
 const NANOS_PER_MICRO: i64 = 1000;
@@ -27,7 +28,13 @@ const JSON_MESSAGES: [&str; 5] = [
 
 pub struct ProtobufSchema {
     message: MessageDescriptor,
+    message_index: MessageIndex,
     payload_type: PayloadType,
+}
+
+enum MessageIndex {
+    Confluent,
+    Glue(u64),
 }
 
 struct Sources {
@@ -53,10 +60,10 @@ impl ProtobufSchema {
     pub(crate) fn parse(schema_set: &SchemaSet) -> Result<ProtobufSchema, Error> {
         let schema = schema_set.schema();
         let invalid = |message: String| Error::PayloadSchema {
-            id: schema.id(),
+            key: schema.key(),
             message,
         };
-        let main = format!("registry/{}.proto", schema.id());
+        let main = format!("registry/{}.proto", schema.key());
 
         let mut by_name: HashMap<String, String> = schema_set
             .definitions_by_name()
@@ -85,8 +92,14 @@ impl ProtobufSchema {
 
         let payload_type = map_message(&message, &mut Vec::new(), &mut Limits::schema())
             .ok_or_else(|| invalid(SCHEMA_TOO_LARGE.to_owned()))?;
+        let message_index = match schema.key() {
+            SchemaKey::Confluent(_) => MessageIndex::Confluent,
+            SchemaKey::Glue(_) => MessageIndex::Glue(glue_index(&file, &message)),
+        };
+
         Ok(ProtobufSchema {
             message,
+            message_index,
             payload_type,
         })
     }
@@ -98,14 +111,33 @@ impl ProtobufSchema {
     pub(crate) fn decode(&self, payload: &[u8]) -> Option<PayloadValue> {
         let mut bytes = payload;
 
-        let indexes = message_indexes(&mut bytes)?;
-        if indexes != [0] {
+        let names_this_message = match self.message_index {
+            MessageIndex::Confluent => message_indexes(&mut bytes)? == [0],
+            MessageIndex::Glue(position) => unsigned(&mut bytes)? == position,
+        };
+        if !names_this_message {
             return None;
         }
 
         let message = DynamicMessage::decode(self.message.clone(), bytes).ok()?;
         message_value(&message, &mut Vec::new())
     }
+}
+
+fn glue_index(file: &FileDescriptor, message: &MessageDescriptor) -> u64 {
+    let mut names = Vec::new();
+    let mut pending: Vec<MessageDescriptor> = file.messages().collect();
+
+    while let Some(next) = pending.pop() {
+        pending.extend(next.child_messages());
+        names.push(next.full_name().to_owned());
+    }
+    names.sort();
+
+    names
+        .iter()
+        .position(|name| name == message.full_name())
+        .expect("the table message is one of the file's messages") as u64
 }
 
 fn message_indexes(bytes: &mut &[u8]) -> Option<Vec<i64>> {
@@ -365,7 +397,34 @@ fn map_key(key: &MapKey) -> PayloadValue {
 
 #[cfg(test)]
 mod tests {
-    use super::message_indexes;
+    use uuid::Uuid;
+
+    use super::*;
+    use crate::registry::{RegistrySchema, SchemaFormat};
+
+    #[test]
+    fn glue_names_the_message_by_its_place_among_sorted_message_names() {
+        let definition = "syntax = \"proto3\"; package p; \
+            message B { int32 x = 1; message C { int32 y = 1; } } \
+            message A { int32 z = 1; }";
+        let parsed = |key| {
+            let registered =
+                RegistrySchema::new(key, SchemaFormat::Protobuf, definition, Vec::new());
+
+            ProtobufSchema::parse(&SchemaSet::new(registered, Vec::new())).unwrap()
+        };
+        let glue = parsed(SchemaKey::Glue(Uuid::from_u128(1)));
+
+        let b = glue.decode(&[1, 8, 7]);
+        let a = glue.decode(&[0, 8, 7]);
+        let c = glue.decode(&[2, 8, 7]);
+        let confluent = parsed(SchemaKey::Confluent(1)).decode(&[0, 8, 7]);
+
+        assert!(b.is_some());
+        assert!(a.is_none());
+        assert!(c.is_none());
+        assert!(confluent.is_some());
+    }
 
     #[test]
     fn message_indexes_name_the_message() {

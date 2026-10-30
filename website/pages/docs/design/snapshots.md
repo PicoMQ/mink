@@ -28,6 +28,31 @@ A snapshot is a table at one moment: for each partition, the offsets the table c
 
 Every `snapshot_interval` the table's writer reads the indexed ranges from Postgres and commits the next snapshot when anything changed. It writes the Iceberg metadata to the bucket first, then commits the snapshot in Postgres. It never reads Kafka records.
 
+<div class="mink-diagram">
+<svg viewBox="0 0 660 276" width="660" role="img" aria-label="Each commit, the writer reads the indexed ranges from Postgres, writes the Iceberg metadata to the bucket, then commits the snapshot in Postgres.">
+  <defs>
+    <marker id="commit-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0.5 L7.5 4 L0 7.5 Z" class="arrow"/>
+    </marker>
+  </defs>
+  <rect x="30" y="10" width="600" height="56" class="box"/>
+  <text x="330" y="34" text-anchor="middle" class="label">Postgres</text>
+  <text x="330" y="52" text-anchor="middle" class="sub">indexed ranges, snapshots</text>
+  <rect x="240" y="110" width="180" height="56" class="box-accent"/>
+  <text x="330" y="134" text-anchor="middle" class="label">writer</text>
+  <text x="330" y="152" text-anchor="middle" class="sub">one per table</text>
+  <rect x="30" y="210" width="600" height="56" class="box"/>
+  <text x="330" y="234" text-anchor="middle" class="label">bucket</text>
+  <text x="330" y="252" text-anchor="middle" class="sub">Iceberg metadata</text>
+  <path d="M280 66 L280 106" class="edge" marker-end="url(#commit-arrow)"/>
+  <path d="M380 110 L380 70" class="edge" marker-end="url(#commit-arrow)"/>
+  <path d="M330 166 L330 206" class="edge" marker-end="url(#commit-arrow)"/>
+  <text x="272" y="92" text-anchor="end" class="sub">1. read the indexed ranges</text>
+  <text x="388" y="92" class="sub">3. commit the snapshot</text>
+  <text x="338" y="192" class="sub">2. write the metadata</text>
+</svg>
+</div>
+
 | Part | Holds |
 | --- | --- |
 | Snapshot id | `1`, `2`, `3`, … in commit order. The Iceberg snapshot has the same id. |
@@ -54,4 +79,4 @@ Mink reads Kafka as a `read_committed` consumer would.
 
 ## Time travel
 
-Engines read older snapshots by id or by time. A snapshot expires after `snapshot_retention`, 24 hours by default, or once Kafka's retention deleted records it covers. The latest snapshot never expires. See [Retention](/docs/design/retention).
+Engines read older snapshots by id or by time. See [Retention](/docs/design/retention).

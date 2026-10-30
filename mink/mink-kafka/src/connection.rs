@@ -1,5 +1,5 @@
 use std::ops::RangeInclusive;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use bytes::{Bytes, BytesMut};
 use kafka_protocol::messages::fetch_request::{FetchPartition, FetchTopic};
@@ -7,18 +7,19 @@ use kafka_protocol::messages::fetch_response::PartitionData;
 use kafka_protocol::messages::list_offsets_request::{ListOffsetsPartition, ListOffsetsTopic};
 use kafka_protocol::messages::{
     ApiKey, ApiVersionsRequest, ApiVersionsResponse, BrokerId, FetchRequest, ListOffsetsRequest,
-    MetadataRequest, MetadataResponse, RequestHeader, ResponseHeader, TopicName,
+    MetadataRequest, MetadataResponse, RequestHeader, ResponseHeader, SaslAuthenticateRequest,
+    SaslAuthenticateResponse, SaslHandshakeRequest, TopicName,
 };
 use kafka_protocol::protocol::{
     Decodable, HeaderVersion, Request, StrBytes, encode_request_header_into_buffer,
 };
 use mink_core::Partition;
 use mink_metrics::{Metrics, Outcome};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpStream;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::Error;
-use crate::codes::check;
+use crate::codes::{NONE, UNSUPPORTED_SASL_MECHANISM, check};
+use crate::sasl::Mechanism;
 
 const CLIENT_ID: &str = "mink";
 pub(crate) const MAX_FRAME: i32 = 256 * 1024 * 1024;
@@ -27,6 +28,8 @@ const API_VERSIONS: i16 = 3;
 const METADATA: RangeInclusive<i16> = 10..=13;
 const LIST_OFFSETS: RangeInclusive<i16> = 2..=10;
 const FETCH: RangeInclusive<i16> = 4..=12;
+const SASL_HANDSHAKE: RangeInclusive<i16> = 1..=1;
+const SASL_AUTHENTICATE: RangeInclusive<i16> = 0..=2;
 
 const NO_REPLICA: BrokerId = BrokerId(-1);
 const NO_LEADER_EPOCH: i32 = -1;
@@ -44,14 +47,21 @@ struct ApiVersions {
     metadata: i16,
     list_offsets: i16,
     fetch: i16,
+    sasl_handshake: Option<i16>,
+    sasl_authenticate: Option<i16>,
 }
 
+pub(crate) trait Transport: AsyncRead + AsyncWrite + Unpin + Send {}
+
+impl<T: AsyncRead + AsyncWrite + Unpin + Send> Transport for T {}
+
 pub(crate) struct Connection {
-    stream: TcpStream,
+    stream: Box<dyn Transport>,
     correlation: i32,
     versions: ApiVersions,
     timeout: Duration,
     closed: bool,
+    expires: Option<Instant>,
     metrics: Metrics,
 }
 
@@ -77,13 +87,15 @@ impl ApiVersions {
             metadata: highest(ApiKey::Metadata, METADATA)?,
             list_offsets: highest(ApiKey::ListOffsets, LIST_OFFSETS)?,
             fetch: highest(ApiKey::Fetch, FETCH)?,
+            sasl_handshake: highest(ApiKey::SaslHandshake, SASL_HANDSHAKE).ok(),
+            sasl_authenticate: highest(ApiKey::SaslAuthenticate, SASL_AUTHENTICATE).ok(),
         })
     }
 }
 
 impl Connection {
-    pub(crate) async fn connect(
-        address: &str,
+    pub(crate) async fn open(
+        mut stream: Box<dyn Transport>,
         timeout: Duration,
         metrics: Metrics,
     ) -> Result<Connection, Error> {
@@ -91,14 +103,8 @@ impl Connection {
             .with_client_software_name(StrBytes::from_static_str(CLIENT_ID))
             .with_client_software_version(StrBytes::from_static_str(env!("CARGO_PKG_VERSION")));
 
-        let handshake = async {
-            let mut stream = TcpStream::connect(address).await?;
-            stream.set_nodelay(true)?;
-            let response = exchange(&mut stream, 0, &request, API_VERSIONS).await?;
-
-            Ok::<_, Error>((stream, response))
-        };
-        let (stream, response) = tokio::time::timeout(timeout, handshake)
+        let exchange = exchange(&mut *stream, 0, &request, API_VERSIONS);
+        let response = tokio::time::timeout(timeout, exchange)
             .await
             .map_err(|_| Error::Timeout)??;
         let versions = ApiVersions::negotiate(&response)?;
@@ -109,12 +115,77 @@ impl Connection {
             versions,
             timeout,
             closed: false,
+            expires: None,
             metrics,
         })
     }
 
+    pub(crate) fn expire_at(&mut self, expires: Instant) {
+        self.expires = Some(expires);
+    }
+
     pub(crate) fn closed(&self) -> bool {
         self.closed
+    }
+
+    pub(crate) fn expired(&self) -> bool {
+        self.expires
+            .is_some_and(|expires| Instant::now() >= expires)
+    }
+
+    pub(crate) async fn sasl_handshake(&mut self, mechanism: Mechanism) -> Result<(), Error> {
+        let version = self
+            .versions
+            .sasl_handshake
+            .ok_or(Error::UnsupportedVersion {
+                key: ApiKey::SaslHandshake as i16,
+            })?;
+        let request = SaslHandshakeRequest::default()
+            .with_mechanism(StrBytes::from_static_str(mechanism.name()));
+
+        let response = self.call(&request, version).await?;
+
+        match response.error_code {
+            UNSUPPORTED_SASL_MECHANISM => {
+                let enabled: Vec<_> = response
+                    .mechanisms
+                    .iter()
+                    .map(|name| name.as_str())
+                    .collect();
+
+                Err(Error::Authentication(format!(
+                    "the broker does not enable {}, only {}",
+                    mechanism.name(),
+                    enabled.join(", ")
+                )))
+            }
+            code => check::<SaslHandshakeRequest>(code),
+        }
+    }
+
+    pub(crate) async fn sasl_authenticate(
+        &mut self,
+        bytes: Vec<u8>,
+    ) -> Result<SaslAuthenticateResponse, Error> {
+        let version = self
+            .versions
+            .sasl_authenticate
+            .ok_or(Error::UnsupportedVersion {
+                key: ApiKey::SaslAuthenticate as i16,
+            })?;
+        let request = SaslAuthenticateRequest::default().with_auth_bytes(Bytes::from(bytes));
+
+        let response = self.call(&request, version).await?;
+
+        match response.error_code {
+            NONE => Ok(response),
+            code => Err(Error::Authentication(
+                response.error_message.as_ref().map_or_else(
+                    || format!("broker error code {code}"),
+                    |message| message.to_string(),
+                ),
+            )),
+        }
     }
 
     pub(crate) async fn metadata(&mut self) -> Result<MetadataResponse, Error> {
@@ -242,7 +313,7 @@ impl Connection {
         self.correlation = self.correlation.wrapping_add(1);
 
         self.closed = true;
-        let exchange = exchange(&mut self.stream, correlation, request, version);
+        let exchange = exchange(&mut *self.stream, correlation, request, version);
         let response = match tokio::time::timeout(self.timeout, exchange).await {
             Ok(response) => response,
             Err(_) => Err(Error::Timeout),
@@ -257,7 +328,7 @@ impl Connection {
 }
 
 async fn exchange<R: Request>(
-    stream: &mut TcpStream,
+    stream: &mut dyn Transport,
     correlation: i32,
     request: &R,
     version: i16,
@@ -279,6 +350,7 @@ async fn exchange<R: Request>(
 
     stream.write_i32(length).await?;
     stream.write_all(&frame).await?;
+    stream.flush().await?;
 
     let length = stream.read_i32().await?;
     if !(0..=MAX_FRAME).contains(&length) {
@@ -314,6 +386,7 @@ pub(crate) mod tests {
     use tokio::net::TcpListener;
 
     use super::*;
+    use crate::connector::tests::plaintext;
 
     pub(crate) fn advertised(ranges: &[(ApiKey, i16, i16)]) -> ApiVersionsResponse {
         ApiVersionsResponse::default().with_api_keys(
@@ -334,6 +407,8 @@ pub(crate) mod tests {
             (ApiKey::Metadata, 0, 13),
             (ApiKey::ListOffsets, 1, 10),
             (ApiKey::Fetch, 4, 18),
+            (ApiKey::SaslHandshake, 0, 1),
+            (ApiKey::SaslAuthenticate, 0, 2),
         ])
     }
 
@@ -451,7 +526,8 @@ pub(crate) mod tests {
             ))
         })
         .await;
-        let mut connection = Connection::connect(&address, TIMEOUT, Metrics::new())
+        let mut connection = plaintext(TIMEOUT)
+            .connect(&address, Metrics::new())
             .await
             .unwrap();
 
@@ -475,7 +551,8 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn a_call_cancelled_mid_exchange_closes_the_connection() {
         let address = broker(|_, _, _, _| None).await;
-        let mut connection = Connection::connect(&address, TIMEOUT, Metrics::new())
+        let mut connection = plaintext(TIMEOUT)
+            .connect(&address, Metrics::new())
             .await
             .unwrap();
 
@@ -491,10 +568,10 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn a_broker_that_never_answers_times_out_and_closes_the_connection() {
         let address = broker(|_, _, _, _| None).await;
-        let mut connection =
-            Connection::connect(&address, Duration::from_millis(100), Metrics::new())
-                .await
-                .unwrap();
+        let mut connection = plaintext(Duration::from_millis(100))
+            .connect(&address, Metrics::new())
+            .await
+            .unwrap();
 
         let metadata = connection.metadata().await;
 

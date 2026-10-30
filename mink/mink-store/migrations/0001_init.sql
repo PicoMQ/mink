@@ -106,7 +106,7 @@ CREATE TABLE object (
 );
 
 CREATE TABLE registry_schema (
-    id INTEGER PRIMARY KEY,
+    key TEXT PRIMARY KEY,
     format TEXT NOT NULL CHECK (format IN ('avro', 'protobuf', 'json')),
     definition TEXT NOT NULL,
     referenced JSONB NOT NULL
@@ -130,17 +130,17 @@ CREATE TABLE field (
 CREATE TABLE topic_schema (
     topic TEXT NOT NULL REFERENCES topic (name) ON DELETE CASCADE,
     part TEXT NOT NULL CHECK (part IN ('key', 'value')),
-    schema_ref TEXT NOT NULL,
-    registry_id INTEGER REFERENCES registry_schema (id),
+    schema_id TEXT NOT NULL,
+    registry_key TEXT REFERENCES registry_schema (key),
     table_schema_id INTEGER CHECK (table_schema_id >= 0),
     field_ids JSONB,
-    rejection TEXT CHECK (rejection IN ('missing', 'not_accepted', 'unsupported', 'reserved_name')),
-    PRIMARY KEY (topic, part, schema_ref),
-    CHECK ((rejection IS NULL) = (registry_id IS NOT NULL)),
+    rejection TEXT CHECK (rejection IN ('missing', 'other_registry', 'not_accepted', 'unsupported', 'reserved_name')),
+    PRIMARY KEY (topic, part, schema_id),
+    CHECK ((rejection IS NULL) = (registry_key IS NOT NULL)),
     CHECK ((rejection IS NULL) = (table_schema_id IS NOT NULL)),
     CHECK ((rejection IS NULL) = (field_ids IS NOT NULL))
 );
 
 CREATE INDEX file_added ON file (topic, added_snapshot_id);
 CREATE INDEX file_replaced ON file (topic, replaced_snapshot_id);
-CREATE INDEX topic_schema_registry ON topic_schema (registry_id);
+CREATE INDEX topic_schema_registry ON topic_schema (registry_key);

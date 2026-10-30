@@ -1,6 +1,6 @@
 # Why not table topics
 
-Kafka platforms write topics as Iceberg tables themselves: Confluent Tableflow, Redpanda Iceberg Topics, AutoMQ Table Topic, Aiven Iceberg Topics and StreamNative Ursa. It is the copy a connector makes, run by the platform. The table lags the topic, and each needs that platform. Mink runs next to any Kafka cluster and serves a topic as a table the moment a record is committed.
+Kafka platforms write topics as Iceberg tables themselves: Confluent Tableflow, Redpanda Iceberg Topics, AutoMQ Table Topic, Aiven Iceberg Topics and StreamNative Ursa. It is the copy a connector makes, run by the platform. The table lags the topic, and each needs that platform. Mink runs next to any Kafka cluster and serves a topic as a table, with every record committed when the table loads.
 
 ## How they work
 

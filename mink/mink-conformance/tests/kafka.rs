@@ -1,9 +1,10 @@
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use mink_core::{Header, Offsets, Partition, Record};
-use mink_kafka::{Cluster, Config};
+use mink_kafka::{Cluster, Config, Error, Mechanism, Sasl, Tls};
 use mink_metrics::Metrics;
 use rdkafka::config::ClientConfig;
 use rdkafka::consumer::{BaseConsumer, Consumer};
@@ -15,6 +16,8 @@ const PARTITIONS: i32 = 3;
 const RECORDS: usize = 300;
 const TIMEOUT: Duration = Duration::from_secs(30);
 const IDLE: Duration = Duration::from_secs(3);
+const USER: &str = "mink";
+const PASSWORD: &str = "mink-secret";
 
 fn produce(bootstrap: &str, topic: &str, seed: u64) {
     let mut random = fastrand::Rng::with_seed(seed);
@@ -250,5 +253,100 @@ async fn offsets_at_a_timestamp_follow_record_timestamps() {
     assert!(
         matches!(negative, Err(mink_kafka::Error::InvalidTimestamp(-1))),
         "{negative:?}"
+    );
+}
+
+#[tokio::test]
+async fn reads_over_tls_and_sasl_match_a_read_committed_consumer() {
+    let Some(bootstrap) = mink_conformance::service("TEST_KAFKA_BOOTSTRAP") else {
+        return;
+    };
+    let Some(tls_address) = mink_conformance::service("TEST_KAFKA_TLS") else {
+        return;
+    };
+    let Some(sasl_tls_address) = mink_conformance::service("TEST_KAFKA_SASL_TLS") else {
+        return;
+    };
+    let Some(sasl_plaintext) = mink_conformance::service("TEST_KAFKA_SASL_PLAINTEXT") else {
+        return;
+    };
+    let Some(ca) = mink_conformance::service("TEST_KAFKA_CA") else {
+        return;
+    };
+    let topic = format!("secure-{}", fastrand::u64(..));
+    let seed = fastrand::u64(..);
+    mink_conformance::create_topic(&bootstrap, &topic, PARTITIONS).await;
+    produce(&bootstrap, &topic, seed);
+    let expected = consumed(&bootstrap, &topic);
+    let sasl = |mechanism| Sasl::new(mechanism, USER.to_owned(), PASSWORD.to_owned());
+    let tls = |bootstrap: &str| {
+        Config::new(vec![bootstrap.to_owned()])
+            .unwrap()
+            .with_tls(Tls::new(Some(PathBuf::from(&ca))))
+    };
+
+    let configs = [
+        ("TLS", tls(&tls_address)),
+        (
+            "SASL_TLS PLAIN",
+            tls(&sasl_tls_address).with_sasl(sasl(Mechanism::Plain)),
+        ),
+        (
+            "SASL_TLS SCRAM-SHA-256",
+            tls(&sasl_tls_address).with_sasl(sasl(Mechanism::ScramSha256)),
+        ),
+        (
+            "SASL_TLS SCRAM-SHA-512",
+            tls(&sasl_tls_address).with_sasl(sasl(Mechanism::ScramSha512)),
+        ),
+        (
+            "SASL_PLAINTEXT SCRAM-SHA-512",
+            Config::new(vec![sasl_plaintext])
+                .unwrap()
+                .with_sasl(sasl(Mechanism::ScramSha512)),
+        ),
+    ];
+
+    for (name, config) in configs {
+        let mut cluster = Cluster::connect(config, Metrics::new()).await.unwrap();
+
+        let actual = read(&mut cluster, &topic).await;
+
+        assert_eq!(actual, expected, "{name}, seed {seed}");
+    }
+}
+
+#[tokio::test]
+async fn a_wrong_password_or_an_untrusted_certificate_is_refused() {
+    let Some(sasl_tls_address) = mink_conformance::service("TEST_KAFKA_SASL_TLS") else {
+        return;
+    };
+    let Some(ca) = mink_conformance::service("TEST_KAFKA_CA") else {
+        return;
+    };
+    let wrong = Sasl::new(Mechanism::ScramSha512, USER.to_owned(), "wrong".to_owned());
+    let trusted = Config::new(vec![sasl_tls_address.clone()])
+        .unwrap()
+        .with_tls(Tls::new(Some(PathBuf::from(&ca))))
+        .with_sasl(wrong);
+    let untrusted = Config::new(vec![sasl_tls_address])
+        .unwrap()
+        .with_tls(Tls::new(None))
+        .with_sasl(Sasl::new(
+            Mechanism::Plain,
+            USER.to_owned(),
+            PASSWORD.to_owned(),
+        ));
+
+    let password = Cluster::connect(trusted, Metrics::new()).await.err();
+    let certificate = Cluster::connect(untrusted, Metrics::new()).await.err();
+
+    assert!(
+        matches!(&password, Some(Error::Unreachable(failures)) if failures.iter().all(|(_, error)| matches!(error, Error::Authentication(_)))),
+        "{password:?}"
+    );
+    assert!(
+        matches!(&certificate, Some(Error::Unreachable(failures)) if failures.iter().all(|(_, error)| matches!(error, Error::Tls(_)))),
+        "{certificate:?}"
     );
 }

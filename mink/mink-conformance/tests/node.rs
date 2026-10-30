@@ -106,7 +106,9 @@ async fn start(env: &TestEnv, roles: &[Role], settings: &str) -> TestNode {
     let cache_dir = cache.path().display();
     let schema_registry = registry
         .as_ref()
-        .map(|url| format!("[schema_registry]\n        url = \"{url}\""))
+        .map(|url| {
+            format!("[schema_registry]\n        type = \"confluent\"\n        url = \"{url}\"")
+        })
         .unwrap_or_default();
     let config = format!(
         r#"
@@ -117,7 +119,6 @@ async fn start(env: &TestEnv, roles: &[Role], settings: &str) -> TestNode {
         advertised_address = "http://{host}:{s3_port}"
         admin_address = "127.0.0.1:{admin_port}"
         roles = [{roles}]
-        kafka_bootstrap = ["{bootstrap}"]
         file_window = "200ms"
         snapshot_interval = "200ms"
         lease_ttl = "3s"
@@ -125,12 +126,13 @@ async fn start(env: &TestEnv, roles: &[Role], settings: &str) -> TestNode {
         cache_disk_bytes = 268435456
         {settings}
 
+        [kafka]
+        bootstrap = ["{bootstrap}"]
+
         [storage]
         endpoint = "{s3}"
         region = "us-east-1"
-        access_key_id = "mink"
-        secret_access_key = "minkminkmink"
-        path_style = true
+        credentials = {{ access_key_id = "mink", secret_access_key = "minkminkmink" }}
 
         {schema_registry}
         "#

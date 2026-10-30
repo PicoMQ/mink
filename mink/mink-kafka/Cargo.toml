@@ -12,11 +12,18 @@ mink-core = { workspace = true }
 mink-metrics = { workspace = true }
 
 anyhow = { workspace = true }
+base64 = { workspace = true }
 bytes = { workspace = true }
 crc32c = { workspace = true }
+getrandom = { workspace = true }
+hmac = { workspace = true }
 kafka-protocol = { workspace = true }
+rustls-platform-verifier = { workspace = true }
+serde = { workspace = true }
+sha2 = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["net"] }
+tokio-rustls = { workspace = true }
 
 [dev-dependencies]
 mink-conformance = { workspace = true }

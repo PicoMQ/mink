@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use mink_store::Store;
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -233,4 +235,20 @@ async fn deleting_a_topic_deletes_what_references_it() {
     .await
     .unwrap();
     assert_eq!(remaining, [0; 8]);
+}
+
+#[tokio::test]
+async fn the_store_connects_over_tls_with_a_verified_certificate() {
+    let Some(url) = postgres().await else { return };
+    let ca = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../harness/auth/ca.pem");
+    let url = format!("{url}&sslmode=verify-full&sslrootcert={}", ca.display());
+
+    let pool = connected(&url).await;
+    let encrypted: bool =
+        sqlx::query_scalar("SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
+    assert!(encrypted);
 }

@@ -29,7 +29,7 @@ Every node with the `admin` role serves the admin API, the [console](/docs/opera
 
 | Route | Returns |
 | --- | --- |
-| `GET /admin/cluster` | This node's id, roles and version, the namespace, catalog URL, S3 endpoint and warehouse, the registry and whether it answers |
+| `GET /admin/cluster` | This node's id, roles and version, the namespace, catalog URL, S3 endpoint and warehouse, and whether the registry answers |
 | `GET /admin/overview` | Table, node, record and byte counts, and the tables with the most lag, the most bytes and the oldest snapshot. Computed at most once a minute. |
 | `GET /admin/nodes` | Live nodes with their roles, addresses and lease counts |
 | `GET /admin/nodes/{id}` | One node, with its settings, secrets redacted, and its cache usage |
@@ -46,11 +46,11 @@ Every node with the `admin` role serves the admin API, the [console](/docs/opera
 | `PATCH /admin/tables/{name}` | Changes the granularity: `{"granularity": "hour"}` |
 | `DELETE /admin/tables/{name}` | Removes the table. Returns `202`. Its objects and rows are deleted once its leases expire. |
 | `GET /admin/tables/{name}/partitions` | Each partition's earliest, indexed and last stable offsets, lag, backfill left and lease. Reads Kafka. |
-| `GET /admin/tables/{name}/files?partition=&bucket=` | Live data files with offsets, bucket, spec, schema, parts, records and bytes |
+| `GET /admin/tables/{name}/files?partition=&bucket=` | Live data files with offsets, time bucket, spec, schema, parts, records and bytes |
 | `GET /admin/tables/{name}/files/{file}` | One file, with its path and per-column statistics |
 | `GET /admin/tables/{name}/snapshots` | Snapshots, newest first |
 | `GET /admin/tables/{name}/snapshots/{id}` | One snapshot, with each partition's offsets and its metadata location |
-| `GET /admin/tables/{name}/schemas` | Every table schema, and every schema reference records named, merged or rejected |
+| `GET /admin/tables/{name}/schemas` | Every table schema, and every schema id records named, merged or rejected |
 
 ## Records
 
@@ -59,7 +59,7 @@ Every node with the `admin` role serves the admin API, the [console](/docs/opera
 | Field | Value |
 | --- | --- |
 | `offset`, `timestampAtMs` | The record's offset and timestamp |
-| `key`, `value` | `{data, encoding, bytes, truncated}`: UTF-8 text, or base64 for other bytes, at most 4 KiB |
+| `key`, `value` | `{data, encoding, bytes, truncated}`: UTF-8 text without control characters other than tab, newline and carriage return, or base64 for other bytes, at most 4 KiB |
 | `headers` | `{key, value}` for each header |
 | `row` | The record as the table reads it, field name to value |
 
@@ -69,8 +69,8 @@ Listing records reads Kafka and changes nothing.
 
 | Route | Returns |
 | --- | --- |
-| `GET /admin/registry` | Stored Schema Registry schemas with their format, references and the tables that use them |
-| `GET /admin/registry/{id}` | One schema with its definition |
+| `GET /admin/registry` | Stored Schema Registry schemas with their key, format, references and the tables that use them |
+| `GET /admin/registry/{key}` | One schema with its definition. A key names the registry type and the schema id, such as `confluent:42`. |
 
 ## Catalog and S3 for the console
 

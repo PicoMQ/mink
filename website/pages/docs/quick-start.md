@@ -26,9 +26,15 @@ cargo build --release -p mink-cli
 Save this as `mink.toml`. Every other setting has a default that matches the compose stack.
 
 ```toml
-kafka_bootstrap = ["localhost:29092"]
+[kafka]
+bootstrap = ["localhost:29092"]
+
+[storage]
+endpoint = "http://localhost:9000"
+credentials = { access_key_id = "mink", secret_access_key = "minkminkmink" }
 
 [schema_registry]
+type = "confluent"
 url = "http://localhost:8081"
 ```
 

@@ -55,7 +55,7 @@ impl JsonSchema {
     pub(crate) fn parse(schema_set: &SchemaSet) -> Result<JsonSchema, Error> {
         let schema = schema_set.schema();
         let invalid = |message: String| Error::PayloadSchema {
-            id: schema.id(),
+            key: schema.key(),
             message,
         };
         let unparsable = |error: serde_json::Error| invalid(error.to_string());

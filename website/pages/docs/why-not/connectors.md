@@ -14,11 +14,11 @@ A connector is a stream processor that copies a topic into an Iceberg table: Fli
   <text x="90" y="57" text-anchor="middle" class="label">Kafka</text>
   <text x="90" y="75" text-anchor="middle" class="sub">records</text>
   <rect x="190" y="36" width="140" height="50" class="box"/>
-  <text x="260" y="57" text-anchor="middle" class="label">Flink or Connect</text>
-  <text x="260" y="75" text-anchor="middle" class="sub">commits periodically</text>
+  <text x="260" y="57" text-anchor="middle" class="label">connector</text>
+  <text x="260" y="75" text-anchor="middle" class="sub">periodic commits</text>
   <rect x="360" y="36" width="140" height="50" class="box"/>
   <text x="430" y="57" text-anchor="middle" class="label">bucket</text>
-  <text x="430" y="75" text-anchor="middle" class="sub">Parquet and metadata</text>
+  <text x="430" y="75" text-anchor="middle" class="sub">Parquet, metadata</text>
   <rect x="530" y="36" width="140" height="50" class="box"/>
   <text x="600" y="57" text-anchor="middle" class="label">engine</text>
   <text x="600" y="75" text-anchor="middle" class="sub">reads the copy</text>
@@ -31,7 +31,7 @@ A connector is a stream processor that copies a topic into an Iceberg table: Fli
   <text x="90" y="189" text-anchor="middle" class="sub">the only copy</text>
   <rect x="190" y="150" width="140" height="50" class="box-accent"/>
   <text x="260" y="171" text-anchor="middle" class="label">Mink</text>
-  <text x="260" y="189" text-anchor="middle" class="sub">builds files on read</text>
+  <text x="260" y="189" text-anchor="middle" class="sub">builds on read</text>
   <rect x="530" y="150" width="140" height="50" class="box"/>
   <text x="600" y="171" text-anchor="middle" class="label">engine</text>
   <text x="600" y="189" text-anchor="middle" class="sub">reads up to the end</text>
@@ -64,7 +64,7 @@ Frequent commits write small files and many snapshots. A connector's table needs
 
 | Task | Connector | Mink |
 | --- | --- | --- |
-| Small files | `rewrite_data_files` | Assembly joins an ended hour's files, without reading Kafka |
+| Small files | `rewrite_data_files` | Assembly joins an ended time bucket's files, without reading Kafka |
 | Old snapshots | `expire_snapshots` | Expired after `snapshot_retention` |
 | Unused files | `remove_orphan_files` | Collected after `collection_grace` |
 | Manifests | `rewrite_manifests` | Grouped by time bucket, one per bucket once assembled |

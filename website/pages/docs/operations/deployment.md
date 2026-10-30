@@ -4,7 +4,7 @@ A Mink cluster is a set of nodes that share one Postgres, one bucket and one Kaf
 
 | A node needs | For |
 | --- | --- |
-| Postgres | All state: tables, indexed ranges, files, snapshots, leases and members. Mink creates its tables at startup. |
+| Postgres | All state. Mink creates its tables at startup. |
 | A bucket on an S3-compatible store | Iceberg metadata only, under `warehouse`. Data files are never written to it. The bucket must exist. |
 | Kafka | The topics it serves, read as a `read_committed` consumer |
 | A Schema Registry | Optional. Typed columns for Avro, Protobuf and JSON Schema records. |
@@ -33,9 +33,12 @@ With the [Quick start](/docs/quick-start) services running:
 docker run -d --name mink --network harness_default \
   -p 8181:8181 -p 9100:9100 -p 9180:9180 \
   -e MINK_POSTGRES=postgres://mink:mink@postgres:5432/mink \
-  -e MINK_KAFKA_BOOTSTRAP='["kafka:9092"]' \
-  -e MINK_STORAGE='{endpoint = "http://rustfs:9000"}' \
-  -e MINK_SCHEMA_REGISTRY='{url = "http://schema-registry:8081"}' \
+  -e MINK_KAFKA__BOOTSTRAP='["kafka:9092"]' \
+  -e MINK_STORAGE__ENDPOINT=http://rustfs:9000 \
+  -e MINK_STORAGE__CREDENTIALS__ACCESS_KEY_ID=mink \
+  -e MINK_STORAGE__CREDENTIALS__SECRET_ACCESS_KEY=minkminkmink \
+  -e MINK_SCHEMA_REGISTRY__TYPE=confluent \
+  -e MINK_SCHEMA_REGISTRY__URL=http://schema-registry:8081 \
   -e MINK_CATALOG_ADDRESS=0.0.0.0:8181 \
   -e MINK_S3_ADDRESS=0.0.0.0:9100 \
   -e MINK_ADMIN_ADDRESS=0.0.0.0:9180 \
@@ -43,18 +46,11 @@ docker run -d --name mink --network harness_default \
   ghcr.io/picomq/mink
 ```
 
-The listeners default to loopback, so a container binds `0.0.0.0`. The admin API has no authentication, so `admin_remote` must be set to bind it beyond loopback. Engines on the host reach the catalog at `http://127.0.0.1:8181`, the defaults for `catalog_endpoint` and `s3_endpoint`.
+A container binds `0.0.0.0`. `admin_remote` allows a non-loopback admin listener. Engines on the host reach the catalog at `http://127.0.0.1:8181`, the defaults for `catalog_endpoint` and `s3_endpoint`.
 
 ## Cluster
 
-Each node sets the addresses other nodes and engines reach it at.
-
-| Setting | Value |
-| --- | --- |
-| `advertised_address` | This node's S3 endpoint as other nodes reach it. Reads of data files this node owns are forwarded here. |
-| `advertised_admin_address` | This node's admin listener as other nodes reach it |
-| `catalog_endpoint` | The catalog URL as engines reach it |
-| `s3_endpoint` | The S3 endpoint URL as engines reach it. The catalog hands it to engines with every table. |
+Each node sets the four settings in [Addresses others reach](/docs/operations/configuration#addresses-others-reach).
 
 Two nodes against the Quick start services, saved as `mink.yml`:
 
@@ -63,9 +59,12 @@ x-mink: &mink
   image: ghcr.io/picomq/mink
   environment: &env
     MINK_POSTGRES: postgres://mink:mink@postgres:5432/mink
-    MINK_KAFKA_BOOTSTRAP: '["kafka:9092"]'
-    MINK_STORAGE: '{endpoint = "http://rustfs:9000"}'
-    MINK_SCHEMA_REGISTRY: '{url = "http://schema-registry:8081"}'
+    MINK_KAFKA__BOOTSTRAP: '["kafka:9092"]'
+    MINK_STORAGE__ENDPOINT: http://rustfs:9000
+    MINK_STORAGE__CREDENTIALS__ACCESS_KEY_ID: mink
+    MINK_STORAGE__CREDENTIALS__SECRET_ACCESS_KEY: minkminkmink
+    MINK_SCHEMA_REGISTRY__TYPE: confluent
+    MINK_SCHEMA_REGISTRY__URL: http://schema-registry:8081
     MINK_CATALOG_ADDRESS: 0.0.0.0:8181
     MINK_S3_ADDRESS: 0.0.0.0:9100
     MINK_ADMIN_ADDRESS: 0.0.0.0:9180
@@ -102,7 +101,7 @@ volumes:
 docker compose -f harness/compose.yml -f mink.yml up -d mink-1 mink-2
 ```
 
-The nodes split the partitions and writers between them within a few lease rounds, see [Cluster](/docs/design/cluster). An engine can use either node. A data file read on a node that does not own it is forwarded to its owner.
+The nodes split the partitions and writers between them within a few lease rounds, see [Cluster](/docs/design/cluster). An engine can use either node.
 
 ### Roles
 
@@ -113,24 +112,12 @@ Every node runs every role by default. `roles` splits them.
 | Serving | `catalog`, `s3`, `admin` | Engines, through a load balancer for `catalog_endpoint` and `s3_endpoint` |
 | Indexing | `indexer`, `admin` | Prometheus only, on the admin listener |
 
-Any `catalog` node answers any table load, and any `s3` node answers any read, so a load balancer needs no affinity. The console's SQL page needs `catalog` and `s3` on the node that serves it.
+Any `catalog` node answers any table load, and any `s3` node answers any read, so a load balancer needs no affinity.
 
 ## Health and readiness
 
-| Probe | Use |
-| --- | --- |
-| `GET /health` | Liveness. `200` while the process runs. |
-| `GET /ready` | Readiness. `200` while Postgres answers, `503` otherwise. |
-
-Both are on the admin listener. Scrape `/metrics` on every node, see [Metrics](/docs/operations/metrics).
+Probe `/health` and `/ready` on the admin listener, see [Admin API](/docs/operations/admin#probes). Scrape `/metrics` on every node, see [Metrics](/docs/operations/metrics).
 
 ## Restarts and upgrades
 
-Restarting a node is safe at any moment. Mink keeps no record bytes, so nothing is lost when a node stops.
-
-| The node | Its leases |
-| --- | --- |
-| Gets `SIGTERM` or `SIGINT` | Released at once. Other nodes take them in their next round. |
-| Crashes or loses its network | Taken by other nodes once they expire, after `lease_ttl` |
-
-With a disk cache on a volume, a restarted node serves the files it cached without building them again.
+A node holds only caches. Restart it at any time. Its leases move as [Cluster](/docs/design/cluster#members) describes.

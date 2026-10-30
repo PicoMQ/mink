@@ -41,7 +41,7 @@ impl AvroSchema {
     pub(crate) fn parse(schema_set: &SchemaSet) -> Result<AvroSchema, Error> {
         let schema = schema_set.schema();
         let invalid = |message: String| Error::PayloadSchema {
-            id: schema.id(),
+            key: schema.key(),
             message,
         };
 
@@ -645,10 +645,15 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::AvroSchema;
-    use crate::registry::{RegistrySchema, SchemaFormat, SchemaSet};
+    use crate::registry::{RegistrySchema, SchemaFormat, SchemaKey, SchemaSet};
 
     fn parsed(definition: &Value) -> Result<AvroSchema, crate::Error> {
-        let schema = RegistrySchema::new(1, SchemaFormat::Avro, definition.to_string(), Vec::new());
+        let schema = RegistrySchema::new(
+            SchemaKey::Confluent(1),
+            SchemaFormat::Avro,
+            definition.to_string(),
+            Vec::new(),
+        );
 
         AvroSchema::parse(&SchemaSet::new(schema, Vec::new()))
     }

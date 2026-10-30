@@ -2,7 +2,7 @@ use std::fs;
 
 use bytes::Bytes;
 use mink_core::{Header, Part, Record};
-use mink_schema::{Reference, RegistrySchema, Rejection, SchemaFormat};
+use mink_schema::{Reference, RegistrySchema, Rejection, SchemaFormat, SchemaKey};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -30,6 +30,19 @@ pub struct PayloadCase {
     topic: String,
     merges: Vec<MergeStep>,
     records: Vec<PayloadRecord>,
+}
+
+pub struct GlueFixture {
+    records: Vec<GlueRecord>,
+}
+
+pub struct GlueRecord {
+    case: String,
+    record: usize,
+    part: Part,
+    confluent_id: i32,
+    version: Uuid,
+    bytes: Bytes,
 }
 
 pub struct MergeStep {
@@ -170,7 +183,10 @@ fn registry_fixture(json: &Value) -> RegistryFixture {
                 .map(|reference| {
                     let id = i32::try_from(reference["id"].as_i64().unwrap()).unwrap();
 
-                    Reference::new(reference["name"].as_str().unwrap(), id)
+                    Reference::new(
+                        reference["name"].as_str().unwrap(),
+                        SchemaKey::Confluent(id),
+                    )
                 })
                 .collect()
         })
@@ -178,7 +194,7 @@ fn registry_fixture(json: &Value) -> RegistryFixture {
     let schema = json["definition"].as_str().map(|definition| {
         let format = SchemaFormat::from_name(json["format"].as_str().unwrap()).unwrap();
 
-        RegistrySchema::new(id, format, definition, references)
+        RegistrySchema::new(SchemaKey::Confluent(id), format, definition, references)
     });
 
     RegistryFixture {
@@ -250,4 +266,59 @@ fn payload_record(offset: i64, json: &Value) -> PayloadRecord {
         record,
         row: json["row"].clone(),
     }
+}
+
+impl GlueFixture {
+    pub fn records(&self) -> &[GlueRecord] {
+        &self.records
+    }
+}
+
+impl GlueRecord {
+    pub fn case(&self) -> &str {
+        &self.case
+    }
+
+    pub fn record(&self) -> usize {
+        self.record
+    }
+
+    pub fn part(&self) -> Part {
+        self.part
+    }
+
+    pub fn confluent_id(&self) -> i32 {
+        self.confluent_id
+    }
+
+    pub fn version(&self) -> Uuid {
+        self.version
+    }
+
+    pub fn bytes(&self) -> &Bytes {
+        &self.bytes
+    }
+}
+
+pub fn glue_fixture(format: SchemaFormat) -> GlueFixture {
+    let path = fixtures("payload")
+        .join("glue")
+        .join(format!("{}.json", format.name()));
+    let json: Value = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+
+    let records = json["records"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|record| GlueRecord {
+            case: record["case"].as_str().unwrap().to_owned(),
+            record: usize::try_from(record["record"].as_u64().unwrap()).unwrap(),
+            part: Part::from_name(record["part"].as_str().unwrap()).unwrap(),
+            confluent_id: i32::try_from(record["confluent_id"].as_i64().unwrap()).unwrap(),
+            version: Uuid::parse_str(record["version"].as_str().unwrap()).unwrap(),
+            bytes: Bytes::from(hex::decode(record["bytes"].as_str().unwrap()).unwrap()),
+        })
+        .collect();
+
+    GlueFixture { records }
 }

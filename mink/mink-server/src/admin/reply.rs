@@ -62,6 +62,7 @@ impl From<Error> for Failure {
             )
             | Error::NotIndexing(_) => StatusCode::CONFLICT,
             Error::Kafka(_)
+            | Error::TopicUnavailable(_)
             | Error::RegistryUnavailable(_)
             | Error::RegistryResponse(_)
             | Error::Forward(_) => StatusCode::BAD_GATEWAY,

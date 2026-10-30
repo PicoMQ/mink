@@ -510,8 +510,8 @@ mod tests {
     use iceberg::spec::Datum;
     use mink_core::Part;
     use mink_schema::{
-        Decoders, FieldIds, PartSchemaRef, PayloadSchema, RegistrySchema, SchemaFormat, SchemaRef,
-        SchemaSet, binary_schema, merge,
+        Decoders, FieldIds, PartSchemaId, PayloadSchema, RegistrySchema, SchemaFormat, SchemaId,
+        SchemaKey, SchemaSet, binary_schema, merge,
     };
 
     use super::*;
@@ -740,7 +740,12 @@ mod tests {
             {"name":"s","type":"string"},
             {"name":"d","type":"double"},
             {"name":"opt","type":["null","long"]}]}"#;
-        let registered = RegistrySchema::new(1, SchemaFormat::Avro, definition, Vec::new());
+        let registered = RegistrySchema::new(
+            SchemaKey::Confluent(1),
+            SchemaFormat::Avro,
+            definition,
+            Vec::new(),
+        );
         let payload =
             Arc::new(PayloadSchema::parse(&SchemaSet::new(registered, Vec::new())).unwrap());
         let merged = merge(
@@ -748,12 +753,12 @@ mod tests {
             &FieldIds::default(),
             Part::Value,
             &payload,
-            1,
+            SchemaKey::Confluent(1),
         )
         .unwrap();
         let mut decoders = Decoders::default();
-        let schema_ref = PartSchemaRef::new(Part::Value, SchemaRef::Id(1));
-        decoders.insert_typed(schema_ref, payload, merged.field_ids().clone());
+        let schema_id = PartSchemaId::new(Part::Value, SchemaId::Key(SchemaKey::Confluent(1)));
+        decoders.insert_typed(schema_id, payload, merged.field_ids().clone());
         let schema = merged.schema().unwrap().clone();
 
         let long = b"abcdefghijklmnopqrstuvwxyz";

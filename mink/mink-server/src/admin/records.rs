@@ -122,6 +122,8 @@ async fn records(
 
 #[cfg(test)]
 mod tests {
+    use std::time::{Duration, Instant};
+
     use super::*;
     use crate::Role;
     use crate::admin::tests::{admin, get, with_registry};
@@ -140,6 +142,18 @@ mod tests {
         mink_conformance::create_topic(&bootstrap, name, 1).await;
         mink_conformance::produce_values(&bootstrap, name, 0, &["a", "b"]);
         mink_conformance::produce_aborted(&bootstrap, name, 0, &["x", "y", "z"]);
+        let partition = Partition::new(name, 0).unwrap();
+        let mut cluster = node.services.kafka.cluster().await.unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while cluster.last_stable_offset(&partition).await.unwrap() < 6 && Instant::now() < deadline
+        {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the abort marker was never written"
+        );
+        drop(cluster);
         mink_conformance::produce_values(&bootstrap, name, 0, &["c", "d"]);
 
         let path = format!("/admin/tables/{name}/partitions/0/records");
