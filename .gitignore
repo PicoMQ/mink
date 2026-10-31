@@ -18,6 +18,7 @@ mink/mink-server/console/
 website/node_modules/
 website/.vitepress/cache/
 website/.vitepress/dist/
+website/video/*.mp4
 
 # Env / secrets
 .env

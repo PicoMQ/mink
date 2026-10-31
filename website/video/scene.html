@@ -1,0 +1,774 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=block" rel="stylesheet">
+<style>
+  :root {
+    --ink-1: #0f1620; --ink-3: #3d4856; --ink-4: #5e6878; --ink-6: #c8cdd5; --ink-7: #dfe2e8;
+    --surface-0: #f6f7f9; --surface-1: #ffffff; --surface-2: #eef0f3;
+    --red: #b42318; --red-low: #fde8e7; --green: #1a7f37; --green-low: #e6f4ea;
+    --blue: #2f6fed;
+    --night: #0a0a0a; --night-2: #a3a3a3; --night-3: #4a4a4a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--surface-0); }
+  body { font-family: Inter, sans-serif; color: var(--ink-1); position: relative; }
+  .abs { position: absolute; will-change: transform, opacity; }
+  .mono { font-family: "JetBrains Mono", monospace; }
+  .card { background: var(--surface-1); border: 1px solid var(--ink-7); border-radius: 18px;
+          box-shadow: 0 1px 2px rgb(15 22 32 / 0.05), 0 18px 48px rgb(15 22 32 / 0.08); padding: 28px; }
+  .dark { background: var(--ink-1); border-color: var(--ink-1); color: var(--surface-0); box-shadow: 0 24px 64px rgb(15 22 32 / 0.25); }
+  .tag { font-size: 18px; letter-spacing: 1.5px; color: var(--ink-4); }
+  .chip { display: inline-block; padding: 8px 14px; border-radius: 8px; font-size: 21px; font-weight: 500; }
+  .brand { display: flex; align-items: center; gap: 14px; font-size: 40px; font-weight: 600; letter-spacing: -0.5px; }
+  .brand svg { width: 46px; height: 46px; display: block; }
+
+  #curtain { left: 0; top: 0; width: 1920px; height: 1080px; z-index: 50; background: var(--night); }
+  #lockup, #tagline, #definition, #keywords, #repo { z-index: 60; }
+
+  #lockup { position: absolute; left: 80px; top: 62px; display: flex; align-items: center; gap: 12px; }
+  #lockup svg { display: block; }
+  #lockup span { font-weight: 600; letter-spacing: -0.5px; }
+  #lockup rect { fill: var(--ink-1); }
+  #zig { stroke: var(--surface-0); }
+  body.inverted #lockup rect { fill: var(--surface-0); }
+  body.inverted #zig { stroke: var(--night); }
+  body.inverted #lockup span { color: var(--surface-0); }
+  body.night #tagline { color: var(--surface-0); }
+  body.night #definition { color: var(--night-2); }
+  body.night #repo { color: var(--night-2); }
+  #tagline { left: 0; width: 1920px; top: 600px; text-align: center; font-size: 60px; font-weight: 500; color: var(--ink-3); letter-spacing: -1px; }
+  #definition { left: 0; width: 1920px; top: 692px; text-align: center; font-size: 34px; color: var(--ink-4); }
+  #keywords { left: 0; width: 1920px; top: 700px; display: flex; justify-content: center; gap: 22px; font-size: 28px; font-weight: 500; color: var(--night-2); }
+  #keywords span { display: flex; gap: 22px; }
+  #keywords span + span::before { content: "·"; color: var(--night-3); }
+  #repo { left: 0; width: 1920px; top: 800px; text-align: center; font-size: 30px; color: var(--ink-4); }
+
+  .headline { left: 160px; top: 190px; font-size: 76px; font-weight: 600; letter-spacing: -2.5px; line-height: 1; white-space: nowrap; }
+  .sub { left: 164px; top: 290px; font-size: 32px; color: var(--ink-4); white-space: nowrap; }
+
+  #kafka { left: 120px; top: 430px; width: 500px; height: 340px; }
+  .lane { position: absolute; left: 28px; right: 28px; height: 44px; }
+  .lane .name { position: absolute; left: 0; top: 10px; font-size: 20px; color: var(--ink-4); }
+  .track { position: absolute; left: 52px; right: 0; top: 0; height: 44px; overflow: hidden; }
+  .cell { position: absolute; top: 4px; width: 32px; height: 36px; border-radius: 7px; border: 1px solid var(--ink-7); background: var(--surface-2); }
+  .flying { width: 32px; height: 36px; border-radius: 7px; background: var(--blue); border: 1.5px solid var(--surface-0); }
+  #count { position: absolute; left: 28px; bottom: 26px; font-size: 52px; font-weight: 600; letter-spacing: -1.5px; }
+  #count small { font-size: 22px; font-weight: 400; color: var(--ink-4); letter-spacing: 0; margin-left: 10px; }
+
+  #pipeline { left: 690px; top: 430px; width: 290px; height: 340px; }
+  #pipeline .title { margin-top: 26px; font-size: 30px; font-weight: 500; }
+  #pipeline .steps { margin-top: 14px; font-size: 20px; line-height: 1.6; color: var(--ink-4); }
+  #pipeline .bar { position: absolute; left: 28px; right: 28px; top: 236px; height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+  #pipeline .bar div { height: 100%; width: 0; background: var(--ink-4); border-radius: 4px; }
+  #pipeline .barlabel { position: absolute; left: 28px; top: 206px; font-size: 17px; letter-spacing: 1.2px; color: var(--ink-4); }
+  #pipeline .foot { position: absolute; left: 28px; bottom: 26px; font-size: 21px; line-height: 1.4; color: var(--ink-4); }
+
+  #bucket { left: 1050px; top: 430px; width: 250px; height: 340px; }
+  #bucket .title { margin-top: 26px; font-size: 30px; font-weight: 500; }
+  #copies { position: absolute; left: 28px; top: 132px; display: grid; grid-template-columns: repeat(4, 40px); gap: 12px; }
+  .copy { width: 40px; height: 50px; border-radius: 6px; border: 1.5px solid var(--ink-6); background: var(--surface-2); position: relative; }
+  .copy::after { content: ""; position: absolute; right: -1.5px; top: -1.5px; width: 13px; height: 13px; background: var(--surface-1);
+                 border-left: 1.5px solid var(--ink-6); border-bottom: 1.5px solid var(--ink-6); border-bottom-left-radius: 4px; }
+  #bucket .foot { position: absolute; left: 28px; bottom: 26px; font-size: 21px; color: var(--ink-4); }
+
+  #query { left: 1370px; top: 430px; width: 430px; height: 340px; }
+  #query .sql { margin-top: 22px; font-size: 23px; line-height: 1.6; white-space: pre; color: var(--ink-3); }
+  #query .sql b { color: var(--ink-1); font-weight: 500; }
+  #timer { position: absolute; left: 28px; top: 236px; font-size: 21px; color: var(--ink-4); }
+  #result { position: absolute; left: 28px; top: 144px; font-size: 64px; font-weight: 600; letter-spacing: -2px; transform-origin: 0 50%; }
+  #status { position: absolute; left: 28px; bottom: 26px; }
+
+  #mink { left: 790px; top: 490px; width: 440px; height: 220px; }
+  #mink .lines { margin-top: 24px; font-size: 23px; line-height: 1.6; color: var(--ink-6); }
+  #mink .chip { position: absolute; right: 28px; top: 34px; background: rgb(246 247 249 / 0.1); color: var(--surface-0); font-size: 19px; }
+  #cache { position: absolute; left: 28px; top: 214px; }
+  .slot { position: absolute; top: 246px; width: 56px; height: 68px; border-radius: 8px; border: 2px dashed rgb(246 247 249 / 0.25); }
+
+  .parquet { width: 56px; height: 68px; border-radius: 8px; background: var(--surface-0); }
+  .parquet::after { content: ""; position: absolute; right: 0; top: 0; width: 18px; height: 18px; background: var(--ink-6); border-bottom-left-radius: 6px; }
+
+  #clients { left: 760px; top: 396px; width: 400px; height: 68px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 23px; color: var(--ink-3); }
+  .node { top: 520px; width: 360px; height: 190px; }
+  .node .brand { font-size: 30px; gap: 12px; }
+  .node .brand svg { width: 34px; height: 34px; }
+  .pill { position: absolute; right: 24px; top: 30px; padding: 6px 12px; border-radius: 7px; font-size: 18px; }
+  .pill.on { background: rgb(26 127 55 / 0.28); color: #8be3a8; }
+  .pill.off { background: rgb(180 35 24 / 0.35); color: #ffb4ab; }
+  .node .leases { position: absolute; left: 28px; top: 98px; }
+  .lease { position: absolute; top: 128px; padding: 7px 12px; border-radius: 7px; font-size: 19px; background: rgb(246 247 249 / 0.12); color: var(--surface-0); white-space: nowrap; }
+  #handoff { padding: 7px 12px; border-radius: 7px; font-size: 19px; background: #2a3441; color: var(--surface-0); white-space: nowrap; }
+  #postgres { left: 610px; top: 790px; width: 700px; height: 110px; }
+  #postgres .name { font-size: 32px; font-weight: 600; }
+  #postgres .what { margin-top: 6px; font-size: 21px; color: var(--ink-4); }
+
+  #hub { left: 790px; top: 558px; width: 340px; height: 120px; display: flex; align-items: center; }
+  .row { width: 340px; height: 64px; padding: 0 24px; display: flex; align-items: center; font-size: 27px; font-weight: 500; border-radius: 14px; }
+
+  #wires { left: 0; top: 0; width: 1920px; height: 1080px; pointer-events: none; }
+  .wire { fill: none; stroke: #d3d8de; stroke-width: 2; }
+  .beam { fill: none; stroke-width: 3; stroke-linecap: round; }
+  .port { fill: var(--surface-1); stroke: var(--ink-6); stroke-width: 2; }
+</style>
+</head>
+<body>
+  <svg id="wires" class="abs" viewBox="0 0 1920 1080">
+    <defs id="grads"></defs>
+    <g id="links"></g>
+  </svg>
+
+  <div id="curtain" class="abs"></div>
+
+  <div id="lockup">
+    <svg viewBox="0 0 11 11"><rect width="11" height="11"/>
+      <path id="zig" fill="none" stroke-width="1" stroke-linejoin="bevel" pathLength="1"
+            d="M3.84 1.5 L1.5 3.84 L1.5 6.67 L6.67 1.5 L9.5 1.5 L1.5 9.5 L4.33 9.5 L9.5 4.33 L9.5 7.16 L7.16 9.5"/></svg>
+    <span>Mink</span>
+  </div>
+  <div id="tagline" class="abs">Kafka topics as Iceberg tables.</div>
+  <div id="definition" class="abs">A read-only Iceberg catalog over Kafka.</div>
+  <div id="keywords" class="abs"><span>Iceberg REST catalog</span><span>Read-only</span><span>Zero copy</span><span>Real time</span><span>Stateless</span></div>
+  <div id="repo" class="abs mono">github.com/PicoMQ/mink</div>
+
+  <div id="h2" class="abs headline">Most setups copy the topic first.</div>
+  <div id="s2" class="abs sub">A pipeline writes Parquet. The table trails by a commit.</div>
+  <div id="h3" class="abs headline">A read-only Iceberg catalog over Kafka.</div>
+  <div id="s3" class="abs sub">No pipeline. No copy. Real time.</div>
+  <div id="h4" class="abs headline">Zero copy.</div>
+  <div id="s4" class="abs sub">Data files are built from Kafka on read.</div>
+  <div id="h5" class="abs headline">Cached.</div>
+  <div id="s5" class="abs sub">Repeat reads skip Kafka.</div>
+  <div id="h6" class="abs headline">Stateless.</div>
+  <div id="s6" class="abs sub">Any node serves any table. Work moves when one stops.</div>
+  <div id="h7" class="abs headline">Keep Kafka. Keep the engines.</div>
+  <div id="s7" class="abs sub">Any Kafka. Any Iceberg engine. No plugins.</div>
+
+  <div id="kafka" class="abs card">
+    <div class="tag mono">KAFKA · ORDERS</div>
+    <div id="count"><span id="total">1,204</span><small>records</small></div>
+  </div>
+
+  <div id="pipeline" class="abs card">
+    <div class="tag mono">PIPELINE</div>
+    <div class="title">Connector job</div>
+    <div class="steps mono">read topic<br>write Parquet</div>
+    <div class="barlabel mono">NEXT COMMIT</div>
+    <div class="bar"><div id="progress"></div></div>
+    <div class="foot">Another system to run</div>
+  </div>
+
+  <div id="bucket" class="abs card">
+    <div class="tag mono">BUCKET</div>
+    <div class="title">Parquet copy</div>
+    <div id="copies"></div>
+    <div class="foot">A second copy</div>
+  </div>
+
+  <template id="brand">
+    <div class="brand"><svg viewBox="0 0 11 11"><rect width="11" height="11" fill="#f6f7f9"/>
+      <path fill="none" stroke="#0f1620" stroke-width="1" stroke-linejoin="bevel"
+            d="M3.84 1.5 L1.5 3.84 L1.5 6.67 L6.67 1.5 L9.5 1.5 L1.5 9.5 L4.33 9.5 L9.5 4.33 L9.5 7.16 L7.16 9.5"/></svg><span></span></div>
+  </template>
+
+  <div id="mink" class="abs card dark">
+    <div class="lines mono">Iceberg REST catalog<br>S3 endpoint</div>
+    <div class="chip mono">read-only</div>
+    <div id="cache" class="tag mono">CACHE</div>
+    <div class="slot" style="left: 28px"></div>
+    <div class="slot" style="left: 100px"></div>
+    <div class="slot" style="left: 172px"></div>
+    <div class="slot" style="left: 244px"></div>
+  </div>
+
+  <div id="query" class="abs card">
+    <div class="tag mono">QUERY</div>
+    <div class="sql mono"><b>SELECT</b> count(*)
+<b>FROM</b> <span id="from"></span></div>
+    <div id="result">1,204</div>
+    <div id="timer">Waiting for the next commit</div>
+    <div id="status"><span id="chip" class="chip"></span></div>
+  </div>
+
+  <div id="built" class="abs parquet"></div>
+  <div id="served" class="abs parquet"></div>
+
+  <div id="clients" class="abs card mono">Trino · Spark · DuckDB</div>
+  <div id="node0" class="abs card dark node" style="left: 300px"></div>
+  <div id="node1" class="abs card dark node" style="left: 780px"></div>
+  <div id="node2" class="abs card dark node" style="left: 1260px"></div>
+  <div id="handoff" class="abs mono">orders · P1</div>
+  <div id="postgres" class="abs card">
+    <div class="name">Postgres</div>
+    <div class="what">Tables, files, leases</div>
+  </div>
+
+  <div id="providers" class="abs tag mono" style="left: 160px; top: 392px">KAFKA PROTOCOL</div>
+  <div id="provider0" class="abs card row" style="left: 160px; top: 430px">Apache Kafka</div>
+  <div id="provider1" class="abs card row" style="left: 160px; top: 508px">Confluent</div>
+  <div id="provider2" class="abs card row" style="left: 160px; top: 586px">Redpanda</div>
+  <div id="provider3" class="abs card row" style="left: 160px; top: 664px">AutoMQ</div>
+  <div id="provider4" class="abs card row" style="left: 160px; top: 742px">Amazon MSK</div>
+  <div id="hub" class="abs card dark"></div>
+  <div id="engines" class="abs tag mono" style="left: 1420px; top: 431px">ICEBERG REST</div>
+  <div id="engine0" class="abs card row" style="left: 1420px; top: 469px">Trino</div>
+  <div id="engine1" class="abs card row" style="left: 1420px; top: 547px">Spark</div>
+  <div id="engine2" class="abs card row" style="left: 1420px; top: 625px">DuckDB</div>
+  <div id="engine3" class="abs card row" style="left: 1420px; top: 703px">PyIceberg</div>
+
+<script>
+  const BASE = 1204, RATE = 8;
+  const CELL = 40;
+  const NS = "http://www.w3.org/2000/svg";
+  const $ = (id) => document.getElementById(id);
+  const clamp = (x) => Math.min(1, Math.max(0, x));
+  const out = (x) => 1 - Math.pow(1 - clamp(x), 4);
+  const inOut = (x) => { x = clamp(x); return x < 0.5 ? 8 * x ** 4 : 1 - Math.pow(-2 * x + 2, 4) / 2; };
+  const span = (t, a, b, f = out) => f((t - a) / (b - a));
+  const lerp = (a, b, p) => a + (b - a) * p;
+  const fmt = (n) => n.toLocaleString("en-US");
+  const place = (el, opacity, dy = 0, scale = 1, blur = 0) => {
+    el.style.opacity = opacity;
+    el.style.transform = `translateY(${dy}px) scale(${scale})`;
+    el.style.filter = blur > 0.05 ? `blur(${blur}px)` : "none";
+  };
+  const NEVER = 1e9;
+  const enter = (el, t, a, leave = NEVER, dy = 50, from = 1) => {
+    const p = span(t, a, a + 0.6), q = span(t, leave, leave + 0.35);
+    place(el, p * (1 - q), (1 - p) * dy - q * 70, lerp(from, 1, p), (1 - p) * 10 + q * 14);
+  };
+  const title = (n, t, a, b) => {
+    enter($(`h${n}`), t, a, b);
+    enter($(`s${n}`), t, a + 0.25, b, 24);
+  };
+  const draw = (path, p) => {
+    path.style.strokeDasharray = "1 1";
+    path.style.strokeDashoffset = String(1 - p);
+  };
+
+  const SCENE = {
+    copy: 4.8, catalog: 12.0, zero: 16.8, cached: 21.6, stateless: 25.2, keep: 30.0, end: 34.8, length: 39.6,
+  };
+  const ARRIVE = SCENE.copy + 1.4;
+  const LOG = SCENE.copy + 0.6;
+
+  const brand = (name) => {
+    const node = $("brand").content.firstElementChild.cloneNode(true);
+    node.querySelector("span").textContent = name;
+    return node;
+  };
+  const leases = [["orders · P0"], ["orders · P1"], ["events · P0", "orders · P1"]];
+  [0, 1, 2].forEach((i) => {
+    $(`node${i}`).innerHTML = `<span class="pill on mono">serving</span><div class="leases tag mono">LEASES</div>` +
+      leases[i].map((l, k) => `<span class="lease mono" style="left: ${28 + k * 166}px">${l}</span>`).join("");
+    $(`node${i}`).prepend(brand(`node ${i + 1}`));
+  });
+  $("mink").prepend(brand("Mink"));
+  $("hub").append(brand("Mink"));
+
+  const lanes = [0, 1].map((p) => {
+    const lane = document.createElement("div");
+    lane.className = "lane";
+    lane.style.top = `${84 + p * 60}px`;
+    lane.innerHTML = `<div class="name mono">P${p}</div><div class="track"></div>`;
+    $("kafka").appendChild(lane);
+    const track = lane.querySelector(".track");
+    const cells = Array.from({ length: 160 }, () => {
+      const cell = document.createElement("div");
+      cell.className = "cell";
+      track.appendChild(cell);
+      return cell;
+    });
+    return { track, cells, delay: p * 0.13 };
+  });
+  for (let i = 0; i < 8; i++) {
+    const file = document.createElement("div");
+    file.className = "copy";
+    $("copies").appendChild(file);
+  }
+
+  const flying = Array.from({ length: 4 }, (_, k) => {
+    const el = document.createElement("div");
+    el.className = "abs flying";
+    document.body.appendChild(el);
+    return { el, lane: k % 2, start: SCENE.zero + 1.5 + k * 0.14 };
+  });
+
+  const svg = (tag, attrs, parent) => {
+    const el = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    parent.appendChild(el);
+    return el;
+  };
+  const value = (v, t) => (typeof v === "function" ? v(t) : v);
+  const links = [];
+  const link = (spec) => {
+    const id = `beam${links.length}`;
+    const grad = svg("linearGradient", { id, gradientUnits: "userSpaceOnUse" }, $("grads"));
+    const color = spec.color ?? "var(--ink-1)";
+    grad.innerHTML = `<stop offset="0" style="stop-color: ${color}; stop-opacity: 0"/>` +
+      `<stop offset="0.85" style="stop-color: ${color}; stop-opacity: 0.9"/><stop offset="1" style="stop-color: ${color}; stop-opacity: 0"/>`;
+    const g = svg("g", {}, $("links"));
+    const base = svg("path", { class: "wire" }, g);
+    const beam = svg("path", { class: "beam", stroke: `url(#${id})` }, g);
+    const ports = [0, 1].map(() => svg("circle", { class: "port", r: 5 }, g));
+    links.push({ period: 1.5, offset: 0, ...spec, grad, g, base, beam, ports });
+  };
+  const shape = ([ax, ay], [bx, by], curve) => {
+    if (curve === "h") return `M${ax} ${ay} C${(ax + bx) / 2} ${ay} ${(ax + bx) / 2} ${by} ${bx} ${by}`;
+    if (curve === "v") return `M${ax} ${ay} C${ax} ${(ay + by) / 2} ${bx} ${(ay + by) / 2} ${bx} ${by}`;
+    return `M${ax} ${ay} L${bx} ${by}`;
+  };
+  const renderLinks = (t) => {
+    for (const l of links) {
+      const a = value(l.a, t), b = value(l.b, t);
+      const d = shape(a, b, l.curve);
+      l.base.setAttribute("d", d);
+      l.beam.setAttribute("d", d);
+      l.g.style.opacity = l.show(t);
+      const reveal = l.drawIn ? span(t, l.drawIn[0], l.drawIn[1], inOut) : 1;
+      if (l.dashed && value(l.dashed, t)) {
+        l.base.removeAttribute("pathLength");
+        l.base.style.strokeDasharray = "6 8";
+        l.base.style.strokeDashoffset = "0";
+      } else {
+        l.base.setAttribute("pathLength", 1);
+        draw(l.base, reveal);
+      }
+      l.ports[0].setAttribute("cx", a[0]); l.ports[0].setAttribute("cy", a[1]);
+      l.ports[1].setAttribute("cx", b[0]); l.ports[1].setAttribute("cy", b[1]);
+      l.ports[0].style.opacity = reveal > 0 ? 1 : 0;
+      l.ports[1].style.opacity = reveal > 0.97 ? 1 : 0;
+      const length = 0.45;
+      const u = ((t / l.period + l.offset) % 1 + 1) % 1;
+      const head = lerp(-0.05, 1 + length, u);
+      const tail = head - length;
+      l.grad.setAttribute("x1", lerp(a[0], b[0], tail)); l.grad.setAttribute("y1", lerp(a[1], b[1], tail));
+      l.grad.setAttribute("x2", lerp(a[0], b[0], head)); l.grad.setAttribute("y2", lerp(a[1], b[1], head));
+      l.beam.style.opacity = (l.flowing ? l.flowing(t) : 0) * (reveal > 0.97 ? 1 : 0);
+    }
+  };
+
+  const RUN = SCENE.catalog + 1.9;
+  const STOP = SCENE.stateless + 2.1;
+  const HOP = [STOP + 0.25, STOP + 0.8];
+  const FLIGHTS = [[SCENE.zero + 2.7, SCENE.zero + 3.2], [SCENE.cached + 1.4, SCENE.cached + 1.9]];
+  const HIT = FLIGHTS[1][1] + 0.05;
+
+  const minkBox = { x: 790, y: 490, w: 440, h: 220 };
+  const copyShown = (t) => span(t, SCENE.copy + 1.0, SCENE.copy + 1.4) * (1 - span(t, SCENE.catalog - 0.2, SCENE.catalog + 0.25, inOut));
+  link({ a: [620, 600], b: [690, 600], show: copyShown, flowing: () => 1, period: 1.1 });
+  link({ a: [980, 600], b: [1050, 600], show: copyShown, flowing: () => 1, period: 1.1, offset: 0.45 });
+  link({ a: [1300, 600], b: [1370, 600], show: copyShown, dashed: true });
+  const minkShown = (t) => (t > SCENE.catalog + 0.6 ? 1 : 0) * (1 - span(t, SCENE.stateless - 0.3, SCENE.stateless + 0.1));
+  link({ a: [620, 600], b: () => [minkBox.x, 600], show: minkShown, drawIn: [SCENE.catalog + 0.6, SCENE.catalog + 1.0],
+         flowing: (t) => span(t, RUN, RUN + 0.3) * (1 - span(t, SCENE.cached + 0.9, SCENE.cached + 1.2)), period: 1.4, color: "var(--blue)" });
+  link({ a: () => [minkBox.x + minkBox.w, 600], b: [1370, 600], show: minkShown, drawIn: [SCENE.catalog + 0.8, SCENE.catalog + 1.2],
+         flowing: (t) => span(t, RUN, RUN + 0.3), period: 1.4, offset: 0.5, color: "var(--blue)" });
+  const clusterShown = (t) => (t > SCENE.stateless + 0.5 ? 1 : 0) * (1 - span(t, SCENE.keep - 0.3, SCENE.keep - 0.1));
+  [0, 1, 2].forEach((i) => {
+    const stopped = (t) => i === 1 && t >= STOP + 0.1;
+    link({ a: [960, 464], b: [480 + i * 480, 520], curve: "v", show: clusterShown,
+           drawIn: [SCENE.stateless + 0.5 + i * 0.05, SCENE.stateless + 0.9 + i * 0.05],
+           flowing: (t) => span(t, SCENE.stateless + 0.9, SCENE.stateless + 1.2) * (stopped(t) ? 0 : 1), dashed: stopped, period: 1.3, offset: i * 0.3, color: "var(--blue)" });
+    link({ a: [480 + i * 480, 710], b: [760 + i * 200, 790], curve: "v", show: clusterShown,
+           drawIn: [SCENE.stateless + 0.55 + i * 0.05, SCENE.stateless + 0.95 + i * 0.05] });
+  });
+  const enginesShown = (t) => (t > SCENE.keep + 0.45 ? 1 : 0) * (1 - span(t, SCENE.end - 0.2, SCENE.end + 0.1));
+  [0, 1, 2, 3, 4].forEach((i) => link({ a: [500, 462 + i * 78], b: [790, 618], curve: "h", show: enginesShown,
+    drawIn: [SCENE.keep + 0.45 + i * 0.05, SCENE.keep + 0.85 + i * 0.05], flowing: (t) => span(t, SCENE.keep + 0.9, SCENE.keep + 1.2), period: 1.6, offset: i * 0.21, color: "var(--blue)" }));
+  [0, 1, 2, 3].forEach((i) => link({ a: [1130, 618], b: [1420, 501 + i * 78], curve: "h", show: enginesShown,
+    drawIn: [SCENE.keep + 0.65 + i * 0.05, SCENE.keep + 1.05 + i * 0.05], flowing: (t) => span(t, SCENE.keep + 1.1, SCENE.keep + 1.4), period: 1.6, offset: 0.1 + i * 0.23, color: "var(--blue)" }));
+
+  const records = (t) => BASE + Math.floor(Math.max(0, t - ARRIVE) * RATE);
+
+  const CURTAIN = { up: [SCENE.copy - 0.6, SCENE.copy], down: [SCENE.end - 0.6, SCENE.end] };
+
+  window.render = (t) => {
+    const lift = span(t, CURTAIN.up[0], CURTAIN.up[1], inOut);
+    const fall = span(t, CURTAIN.down[0], CURTAIN.down[1], inOut);
+    const closing = t >= CURTAIN.down[0];
+    $("curtain").style.transform = `translateY(${closing ? -(1 - fall) * 1080 : -lift * 1080}px)`;
+    document.body.classList.toggle("inverted", closing ? fall > 0.03 : lift < 0.9);
+    document.body.classList.toggle("night", t < SCENE.copy || t > SCENE.end);
+
+    const docked = span(t, CURTAIN.up[0], CURTAIN.up[1], inOut) * (1 - span(t, SCENE.end, SCENE.end + 0.7, inOut));
+    const lockup = $("lockup");
+    const pop = span(t, 0, 0.45);
+    const size = lerp(136, 40, docked) * lerp(0.94, 1, pop);
+    lockup.querySelector("svg").style.width = lockup.querySelector("svg").style.height = `${size}px`;
+    lockup.querySelector("span").style.fontSize = `${size * 0.85}px`;
+    lockup.style.gap = `${size * 0.3}px`;
+    lockup.style.left = `${lerp(960 - lockup.offsetWidth / 2, 80, docked)}px`;
+    lockup.style.top = `${lerp(372, 62, docked) + (1 - pop) * 20}px`;
+    lockup.style.opacity = pop;
+    draw($("zig"), span(t, 0.1, 0.8, inOut));
+    const opening = t < SCENE.end;
+    enter($("tagline"), t, opening ? 0.5 : SCENE.end + 0.5, opening ? SCENE.copy - 0.9 : NEVER, 30);
+    enter($("definition"), t, 1.1, SCENE.copy - 0.9, 20);
+    [...$("keywords").children].forEach((k, i) => enter(k, t, SCENE.end + 0.9 + i * 0.08, NEVER, 20));
+    enter($("repo"), t, SCENE.end + 1.4, NEVER, 20);
+
+    title(2, t, SCENE.copy, SCENE.catalog - 0.2);
+    title(3, t, SCENE.catalog, SCENE.zero - 0.1);
+    title(4, t, SCENE.zero + 0.1, SCENE.cached - 0.2);
+    title(5, t, SCENE.cached, SCENE.stateless - 0.3);
+    title(6, t, SCENE.stateless, SCENE.keep - 0.3);
+    title(7, t, SCENE.keep, SCENE.end - 0.2);
+
+    const gone = span(t, SCENE.catalog - 0.2, SCENE.catalog + 0.25, inOut);
+    const cardsOut = SCENE.stateless - 0.3;
+    enter($("kafka"), t, SCENE.copy + 0.3, cardsOut);
+    for (const [id, a] of [["pipeline", SCENE.copy + 0.45], ["bucket", SCENE.copy + 0.6]]) {
+      const p = span(t, a, a + 0.6);
+      place($(id), p * (1 - gone), (1 - p) * 50 + gone * 40, 1 - gone * 0.08);
+    }
+    enter($("query"), t, SCENE.copy + 0.75, cardsOut);
+    $("progress").style.width = `${lerp(18, 62, clamp((t - SCENE.copy - 0.5) / (SCENE.catalog - SCENE.copy)))}%`;
+
+    const grow = span(t, SCENE.zero - 0.1, SCENE.zero + 0.5, inOut);
+    Object.assign(minkBox, { x: lerp(790, 760, grow), y: lerp(490, 430, grow), w: lerp(440, 540, grow), h: lerp(220, 340, grow) });
+    Object.assign($("mink").style, { left: `${minkBox.x}px`, top: `${minkBox.y}px`, width: `${minkBox.w}px`, height: `${minkBox.h}px` });
+    enter($("mink"), t, SCENE.catalog + 0.2, cardsOut, 0, 0.85);
+    const slots = span(t, SCENE.cached + 0.1, SCENE.cached + 0.5);
+    $("cache").style.opacity = slots;
+    document.querySelectorAll(".slot").forEach((s) => (s.style.opacity = slots));
+
+    const now = records(t);
+    $("total").textContent = fmt(now);
+    for (const lane of lanes) {
+      const count = Math.max(0, (t - LOG - lane.delay) * RATE / 2 + 6);
+      const scroll = Math.max(0, count - 9.6) * CELL;
+      lane.track.style.webkitMaskImage = `linear-gradient(to right, transparent 0, #000 ${Math.min(50, scroll)}px)`;
+      lane.cells.forEach((cell, i) => {
+        const age = count - i;
+        if (age <= 0) { cell.style.opacity = 0; return; }
+        const p = out(age * 0.9);
+        const fresh = age < 1;
+        cell.style.opacity = p;
+        cell.style.transform = `translateX(${i * CELL - scroll}px) scale(${0.7 + 0.3 * p})`;
+        cell.style.background = fresh ? "var(--blue)" : "var(--surface-2)";
+        cell.style.borderColor = fresh ? "var(--blue)" : "var(--ink-7)";
+      });
+    }
+
+    const slot = { x: minkBox.x + 28, y: minkBox.y + 246 };
+    for (const f of flying) {
+      const p = span(t, f.start, f.start + 0.6, inOut);
+      const sx = 560, sy = 430 + 84 + f.lane * 60 + 4;
+      f.el.style.left = `${lerp(sx, slot.x + 12, p)}px`;
+      f.el.style.top = `${lerp(sy, slot.y + 16, p) - Math.sin(p * Math.PI) * 90}px`;
+      f.el.style.opacity = t < f.start ? 0 : 1 - span(t, f.start + 0.5, f.start + 0.65);
+      f.el.style.transform = `scale(${lerp(1, 0.6, p)})`;
+    }
+    const built = span(t, SCENE.zero + 2.2, SCENE.zero + 2.5);
+    Object.assign($("built").style, { left: `${slot.x}px`, top: `${slot.y}px` });
+    place($("built"), built * (1 - span(t, cardsOut, cardsOut + 0.35)), 0, lerp(0.6, 1, built));
+
+    const flight = FLIGHTS.find(([a, b]) => t >= a && t <= b + 0.1);
+    if (flight) {
+      const p = span(t, flight[0], flight[1], inOut);
+      Object.assign($("served").style, { left: `${lerp(slot.x, 1400, p)}px`, top: `${lerp(slot.y, 590, p) - Math.sin(p * Math.PI) * 120}px` });
+      place($("served"), 1 - span(t, flight[1] - 0.1, flight[1] + 0.1), 0, lerp(1, 0.7, p));
+    } else {
+      $("served").style.opacity = 0;
+    }
+    const pulse = FLIGHTS.map(([, b]) => Math.max(0, 1 - Math.abs(t - b - 0.1) / 0.15)).reduce((a, b) => Math.max(a, b));
+    $("result").style.transform = `scale(${1 + pulse * 0.06})`;
+
+    const from = "mink.kafka.orders";
+    $("from").textContent = t < SCENE.catalog + 0.5 ? "iceberg.orders" : from.slice(0, Math.floor(clamp((t - SCENE.catalog - 0.7) / 0.5) * from.length));
+    const running = t >= RUN && t < RUN + 0.35;
+    const live = t >= RUN + 0.35;
+    $("result").textContent = live ? fmt(now) : fmt(BASE);
+    $("result").style.opacity = running ? 0.25 : 1;
+    $("result").style.color = live ? "var(--blue)" : t > ARRIVE + 0.3 ? "var(--ink-4)" : "var(--ink-1)";
+    const chip = $("chip");
+    if (t >= HIT) {
+      chip.textContent = "cache hit";
+      chip.style.background = "var(--blue)"; chip.style.color = "var(--surface-0)";
+    } else if (live) {
+      chip.textContent = "0 records behind";
+      chip.style.background = "var(--green-low)"; chip.style.color = "var(--green)";
+    } else if (running) {
+      chip.textContent = "running";
+      chip.style.background = "var(--surface-2)"; chip.style.color = "var(--ink-4)";
+    } else {
+      const behind = now - BASE;
+      chip.textContent = behind > 0 ? `${behind} records behind` : "Up to date";
+      chip.style.background = behind > 0 ? "var(--red-low)" : "var(--surface-2)";
+      chip.style.color = behind > 0 ? "var(--red)" : "var(--ink-4)";
+    }
+    $("status").style.opacity = span(t, SCENE.copy + 1.3, SCENE.copy + 1.6);
+    $("timer").style.opacity = live || running ? 0 : span(t, SCENE.copy + 1.3, SCENE.copy + 1.6);
+
+    const clusterOut = SCENE.keep - 0.3;
+    enter($("clients"), t, SCENE.stateless + 0.1, clusterOut, 30);
+    const down = span(t, STOP, STOP + 0.15);
+    [0, 1, 2].forEach((i) => {
+      const node = $(`node${i}`);
+      enter(node, t, SCENE.stateless + 0.2 + i * 0.1, clusterOut, 40);
+      if (i === 1) {
+        node.style.opacity = Number(node.style.opacity) * lerp(1, 0.45, down);
+        const pill = node.querySelector(".pill");
+        pill.textContent = down > 0.5 ? "stopped" : "serving";
+        pill.className = `pill mono ${down > 0.5 ? "off" : "on"}`;
+        node.querySelector(".lease").style.opacity = 1 - span(t, HOP[0], HOP[0] + 0.05);
+      }
+      if (i === 2) node.querySelectorAll(".lease")[1].style.opacity = t >= HOP[1] ? 1 : 0;
+    });
+    const hop = span(t, HOP[0], HOP[1], inOut);
+    Object.assign($("handoff").style, { left: `${lerp(808, 1454, hop)}px`, top: `${648 - Math.sin(hop * Math.PI) * 110}px` });
+    $("handoff").style.opacity = t >= HOP[0] && t < HOP[1] ? 1 : 0;
+    enter($("postgres"), t, SCENE.stateless + 0.4, clusterOut, 40);
+
+    const keepOut = SCENE.end - 0.2;
+    [0, 1, 2, 3, 4].forEach((i) => enter($(`provider${i}`), t, SCENE.keep + 0.2 + i * 0.07, keepOut, 30));
+    enter($("providers"), t, SCENE.keep + 0.15, keepOut, 20);
+    enter($("engines"), t, SCENE.keep + 0.75, keepOut, 20);
+    enter($("hub"), t, SCENE.keep + 0.4, keepOut, 0, 0.85);
+    [0, 1, 2, 3].forEach((i) => enter($(`engine${i}`), t, SCENE.keep + 0.8 + i * 0.08, keepOut, 30));
+    renderLinks(t);
+  };
+  window.LENGTH = SCENE.length;
+
+  window.soundtrack = async () => {
+    const RATE = 48000;
+    const BEAT = 0.6;
+    const ctx = new OfflineAudioContext(2, Math.ceil(SCENE.length * RATE), RATE);
+    let seed = 42;
+    const random = () => {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let r = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+      return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+    };
+
+    const BAR = BEAT * 4;
+    const LEVEL = { kick: 1, sub: 0.08, bass: 0.34, hat: 0.85, open: 0.63, clap: 4.8, blip: 0.17, fx: 1.1 };
+
+    const noise = ctx.createBuffer(1, RATE * 2, RATE);
+    noise.getChannelData(0).forEach((_, i, data) => (data[i] = random() * 2 - 1));
+    const envelope = (at, attack, level, hold, release) => {
+      const peak = Math.max(level, 0.0001);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(peak, at + attack);
+      g.gain.setValueAtTime(peak, at + attack + hold);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + attack + hold + release);
+      return g;
+    };
+    const tone = (type, freq, at, length) => {
+      const o = ctx.createOscillator();
+      o.type = type;
+      o.frequency.setValueAtTime(freq, at);
+      o.start(at);
+      o.stop(at + length);
+      return o;
+    };
+    const hiss = (at, length) => {
+      const n = ctx.createBufferSource();
+      n.buffer = noise;
+      n.loop = true;
+      n.start(at, random() * 1.5);
+      n.stop(at + length);
+      return n;
+    };
+    const filter = (type, freq, q = 0.7) => {
+      const f = ctx.createBiquadFilter();
+      f.type = type;
+      f.frequency.value = freq;
+      f.Q.value = q;
+      return f;
+    };
+
+    const master = ctx.createGain();
+    const compressor = ctx.createDynamicsCompressor();
+    compressor.threshold.value = -12;
+    compressor.knee.value = 10;
+    compressor.ratio.value = 3;
+    compressor.attack.value = 0.004;
+    compressor.release.value = 0.18;
+    master.connect(compressor).connect(ctx.destination);
+    master.gain.setValueAtTime(1, 0);
+    master.gain.setValueAtTime(1, SCENE.length - 3);
+    master.gain.linearRampToValueAtTime(0, SCENE.length - 0.1);
+    const music = ctx.createGain();
+    music.connect(master);
+
+    const space = ctx.createConvolver();
+    const impulse = ctx.createBuffer(2, RATE * 0.5, RATE);
+    for (let c = 0; c < 2; c++) {
+      impulse.getChannelData(c).forEach((_, i, data) => (data[i] = (random() * 2 - 1) * (1 - i / data.length) ** 6));
+    }
+    space.buffer = impulse;
+    const wet = ctx.createGain();
+    wet.gain.value = 0.12;
+    space.connect(wet).connect(master);
+
+    const bounce = [ctx.createDelay(1), ctx.createDelay(1)];
+    bounce.forEach((d) => (d.delayTime.value = BEAT * 0.75));
+    const feedback = ctx.createGain();
+    feedback.gain.value = 0.38;
+    bounce[0].connect(bounce[1]);
+    bounce[1].connect(filter("lowpass", 1800)).connect(feedback).connect(bounce[0]);
+    const merger = ctx.createChannelMerger(2);
+    bounce[0].connect(merger, 0, 0);
+    bounce[1].connect(merger, 0, 1);
+    const echoes = ctx.createGain();
+    echoes.gain.value = 0.3;
+    merger.connect(echoes).connect(music);
+
+    const send = (node, { bus = master, verb = 0, echo = 0, pan = 0 } = {}) => {
+      const panner = ctx.createStereoPanner();
+      panner.pan.value = pan;
+      node.connect(panner).connect(bus);
+      if (verb) { const v = ctx.createGain(); v.gain.value = verb; panner.connect(v).connect(space); }
+      if (echo) { const e = ctx.createGain(); e.gain.value = echo; panner.connect(e).connect(bounce[0]); }
+      return panner;
+    };
+
+    const kick = (at, level) => {
+      const o = tone("sine", 160, at, 0.4);
+      o.frequency.exponentialRampToValueAtTime(45, at + 0.05);
+      const g = envelope(at, 0.002, level, 0.02, 0.24);
+      o.connect(g).connect(master);
+      const click = envelope(at, 0.0005, level * 0.35, 0.002, 0.01);
+      hiss(at, 0.03).connect(filter("highpass", 3500)).connect(click).connect(master);
+      music.gain.setValueAtTime(0.35, at);
+      music.gain.linearRampToValueAtTime(1, at + 0.28);
+    };
+    const shaper = ctx.createWaveShaper();
+    shaper.curve = new Float32Array(1024).map((_, i) => Math.tanh((i / 511.5 - 1) * 2.5));
+    shaper.connect(music);
+    const sub = (freq, at, length, level) => {
+      const o = tone("sine", freq, at, length + 0.15);
+      const g = envelope(at, 0.01, level, Math.max(0, length - 0.08), 0.08);
+      o.connect(g).connect(shaper);
+    };
+    const bass = (freq, at, level, cutoff) => {
+      const f = filter("lowpass", cutoff, 4);
+      f.frequency.setValueAtTime(cutoff, at);
+      f.frequency.exponentialRampToValueAtTime(Math.max(120, cutoff * 0.22), at + 0.09);
+      tone("sawtooth", freq, at, 0.2).connect(f);
+      const g = envelope(at, 0.002, level, 0.03, 0.08);
+      f.connect(g).connect(music);
+    };
+    const hat = (at, level, open) => {
+      const g = envelope(at, 0.001, level, 0.002, open ? 0.14 : 0.025);
+      const band = filter("bandpass", 10000, 1.2);
+      for (const f of [205.3, 304.4, 369.6, 522.7, 540, 800]) tone("square", f * 1.6, at, 0.3).connect(band);
+      band.connect(filter("highpass", 7500)).connect(g);
+      send(g, { bus: music, pan: 0.2 });
+    };
+    const clap = (at, level) => {
+      for (const [offset, decay] of [[0, 0.015], [0.008, 0.015], [0.016, 0.06]]) {
+        const g = envelope(at + offset, 0.001, level, 0.002, decay);
+        hiss(at + offset, 0.12).connect(filter("bandpass", 2200, 1)).connect(filter("highpass", 1000)).connect(g);
+        send(g, { bus: music, verb: 0.25, pan: -0.1 });
+      }
+    };
+    const blip = (freq, at, level, pan) => {
+      const f = filter("lowpass", 2600, 2);
+      f.frequency.setValueAtTime(2600, at);
+      f.frequency.exponentialRampToValueAtTime(700, at + 0.08);
+      tone("square", freq, at, 0.2).connect(f);
+      const g = envelope(at, 0.002, level, 0.01, 0.07);
+      f.connect(g);
+      send(g, { bus: music, verb: 0.3, echo: 0.6, pan });
+    };
+
+    const bell = (freq, at, level, decay = 2) => {
+      const carrier = tone("sine", freq, at, decay + 0.5);
+      const modulator = tone("sine", freq * 3.5, at, decay + 0.5);
+      const depth = ctx.createGain();
+      depth.gain.setValueAtTime(freq * 2.2, at);
+      depth.gain.exponentialRampToValueAtTime(freq * 0.05, at + decay);
+      modulator.connect(depth).connect(carrier.frequency);
+      const g = envelope(at, 0.002, level * LEVEL.fx, 0, decay);
+      carrier.connect(g);
+      send(g, { verb: 0.4, echo: 0.2, pan: (random() - 0.5) * 0.8 });
+    };
+    const droplet = (at, level) => {
+      const o = tone("sine", 1500, at, 0.25);
+      o.frequency.exponentialRampToValueAtTime(650, at + 0.06);
+      const g = envelope(at, 0.002, level * LEVEL.fx, 0.01, 0.12);
+      o.connect(g);
+      send(g, { verb: 0.4, echo: 0.25, pan: (random() - 0.5) * 0.6 });
+    };
+    const tick = (at, level) => {
+      const g = envelope(at, 0.001, level * LEVEL.fx, 0.004, 0.03);
+      hiss(at, 0.06).connect(filter("bandpass", 3600, 4)).connect(g);
+      send(g, { pan: (random() - 0.5) * 0.4 });
+    };
+    const thud = (at, level) => {
+      const o = tone("sine", 75, at, 1);
+      o.frequency.exponentialRampToValueAtTime(36, at + 0.25);
+      const g = envelope(at, 0.004, level * LEVEL.fx, 0.05, 0.6);
+      o.connect(g);
+      send(g, { verb: 0.3 });
+    };
+
+    const ROOTS = [110, 110, 110, 98];
+    const BASSLINE = [[0, 0.6], [0, 0.85], [0, 1], [1, 0.8]];
+    const BLIPS = [1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0];
+    const DRUMS = SCENE.copy, DROP = SCENE.catalog, LAND = SCENE.end;
+    for (let step = 0; step * BEAT / 4 < SCENE.length - 0.5; step++) {
+      const at = step * BEAT / 4;
+      const sixteenth = step % 16;
+      const root = ROOTS[Math.floor(step / 16) % 4];
+      const cutoff = at < DROP - BAR ? 700 : at < DROP ? lerp(700, 2400, (at - DROP + BAR) / BAR) : 2400;
+      if (BLIPS[sixteenth]) {
+        const octave = sixteenth % 3 === 0 ? 4 : sixteenth % 5 === 0 ? 6 : 8;
+        blip(root * octave, at, LEVEL.blip * (0.85 + random() * 0.3), sixteenth % 2 ? 0.35 : -0.35);
+      }
+      if (at < DRUMS) {
+        if (sixteenth % 8 === 0) sub(root / 2, at, BEAT - 0.1, LEVEL.sub * 0.6);
+        continue;
+      }
+      const [jump, accent] = BASSLINE[sixteenth % 4];
+      bass(root * (jump && sixteenth % 8 === 7 ? 2 : 1), at, LEVEL.bass * accent * (0.9 + random() * 0.2), cutoff);
+      if (at < LAND) {
+        hat(at, LEVEL.hat * [0.5, 0.3, 0.85, 0.3][sixteenth % 4] * (0.85 + random() * 0.3), false);
+        if (at >= DROP && sixteenth % 4 === 2) hat(at, LEVEL.open, true);
+        if (sixteenth % 8 === 4) clap(at, LEVEL.clap);
+      }
+      if (at >= DROP && sixteenth % 4 === 0) {
+        kick(at, LEVEL.kick);
+        sub(root / 2, at, BEAT - 0.12, LEVEL.sub);
+      }
+    }
+
+    bell(1318.51, RUN + 0.35, 0.05);
+    bell(1760, RUN + 0.45, 0.04);
+    thud(STOP, 0.45);
+    flying.forEach((f) => droplet(f.start + 0.6, 0.06));
+    bell(1046.5, SCENE.zero + 2.2, 0.045, 1.6);
+    bell(1318.51, HIT, 0.06, 1.8);
+    bell(1975.53, HIT + 0.09, 0.045, 1.8);
+    for (let i = 0; i < 17; i++) tick(SCENE.catalog + 0.7 + i * (0.5 / 17), 0.07);
+
+    const rendered = await ctx.startRendering();
+    const frames = rendered.length;
+    const view = new DataView(new ArrayBuffer(44 + frames * 4));
+    const text = (offset, value) => [...value].forEach((c, i) => view.setUint8(offset + i, c.charCodeAt(0)));
+    text(0, "RIFF"); view.setUint32(4, 36 + frames * 4, true); text(8, "WAVE"); text(12, "fmt ");
+    view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 2, true);
+    view.setUint32(24, RATE, true); view.setUint32(28, RATE * 4, true); view.setUint16(32, 4, true); view.setUint16(34, 16, true);
+    text(36, "data"); view.setUint32(40, frames * 4, true);
+    const left = rendered.getChannelData(0), right = rendered.getChannelData(1);
+    let energy = 0;
+    for (let i = 0; i < frames; i++) energy += left[i] ** 2 + right[i] ** 2;
+    const gain = 0.14 / Math.sqrt(energy / (frames * 2));
+    for (let i = 0; i < frames; i++) {
+      view.setInt16(44 + i * 4, Math.tanh(left[i] * gain) * 32767, true);
+      view.setInt16(46 + i * 4, Math.tanh(right[i] * gain) * 32767, true);
+    }
+    const bytes = new Uint8Array(view.buffer);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(binary);
+  };
+</script>
+</body>
+</html>
