@@ -35,17 +35,17 @@ The Parquet footer also holds min and max per row group. Each table also publish
 | A typed column, such as `id = 1234` | Files whose min and max exclude the value. That needs values that grow with offset or time, such as sequential ids or event times. |
 | Raw `_kafka_key` or `_kafka_value`, or JSON decoded from them | Nothing. Binary columns carry no bounds. |
 
-Measured on a table of 3,600 records in 36 files, 3 partitions, 100 consecutive ids per file, before assembly:
+Measured with DuckDB 2.0 on a table of 3,600 records of about 12 KB in 36 files, 3 partitions, 100 consecutive ids per file, before assembly, each query on a cold cache:
 
-| Query | Files read |
-| --- | --- |
-| `WHERE id = 1234` | 1 of 36 |
-| `WHERE id BETWEEN 2000 AND 2400` | 5 of 36 |
-| `WHERE _kafka_partition = 1 AND id < 600` | 2 of 36 |
-| `WHERE _kafka_offset BETWEEN 1000 AND 1050` | 3 of 36 |
-| `WHERE amount > 990`, amounts scattered | 12 of 36 |
+| Query | Files read | Built from Kafka |
+| --- | --- | --- |
+| `WHERE id = 1234` | 1 of 36 | 1 file |
+| `WHERE id BETWEEN 2000 AND 2400` | 5 of 36 | 5 files |
+| `WHERE _kafka_partition = 1 AND id < 600` | 2 of 36 | 2 files |
+| `WHERE _kafka_offset BETWEEN 1000 AND 1050` | 3 of 36 | 3 files |
+| `WHERE amount > 990`, amounts scattered | 27 of 36 | 27 files |
 
-The console's SQL page shows these numbers with Profile. See [Console](/docs/operations/console).
+The console's SQL page shows files read with Profile. See [Console](/docs/operations/console). Builds are the `mink_builds_total` metric.
 
 ## Assembly
 
@@ -82,12 +82,18 @@ A time bucket's files are assembled once the bucket ended `assembly_delay` ago, 
 </svg>
 </div>
 
-After assembly, a filter on a typed column reads the assembled file. The file keeps each original file's min and max as its row group's statistics, for engines that skip row groups. On the table above, once its hour was assembled:
+After assembly, a filter on a typed column reads the assembled file. The file keeps each original file's min and max as its row group's statistics, and engines skip row groups by them. Mink builds only the parts whose row groups an engine reads (see [Reads](/docs/design/reads)), so a query builds as much from Kafka as it did before assembly. On the table above, once its hour was assembled:
 
-| Query | Files read |
-| --- | --- |
-| `WHERE id = 1234` | 3 of 3 |
-| `WHERE _kafka_partition = 1` | 1 of 3 |
+| Query | Files read | Built from Kafka |
+| --- | --- | --- |
+| `WHERE id = 1234` | 3 of 3 | 1 part of 36 |
+| `WHERE id BETWEEN 2000 AND 2400` | 3 of 3 | 5 parts |
+| `WHERE _kafka_partition = 1 AND id < 600` | 1 of 3 | 2 parts |
+| `WHERE _kafka_offset BETWEEN 1000 AND 1050` | 3 of 3 | 3 parts |
+| `WHERE amount > 990`, amounts scattered | 3 of 3 | 27 parts |
+| `WHERE _kafka_partition = 1` | 1 of 3 | 12 parts |
+
+Engines read a small file in one request: DuckDB 2.0 a file of 1.5 MB, Trino 484 one of 4.5 MB. A request for a whole assembled file builds all its parts. Each assembled file above is about 7.7 MB, and DuckDB read it by row group.
 
 ## Manifests
 

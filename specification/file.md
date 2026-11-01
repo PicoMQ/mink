@@ -13,7 +13,7 @@ A file holds the records of an immutable range of offsets in one Kafka partition
 | `spec_id` | i32 | `>= 0`, the topic's time spec the file is written with (`layout.md` Time partitioning) |
 | `bucket` | optional i32 | The time bucket of every record the file holds; absent exactly when the spec has no time field |
 | `schema_id` | i32 | `>= 0`, the Iceberg schema the file is written with: 0, the binary schema, or one of the topic's typed schemas (`schema.md`) |
-| `assembly` | optional 16 hex digits | For an assembled file, the first 16 hex digits of the SHA-256 of its parts, one `start_offset:end_offset` line per part in offset order. Its parts are the ranges of the files the indexer wrote whose records it holds: at least two, the first starting at `start_offset` and the last ending at `end_offset` (`layout.md` Assembly). They are stored with the file and read when it is built. Absent for a file the indexer wrote |
+| `assembly` | optional 16 hex digits | For an assembled file, the first 16 hex digits of the SHA-256 of its parts, one `start_offset:end_offset` line per part in offset order. Its parts are the ranges of the files the indexer wrote whose records it holds: at least two, the first starting at `start_offset` and the last ending at `end_offset` (`layout.md` Assembly). They are stored with the file as its spans (Slices) and read when it is built. Absent for a file the indexer wrote |
 | `version` | `FileVersion` | One of the file versions defined under Bytes. Rendered as its number. |
 
 The range is half-open: `[start_offset, end_offset)`. A file holds the committed records of its range whose bucket is `bucket`, or every committed record of its range when it has no bucket. An assembled file holds the records of its parts' ranges whose bucket is `bucket`.
@@ -53,7 +53,8 @@ A file's bytes are a Parquet file. They are a function of the file's identity, t
 | Compression | ZSTD, level 3 |
 | Row groups | At most 131,072 rows each |
 | Statistics | Parquet column chunk statistics |
-| Page index | None: no column index and no offset index, so a file's bytes are `PAR1`, its row groups, its footer, the footer's length and `PAR1` |
+| Page index | None: no column index and no offset index |
+| Padding | 69,632 zero bytes between the last row group and the footer, so a file's bytes are `PAR1`, its row groups, the padding, its footer, the footer's length as a 4-byte little-endian integer, and `PAR1` |
 | Dictionary encoding | On |
 | Writer version | Parquet 1.0 |
 | `created_by` | `mink file version 1` |
@@ -62,11 +63,39 @@ A file's bytes are a Parquet file. They are a function of the file's identity, t
 
 A `parquet` crate upgrade that changes any byte of a version 1 file is caught by the data fixtures. Such an upgrade needs a new file version, not new fixtures.
 
+Readers open a file by reading a fixed amount from its end before they know the footer's length:
+
+| Reader | First read |
+| --- | --- |
+| PyIceberg 0.12, through Arrow | The last 65,536 bytes |
+| Trino 484 | The last 49,152 bytes |
+| DuckDB 2.0 | The last 65,536 bytes, its start rounded down to a multiple of 4,096 |
+
+The padding is 65,536 + 4,096 bytes, so each of these reads starts inside the padding. Nothing it reads comes from records, so it is served without a build (Slices). DuckDB rounds every later read to multiples of 4,096 too, which is why an assembled file starts each part on one (Assembled bytes).
+
 ### Assembled bytes
 
-An assembled file's bytes are `PAR1`; then each part's bytes from offset 4 up to its footer, its row groups, in part order; then the merged footer, its length as a 4-byte little-endian integer, and `PAR1`. Each part is built as the file of its range, bucket, spec, schema and version, from the same records.
+An assembled file's bytes are `PAR1`, then each part's body in part order, then the padding, the merged footer, its length as a 4-byte little-endian integer, and `PAR1`. Each part is built as the file of its range, bucket, spec, schema and version, from the same records. A part's body is its bytes from offset 4 up to its padding: its row groups.
+
+The first body starts at byte 4,096, and each later body at the first multiple of 4,096 at or after the end of the one before. The bytes in between are zeros. A read rounded out to multiples of 4,096 then stays inside the bodies it was meant for, and an assembled file assembled again moves by a multiple of 4,096, so its parts stay where the rule puts them.
 
 The merged footer is the parts' Parquet `FileMetaData` with their row groups in part order; each row group's `file_offset` and every column chunk's `data_page_offset` and `dictionary_page_offset` moved by where the part's row groups now start (a column chunk's own `file_offset` is always 0); each row group's `ordinal` its position in the file; and `num_rows` the sum of the parts'. Its schema and `created_by` are the parts', which all parts share. The footer is serialized as the `parquet` crate serializes any footer, so its length follows from the parts' stored footers alone.
+
+### Slices
+
+Every byte of a stored file is known without a build except its parts' bodies. Postgres stores for every file the indexer or an assembly writes its length (`Stats.bytes`), its footer and its spans. A tail's files are not stored (`metadata.md` Tail), so they have no slices and are built whole. A span is one part's offset range and the length of its body. A file the indexer wrote is its own single part, and its body length is its length less `PAR1`, the padding, the footer, and the footer's length and `PAR1`.
+
+| Bytes | Length | Comes from |
+| --- | --- | --- |
+| `PAR1` | 4 | A constant |
+| Each part's body, in part order, at its start (Assembled bytes), with zeros before it | The span's body length | The part, its bytes from offset 4 |
+| The padding | 69,632 | Zeros |
+| The footer | The stored footer's length | The stored footer |
+| The footer's length and `PAR1` | 8 | The stored footer's length |
+
+A file the indexer wrote has its one body at byte 4. A range's slices are its overlaps with these rows, in order. A slice of a part's body is built: `[a, b)` of the file is `[a − start + 4, b − start + 4)` of the part, where `start` is the body's first byte in the file. Every other slice needs no records. A part is the file of its range with the assembled file's partition, spec, bucket, schema and version, and no assembly, so a part is the same object before and after it is assembled.
+
+The S3 endpoint answers a data file's `GET` from its slices: slices that need no records on whichever node receives the request, and each built slice as a read of its part, through the node that owns the part's path. A `HEAD` answers the stored length.
 
 ### Stats
 
@@ -99,9 +128,16 @@ Stats have one JSON form, used by the store and the fixtures: an object with `re
 3. A topic name never contains `/`, so the topic is always exactly one path segment.
 4. Building the same file twice gives the same bytes and the same stats, whether or not the registry is reachable.
 5. A file is never empty.
+6. For every file and every range of its bytes, the range's slices joined, each built slice read from its part, equal that range of the file built whole.
+7. A range that overlaps no part's body is served without reading Kafka.
 
 ## Conformance
 
+- `mink-core` `file::tests::built_files_name_their_parts_by_their_spans`: a file the indexer wrote has its own range as its one span, and an assembled file's spans match its assembly hash.
+- `mink-iceberg` `slice::tests::slices_join_to_the_built_bytes`: invariant 6, over generated runs of parts and generated ranges, for files the indexer wrote and assembled ones.
+- `mink-store` `files::tests::built_files_survive_their_encoding`: a built file encoded for the cache decodes to the same built file.
+- `mink-conformance` `a_footer_read_needs_no_build`: invariant 7 end to end. A file's records are deleted from Kafka. A 65,536-byte suffix read of it still answers with the padding and the footer, and a read of its row groups fails.
+- `mink-conformance` `assembled_files_build_only_the_parts_a_query_reads`: an assembled file's first part is deleted from Kafka, and DuckDB, PyIceberg and Trino each count the rows of its other parts. The file is large enough that no engine reads it whole.
 - `mink-iceberg` `file::tests::typed_files_carry_bounds_for_their_primitive_columns`: Stats for a typed schema: string bounds truncated to 16 characters, NaN counts, and nulls of optional and raw columns.
 - `conformance/fixtures/path/cases.json`: `files` lists identities with the path each must render to. `rejected` lists paths that must not parse, each named for the reason it is rejected, including file versions that do not exist.
 - `conformance/fixtures/data/cases.json`: for each record fixture with committed records, the file's path in warehouse `s3://warehouse` (topic `conformance`, partition 0, from the first committed offset to one past the last, spec 0 with no time field, schema 0, version 1), the expected stats, and `<case>.parquet`, the version 1 bytes. `cargo run -p mink-conformance -- generate data --bless` writes them from the record fixtures. They pin the bytes; Mink's own output is not proof of correctness, so independent readers check them (below).

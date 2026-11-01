@@ -1,6 +1,6 @@
 # Reads
 
-Engines read a table in two steps: load it from the REST catalog, then read its objects from the S3 endpoint. Metadata objects come from the bucket. Data files are built from Kafka on the node that owns them, and cached there.
+Engines read a table in two steps: load it from the REST catalog, then read its objects from the S3 endpoint. Metadata objects come from the bucket. A data file's footer comes from Postgres. Its row groups are built from Kafka on the node that owns them, and cached there.
 
 <div class="mink-diagram">
 <svg viewBox="0 0 660 340" width="660" role="img" aria-label="An engine loads the table from the catalog, which reads the snapshot from Postgres, then reads metadata and data files from the S3 endpoint. The S3 endpoint reads metadata objects from the bucket and forwards data file reads to the owner node, which serves them from its cache or builds them from Kafka.">
@@ -54,28 +54,38 @@ The catalog returns the table metadata, see [Snapshots](/docs/design/snapshots).
 | Object | Source |
 | --- | --- |
 | Table metadata, manifest lists, manifests, statistics files | The bucket, through the cache. Checked against the bucket's ETag after a minute. |
-| Data file | Built from Kafka on its owner node, through the owner's cache |
+| Data file, everything but its row groups | Postgres, through the cache. No build. |
+| Data file, its row groups | Built from Kafka on the owner node of each part they fall in, through the owner's cache |
+| A tail's data file ([Snapshots](/docs/design/snapshots)) | Built whole from Kafka on its owner node, through the owner's cache. A tail is never committed, so Postgres has no row for it. |
 
 The endpoint answers `GET` with an optional `Range` header, and `HEAD`. A data file's `HEAD` comes from its stored statistics, without a build. Writes are refused with `403 AccessDenied`.
 
+## Footers
+
+Engines open a Parquet file by reading a fixed amount from its end, up to 68 KiB with DuckDB, PyIceberg and Trino. Every data file has 69,632 zero bytes before its footer, so that read never reaches a row group. The padding, the footer and its length are known from Postgres, so the first read of a file needs no build, and an engine that skips all of a file's row groups by their statistics never causes a Kafka read.
+
+## Parts
+
+A file the indexer wrote is one part. An assembled file is the parts it joined, each still a file of its own. A read of an assembled file's row groups builds only the parts those row groups belong to. A part is cached under its own path, so a part read before its bucket was assembled is still cached after.
+
 ## Owners
 
-Each data file has one owner among the nodes with the `s3` role, chosen by hashing each node's id with the file's path. The highest hash wins. A node forwards a read of a file it does not own to the owner, and relays the answer.
+Each part has one owner among the nodes with the `s3` role, chosen by hashing each node's id with the part's path. The highest hash wins. A node forwards a read of a part it does not own to the owner, and relays the answer.
 
 | Case | Result |
 | --- | --- |
-| Owner answers | The owner serves from its cache, or builds the file once and caches it |
-| Owner unreachable within 5 seconds, or silent for 60 | The receiving node builds the file itself, without caching it |
-| A node joins or leaves | Only the files it owns or would own move |
+| Owner answers | The owner serves from its cache, or builds the part once and caches it |
+| Owner unreachable within 5 seconds, or silent for 60 | The receiving node builds the part itself, without caching it |
+| A node joins or leaves | Only the parts it owns or would own move |
 
 ## Builds
 
-A build reads the file's committed records from Kafka and writes the Parquet with the file's schema. The bytes are the same every time, on any node.
+A build reads a part's committed records from Kafka and writes the Parquet with the file's schema. The bytes are the same every time, on any node.
 
-- A build answers with the whole file, so a read of any range caches all of it.
-- Concurrent reads of one file wait for one build.
-- A node builds at most `max_builds` files at once, by default the number of CPUs.
-- A built file whose length differs from its stored statistics is never served. The endpoint answers `500` and logs it.
+- A build answers with the whole part, so a read of any range of a part caches all of it.
+- Concurrent reads of one part wait for one build.
+- A node builds at most `max_builds` parts at once, by default the number of CPUs.
+- A built part whose length differs from what Postgres holds for it is never served. The endpoint answers `500` and logs it.
 
 ## Cache
 
