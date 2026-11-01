@@ -75,6 +75,16 @@ A file the indexer wrote is one part. An assembled file is the parts it joined, 
 
 Below about 1 MiB, the fixed cost of a build, a Kafka read and its lookups, outweighs building a little more.
 
+Measured on AWS with DuckDB 2.0, two nodes, each query on a cold cache:
+
+| Table | Query | Built from Kafka | Kafka read |
+| --- | --- | --- | --- |
+| `lineitem`: 3.0 M rows in 168 assembled files of about 1 MB, parts of about 28 KB | 500 offsets of one partition | 1 extent | 8.8 MB |
+| | One month by `_kafka_timestamp` | 2 extents | 14.4 MB |
+| | One week by `l_shipdate` | 2 extents | 19.5 MB |
+| | Full scan of `l_quantity` | 168 extents, one per file | 1,381 MB |
+| `large_parts`: 15,000 records of 10 KB in one file of 150 MB, 3 parts of 50 MB | 500 offsets inside the middle part | 1 extent of 3 | 57.6 MB |
+
 ## Owners
 
 Each data file has one owner among the nodes with the `s3` role, chosen by hashing each node's id with the file's path. The highest hash wins. A read that needs a build is forwarded to the owner, and the answer relayed. A read of stored bytes only, such as a footer read, is answered by whichever node receives it.
