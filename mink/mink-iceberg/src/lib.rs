@@ -1,6 +1,7 @@
 mod arrays;
 mod assembly;
 mod file;
+mod framing;
 #[cfg(test)]
 mod payload;
 mod ranges;
@@ -16,10 +17,11 @@ use mink_core::{File, Partition};
 
 pub use assembly::assemble;
 pub use file::{build_file, file_contents};
+pub use framing::unpadded;
 pub use ranges::{NewFiles, tail_files};
 pub use rows::{Decoded, decode};
 pub use schema::{FileSchema, TypedSchema};
-pub use slice::{Extent, Slice, extent, extents, slices, unpadded};
+pub use slice::{Extent, Slice, extent, extents, slices};
 pub use table::{Change, FIRST_TAIL_SNAPSHOT_ID, FormatVersion, ObjectReader, Table};
 
 #[derive(Debug, thiserror::Error)]

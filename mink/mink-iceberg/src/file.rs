@@ -18,9 +18,9 @@ use parquet::basic::{Compression, ZstdLevel};
 use parquet::file::properties::{EnabledStatistics, WriterProperties, WriterVersion};
 
 use crate::Error;
+use crate::framing::{footer, padded};
 use crate::rows::rows;
 use crate::schema::FileSchema;
-use crate::slice::{body_length, footer, padded};
 
 const STRING_BOUND: usize = 16;
 
@@ -48,10 +48,10 @@ pub fn build_file(
     granularity: Granularity,
     schema: &FileSchema,
 ) -> Result<(Bytes, BuiltFile), Error> {
-    let (records, rows, bytes) = parquet_file(file, records, granularity, schema)?;
+    let (records, rows, bytes, body_length) = parquet_file(file, records, granularity, schema)?;
 
     let stats_builder = collected(schema.schema(), &rows, bytes.len(), &records, None)?;
-    let built = described(file, &bytes, stats_builder.stats)?;
+    let built = described(file, &bytes, body_length, stats_builder.stats)?;
     Ok((bytes, built))
 }
 
@@ -61,7 +61,7 @@ pub(crate) fn index_file(
     granularity: Granularity,
     schema: &FileSchema,
 ) -> Result<(BuiltFile, DaySketches), Error> {
-    let (records, rows, bytes) = parquet_file(file, records, granularity, schema)?;
+    let (records, rows, bytes, body_length) = parquet_file(file, records, granularity, schema)?;
     let days: Vec<i64> = records
         .iter()
         .map(|record| utc_day(record.timestamp_ms()))
@@ -82,12 +82,20 @@ pub(crate) fn index_file(
         .sketch_builder
         .map(|sketch_builder| sketch_builder.sketches)
         .unwrap_or_default();
-    Ok((described(file, &bytes, stats_builder.stats)?, sketches))
+    Ok((
+        described(file, &bytes, body_length, stats_builder.stats)?,
+        sketches,
+    ))
 }
 
-fn described(file: &File, bytes: &[u8], stats: Stats) -> Result<BuiltFile, Error> {
+fn described(
+    file: &File,
+    bytes: &[u8],
+    body_length: u64,
+    stats: Stats,
+) -> Result<BuiltFile, Error> {
     let footer = footer(bytes)?;
-    let span = Span::new(file.range(), body_length(bytes.len() as u64, footer.len())?);
+    let span = Span::new(file.range(), body_length);
     let indexed = IndexedFile::new(file.clone(), stats);
 
     Ok(BuiltFile::new(
@@ -122,7 +130,7 @@ fn parquet_file(
     records: &[Record],
     granularity: Granularity,
     schema: &FileSchema,
-) -> Result<(Vec<Record>, RecordBatch, Bytes), Error> {
+) -> Result<(Vec<Record>, RecordBatch, Bytes, u64), Error> {
     let records: Vec<Record> = records
         .iter()
         .filter(|record| granularity.bucket(record.timestamp_ms()) == file.time().bucket())
@@ -147,7 +155,9 @@ fn parquet_file(
     writer.write(&rows)?;
     writer.close()?;
 
-    Ok((records, rows, Bytes::from(padded(bytes)?)))
+    let (bytes, body_length) = padded(bytes)?;
+
+    Ok((records, rows, Bytes::from(bytes), body_length))
 }
 
 fn check(file: &File, records: &[Record]) -> Result<(), Error> {

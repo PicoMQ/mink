@@ -14,7 +14,7 @@ use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 use super::key::{Key, Object};
-use super::origin::{BuiltOrigin, FileOrigin, extent_name};
+use super::origin::{BuiltOrigin, FileOrigin, object_name};
 use crate::Error;
 use crate::services::Services;
 
@@ -115,7 +115,7 @@ impl Cache {
         extent: &Range<u64>,
         range: Range<u64>,
     ) -> Result<ReadStream, Error> {
-        let object = object_name(table, &extent_name(key.path(), extent));
+        let object = object_name(table, key.path(), Some(extent));
 
         self.stream(key, self.files, &object, ReadRange::Bounded(range))
             .await
@@ -170,7 +170,7 @@ impl Cache {
         let Some(file) = key.file() else {
             return Ok(None);
         };
-        let object = object_name(table, key.path());
+        let object = object_name(table, key.path(), None);
 
         let read = async {
             let stream = self
@@ -210,7 +210,7 @@ impl Cache {
 
     fn object(&self, key: &Key, table: Uuid) -> Result<(NamespaceId, String), Error> {
         match key.object() {
-            Object::Data(_) => Ok((self.files, object_name(table, key.path()))),
+            Object::Data(_) => Ok((self.files, object_name(table, key.path(), None))),
             Object::Metadata { .. } => {
                 let object = self.services.warehouse.key(key.path())?;
 
@@ -218,10 +218,6 @@ impl Cache {
             }
         }
     }
-}
-
-fn object_name(table: Uuid, name: &str) -> String {
-    format!("{table}/{name}")
 }
 
 impl Drop for Cache {

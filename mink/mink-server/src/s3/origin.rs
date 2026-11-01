@@ -7,6 +7,7 @@ use futures::StreamExt;
 use mink_core::{BuiltFile, File, TableLocation};
 use nestor::{GetOptions, GetResponse, ObjectMeta, Origin, OriginError};
 use tokio::sync::Semaphore;
+use uuid::Uuid;
 
 use super::build::{build, extent, path};
 use crate::Error;
@@ -35,7 +36,7 @@ impl FileOrigin {
     }
 
     pub(super) async fn build(&self, file: &File) -> Result<Bytes, Error> {
-        let name = path(&self.services, file);
+        let name = named(&path(&self.services, file), None);
         let (services, file) = (self.services.clone(), file.clone());
 
         self.spawned(name, async move { build(&services, &file).await })
@@ -47,7 +48,7 @@ impl FileOrigin {
         built: &BuiltFile,
         range: Range<u64>,
     ) -> Result<Bytes, Error> {
-        let name = extent_name(&path(&self.services, built.indexed().file()), &range);
+        let name = named(&path(&self.services, built.indexed().file()), Some(&range));
         let (services, built) = (self.services.clone(), built.clone());
 
         self.spawned(name, async move { extent(&services, &built, range).await })
@@ -138,8 +139,15 @@ impl Origin for BuiltOrigin {
     }
 }
 
-pub(super) fn extent_name(path: &str, range: &Range<u64>) -> String {
-    format!("{path}#{}-{}", range.start, range.end)
+pub(super) fn object_name(table: Uuid, path: &str, extent: Option<&Range<u64>>) -> String {
+    format!("{table}/{}", named(path, extent))
+}
+
+fn named(path: &str, extent: Option<&Range<u64>>) -> String {
+    match extent {
+        Some(range) => format!("{path}#{}-{}", range.start, range.end),
+        None => path.to_owned(),
+    }
 }
 
 fn located(services: &Services, object: &str) -> Result<(File, Option<Range<u64>>), OriginError> {
@@ -194,14 +202,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn extent_names_split_back_into_their_path_and_range() {
+    fn names_split_back_into_their_path_and_extent() {
         let path = "s3://mink/warehouse/orders/data/p=0/0-10.t0.s0.v1.parquet";
+        let extent = 4096..8192;
 
         assert_eq!(
-            split(&extent_name(path, &(4096..8192))),
-            Some((path, Some(4096..8192)))
+            split(&named(path, Some(&extent))),
+            Some((path, Some(extent)))
         );
-        assert_eq!(split(path), Some((path, None)));
+        assert_eq!(split(&named(path, None)), Some((path, None)));
         assert_eq!(split(&format!("{path}#8-4")), None);
         assert_eq!(split(&format!("{path}#8")), None);
         assert_eq!(split(&format!("{path}#a-b")), None);

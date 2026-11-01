@@ -12,8 +12,8 @@ use parquet::file::metadata::{
 
 use crate::Error;
 #[cfg(test)]
-use crate::slice::{MAGIC, PADDING, body_length, footer};
-use crate::slice::{TRAILER, aligned, bodies, file_length};
+use crate::framing::{MAGIC, body_length, footer, padding};
+use crate::framing::{TRAILER, aligned, bodies, file_length};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct MergedFooter {
@@ -111,7 +111,11 @@ fn merged_footer(files: &[Replaced]) -> Result<MergedFooter, Error> {
     ParquetMetaDataWriter::new(&mut written, &merged).finish()?;
     written.truncate(written.len() - TRAILER);
 
-    let (last, start) = files.iter().zip(&starts).next_back().ok_or_else(too_long)?;
+    let (last, start) = files
+        .iter()
+        .zip(&starts)
+        .next_back()
+        .ok_or_else(|| Error::Assembly("an assembly needs parts".to_owned()))?;
     let length = file_length(start + last.length, written.len());
 
     Ok(MergedFooter {
@@ -200,7 +204,8 @@ pub(crate) fn assembled_bytes(parts: &[Bytes]) -> Result<Bytes, Error> {
         bytes.extend_from_slice(&part[MAGIC.len()..MAGIC.len() + body]);
     }
 
-    bytes.resize(bytes.len() + PADDING, 0);
+    let unpadded_length = (bytes.len() + assembled.footer.len() + TRAILER) as u64;
+    bytes.resize(bytes.len() + padding(unpadded_length) as usize, 0);
     bytes.extend_from_slice(&assembled.footer);
     bytes.extend_from_slice(&(assembled.footer.len() as u32).to_le_bytes());
     bytes.extend_from_slice(MAGIC);
@@ -287,8 +292,8 @@ mod tests {
 
     use super::*;
     use crate::file::build_file;
+    use crate::framing::{ALIGNMENT, body_starts};
     use crate::schema::FileSchema;
-    use crate::slice::{ALIGNMENT, body_starts};
     use crate::testing::{hour_records, hourly, inside, rows_of};
 
     fn built(file: &File, records: &[mink_core::Record]) -> (Bytes, BuiltFile) {

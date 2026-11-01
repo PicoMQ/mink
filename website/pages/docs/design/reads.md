@@ -62,7 +62,7 @@ The endpoint answers `GET` with an optional `Range` header, and `HEAD`. A data f
 
 ## Footers
 
-Engines open a Parquet file by reading a fixed amount from its end, up to 68 KiB with DuckDB, PyIceberg and Trino. Every data file has 69,632 zero bytes before its footer, so that read never reaches a row group. The padding, the footer and its length are known from Postgres, so the first read of a file needs no build, and an engine that skips all of a file's row groups by their statistics never causes a Kafka read.
+Engines open a Parquet file by reading from its end: 64 KiB with PyIceberg, 48 KiB with Trino, and with DuckDB the power of two at or above a 1,024th of the file, at least 16 KiB. Every data file has zero bytes before its footer, at least 68 KiB and about 0.2% of a large file, so that read never reaches a row group. The padding, the footer and its length are known from Postgres, so the first read of a file needs no build, and an engine that skips all of a file's row groups by their statistics never causes a Kafka read.
 
 ## Parts and extents
 

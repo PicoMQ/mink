@@ -36,7 +36,7 @@ An assembled file is a file (`file.md` Identity) whose parts are the ranges of t
 | `nulls`, `nans` | The sums of the replaced files' counts |
 | Footer | The replaced files' footers merged (`file.md` Assembled bytes), stored like any file's footer |
 
-The spans are stored with the assembled file, so a read of one part's rows builds only that part (`file.md` Slices).
+The spans are stored with the assembled file, so a read of one part's rows builds only the extent that part is in (`file.md` Slices).
 
 The writer adds the assembled files and replaces their parts in the commit that drops the parts from the table. A replaced file stays buildable for as long as a kept snapshot lists it (`metadata.md` Snapshots), and its row is removed with the last such snapshot.
 

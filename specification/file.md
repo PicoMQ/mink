@@ -54,7 +54,7 @@ A file's bytes are a Parquet file. They are a function of the file's identity, t
 | Row groups | At most 131,072 rows each |
 | Statistics | Parquet column chunk statistics |
 | Page index | None: no column index and no offset index |
-| Padding | 69,632 zero bytes between the last row group and the footer, so a file's bytes are `PAR1`, its row groups, the padding, its footer, the footer's length as a 4-byte little-endian integer, and `PAR1` |
+| Padding | Zero bytes between the last row group and the footer, so a file's bytes are `PAR1`, its row groups, the padding, its footer, the footer's length as a 4-byte little-endian integer, and `PAR1`. Its length is set by the readers below. |
 | Dictionary encoding | On |
 | Writer version | Parquet 1.0 |
 | `created_by` | `mink file version 1` |
@@ -63,15 +63,17 @@ A file's bytes are a Parquet file. They are a function of the file's identity, t
 
 A `parquet` crate upgrade that changes any byte of a version 1 file is caught by the data fixtures. Such an upgrade needs a new file version, not new fixtures.
 
-Readers open a file by reading a fixed amount from its end before they know the footer's length:
+Readers open a file by reading from its end before they know the footer's length:
 
-| Reader | First read |
+| Reader | First read of a file of `L` bytes |
 | --- | --- |
 | PyIceberg 0.12, through Arrow | The last 65,536 bytes |
-| Trino 484 | The last 49,152 bytes |
-| DuckDB 2.0 | The last 65,536 bytes, its start rounded down to a multiple of 4,096 |
+| Trino 484 | The last 49,152 bytes. Files of up to 4.5 MB were read whole, and of 10.6 MB not. |
+| DuckDB 2.0 | The last `max(16,384, 2^⌈log₂(L / 1,024)⌉)` bytes, its start rounded down to a multiple of 4,096. A 0.6 MB file was read whole, and a 2.7 MB file not. |
 
-The padding is 65,536 + 4,096 bytes, so each of these reads starts inside the padding. Nothing it reads comes from records, so it is served without a build (Slices). DuckDB rounds every later read to multiples of 4,096 too, which is why an assembled file starts each part on one (Assembled bytes).
+The padding of a file whose bytes without it number `U` is `max(65,536, 2^⌈log₂(U / 512)⌉) + 4,096` bytes. When the padding is shorter than `U`, `U / 512 ≥ L / 1,024`; when it is not, `L` is under 140 KiB and DuckDB reads 16,384 bytes. Either way every read above starts inside the padding. Nothing it reads comes from records, so it is served without a build (Slices). Files up to 32 MiB get 69,632 bytes, a 1 GiB file about 2 MiB, never more than 0.4% of a large file.
+
+The padding of a file of `L` bytes is `p(L − p(L))`, where `p` is the rule above, for every length (Conformance). DuckDB rounds every later read to multiples of 4,096 too, which is why an assembled file starts each part on one (Assembled bytes).
 
 ### Assembled bytes
 
@@ -89,7 +91,7 @@ Every byte of a stored file is known without a build except its parts' bodies. P
 | --- | --- | --- |
 | `PAR1` | 4 | A constant |
 | Each part's body, in part order, at its start (Assembled bytes), with zeros before it | The span's body length | The part, its bytes from offset 4 |
-| The padding | 69,632 | Zeros |
+| The padding | `p(U)`, Version 1 | Zeros |
 | The footer | The stored footer's length | The stored footer |
 | The footer's length and `PAR1` | 8 | The stored footer's length |
 
@@ -141,6 +143,8 @@ Stats have one JSON form, used by the store and the fixtures: an object with `re
 - `mink-core` `file::tests::built_files_name_their_parts_by_their_spans`: a file the indexer wrote has its own range as its one span, and an assembled file's spans match its assembly hash.
 - `mink-iceberg` `slice::tests::slices_join_to_the_built_bytes`: invariants 6 and 8, over generated runs of parts and generated ranges, for files the indexer wrote and assembled ones.
 - `mink-iceberg` `slice::tests::a_part_built_to_another_length_is_refused`: the span check of an extent's parts.
+- `mink-server` `s3::tests::stored_files_answer_footer_reads_anywhere_and_build_on_their_owner`: the S3 rules for a stored file across nodes: a footer read answered where it arrives, a row read forwarded to the file's owner, and with the owner unreachable, a build where the read arrived that is not cached.
+- `mink-iceberg` `framing::tests::padding_covers_every_first_read_and_comes_back_off`: the padding rule, over file lengths up to 1 TiB: every first read in the readers table starts inside the padding, and `p(L − p(L))` gives the padding back.
 - `mink-store` `files::tests::built_files_survive_their_encoding`: a built file encoded for the cache decodes to the same built file.
 - `mink-conformance` `a_footer_read_needs_no_build`: invariant 7 end to end. A file's records are deleted from Kafka. A 65,536-byte suffix read of it still answers with the padding and the footer, and a read of its row groups fails.
 - `mink-conformance` `assembled_files_build_only_the_parts_a_query_reads`: an assembled file's first part is deleted from Kafka, and DuckDB, PyIceberg and Trino each count the rows of its other parts. The file is large enough that no engine reads it whole.

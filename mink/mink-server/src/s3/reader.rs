@@ -113,11 +113,11 @@ impl Reader {
             .map_err(|_| Error::Unsatisfiable(size))?;
         let slices = mink_iceberg::slices(&built, range.clone())?;
 
-        if let Some(stored) = stored(&slices) {
+        if let Some(in_hand) = in_hand(&slices) {
             return Ok(Found::Stream(Ranged {
                 range,
                 size,
-                body: stream::iter(stored.into_iter().map(Ok)).boxed(),
+                body: stream::iter(in_hand.into_iter().map(Ok)).boxed(),
             }));
         }
 
@@ -186,7 +186,7 @@ impl Reader {
         let size = served.built.indexed().stats().bytes();
         let first = slices
             .iter()
-            .position(|slice| matches!(slice, Slice::Built { .. }));
+            .position(|slice| matches!(slice, Slice::Extent { .. }));
         let mut slices = slices.into_iter();
 
         let mut opened = Vec::new();
@@ -216,17 +216,17 @@ impl Reader {
     async fn piece(&self, served: &Served, slice: Slice) -> Result<ByteStream, Error> {
         match slice {
             Slice::Bytes(bytes) => Ok(stream::once(async { Ok(bytes) }).boxed()),
-            Slice::Built { extent, range } => match served.source {
+            Slice::Extent { extent, within } => match served.source {
                 Source::Cache => {
                     let read = self
                         .cache
-                        .read_extent(&served.key, served.table, &extent, range);
+                        .read_extent(&served.key, served.table, &extent, within);
 
                     Ok(ranged(read.await?).body)
                 }
                 Source::Build => {
                     let bytes = self.cache.build_extent(&served.built, extent).await?;
-                    let piece = bytes.slice(range.start as usize..range.end as usize);
+                    let piece = bytes.slice(within.start as usize..within.end as usize);
 
                     Ok(stream::once(async { Ok(piece) }).boxed())
                 }
@@ -323,12 +323,12 @@ fn ranged(stream: ReadStream) -> Ranged {
     }
 }
 
-fn stored(slices: &[Slice]) -> Option<Vec<Bytes>> {
+fn in_hand(slices: &[Slice]) -> Option<Vec<Bytes>> {
     slices
         .iter()
         .map(|slice| match slice {
             Slice::Bytes(bytes) => Some(bytes.clone()),
-            Slice::Built { .. } => None,
+            Slice::Extent { .. } => None,
         })
         .collect()
 }

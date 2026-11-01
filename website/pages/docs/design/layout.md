@@ -82,7 +82,7 @@ A time bucket's files are assembled once the bucket ended `assembly_delay` ago, 
 </svg>
 </div>
 
-After assembly, a filter on a typed column reads the assembled file. The file keeps each original file's min and max as its row group's statistics, and engines skip row groups by them. Mink builds only the parts whose row groups an engine reads (see [Reads](/docs/design/reads)), so a query builds as much from Kafka as it did before assembly. On the table above, once its hour was assembled:
+After assembly, a filter on a typed column reads the assembled file. The file keeps each original file's min and max as its row group's statistics, and engines skip row groups by them. Mink builds only the extents an engine's reads fall in (see [Reads](/docs/design/reads)). Parts of this table are about 640 KB, so each is an extent of its own, and a query builds as much from Kafka as it did before assembly. On the table above, once its hour was assembled:
 
 | Query | Files read | Built from Kafka |
 | --- | --- | --- |
