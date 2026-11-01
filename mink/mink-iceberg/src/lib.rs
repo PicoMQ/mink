@@ -19,7 +19,7 @@ pub use file::{build_file, file_contents};
 pub use ranges::{NewFiles, tail_files};
 pub use rows::{Decoded, decode};
 pub use schema::{FileSchema, TypedSchema};
-pub use slice::{Slice, slices, unpadded};
+pub use slice::{Extent, Slice, extent, extents, slices, unpadded};
 pub use table::{Change, FIRST_TAIL_SNAPSHOT_ID, FormatVersion, ObjectReader, Table};
 
 #[derive(Debug, thiserror::Error)]
@@ -68,6 +68,8 @@ pub enum Error {
     Assembly(String),
     #[error("framing a file: {0}")]
     Framing(String),
+    #[error("{file:?} built a body of {built} bytes, not the {span} of its span")]
+    PartLength { file: File, built: u64, span: u64 },
     #[error("{file:?} names its schema, not schema {schema_id}")]
     FileSchema { file: File, schema_id: i32 },
 }

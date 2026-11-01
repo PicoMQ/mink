@@ -1,10 +1,12 @@
 use mink_core::{File, TableLocation};
 
+#[derive(Clone)]
 pub(crate) struct Key {
     path: String,
     object: Object,
 }
 
+#[derive(Clone)]
 pub(crate) enum Object {
     Metadata { topic: String },
     Data(File),
@@ -27,10 +29,6 @@ impl Key {
 
     pub(crate) fn path(&self) -> &str {
         &self.path
-    }
-
-    pub(crate) fn uri(&self) -> String {
-        format!("/{}", self.path.trim_start_matches("s3://"))
     }
 
     pub(crate) fn object(&self) -> &Object {

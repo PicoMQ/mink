@@ -27,7 +27,7 @@ pub enum Error {
     OutsideBucket(String),
     #[error("no object {0}")]
     NoSuchKey(String),
-    #[error("{path} built to {built} bytes, but its stored stats say {stored}")]
+    #[error("{path} built {built} bytes where Postgres holds {stored}")]
     BuiltLengthMismatch {
         path: String,
         built: u64,

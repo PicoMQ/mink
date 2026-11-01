@@ -18,6 +18,7 @@ use crate::retry::{Backoff, retriable};
 use crate::transaction::committed;
 
 const NO_LEADER: BrokerId = BrokerId(-1);
+const FIRST_FETCH_BYTES: i32 = 64 * 1024;
 
 type Call<'c, T> = Pin<Box<dyn Future<Output = Result<T, Error>> + Send + 'c>>;
 
@@ -91,9 +92,10 @@ impl Cluster {
         let mut records = Vec::new();
         let mut offset = offsets.start_offset();
         let mut stall = Backoff::new(self.config.retry_deadline());
+        let mut max_bytes = FIRST_FETCH_BYTES.min(self.config.max_bytes());
 
         while offset < end {
-            let data = self.fetch(partition, offset).await?;
+            let data = self.fetch(partition, offset, max_bytes).await?;
             let aborted = data.aborted_transactions.unwrap_or_default();
             let batches = Batch::parse(data.records.unwrap_or_default())?;
 
@@ -107,6 +109,7 @@ impl Cluster {
             };
 
             stall = Backoff::new(self.config.retry_deadline());
+            max_bytes = max_bytes.saturating_mul(4).min(self.config.max_bytes());
             let kept = committed(batches, &aborted, offset);
             records.extend(kept.into_iter().take_while(|record| record.offset() < end));
             offset = next;
@@ -115,9 +118,13 @@ impl Cluster {
         Ok(records)
     }
 
-    async fn fetch(&mut self, partition: &Partition, offset: i64) -> Result<PartitionData, Error> {
+    async fn fetch(
+        &mut self,
+        partition: &Partition,
+        offset: i64,
+        max_bytes: i32,
+    ) -> Result<PartitionData, Error> {
         let max_wait_ms = self.config.max_wait_ms();
-        let max_bytes = self.config.max_bytes();
 
         self.on_leader(partition, move |connection, partition| {
             Box::pin(connection.fetch(partition, offset, max_wait_ms, max_bytes))
@@ -565,6 +572,34 @@ mod tests {
         let read = cluster.read(&orders_offsets(2, 5)).await.unwrap();
 
         assert_eq!(offsets(&read), [2, 3, 4]);
+    }
+
+    #[tokio::test]
+    async fn range_reads_start_with_small_fetches_and_grow() {
+        let Scripted {
+            mut cluster,
+            requests,
+        } = scripted(Script {
+            stable: 10,
+            ..Script::default()
+        })
+        .await;
+
+        cluster.read(&orders_offsets(2, 5)).await.unwrap();
+
+        let sizes: Vec<i32> = requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(key, _, _)| *key == ApiKey::Fetch)
+            .map(|(_, _, request)| {
+                let mut request = request.clone();
+                let header = decode_request_header_from_buffer(&mut request).unwrap();
+                let fetch = FetchRequest::decode(&mut request, header.request_api_version).unwrap();
+                fetch.topics[0].partitions[0].partition_max_bytes
+            })
+            .collect();
+        assert_eq!(sizes, [64 * 1024, 256 * 1024, 1024 * 1024]);
     }
 
     #[tokio::test]

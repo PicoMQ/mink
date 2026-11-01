@@ -93,9 +93,13 @@ Every byte of a stored file is known without a build except its parts' bodies. P
 | The footer | The stored footer's length | The stored footer |
 | The footer's length and `PAR1` | 8 | The stored footer's length |
 
-A file the indexer wrote has its one body at byte 4. A range's slices are its overlaps with these rows, in order. A slice of a part's body is built: `[a, b)` of the file is `[a − start + 4, b − start + 4)` of the part, where `start` is the body's first byte in the file. Every other slice needs no records. A part is the file of its range with the assembled file's partition, spec, bucket, schema and version, and no assembly, so a part is the same object before and after it is assembled.
+A file the indexer wrote has its one body at byte 4. A part is the file of its range with the assembled file's partition, spec, bucket, schema and version, and no assembly.
 
-The S3 endpoint answers a data file's `GET` from its slices: slices that need no records on whichever node receives the request, and each built slice as a read of its part, through the node that owns the part's path. A `HEAD` answers the stored length.
+Bodies are built in extents. An extent is a run of consecutive parts. Taking the parts in order, a part joins the extent before it if the extent then still spans at most 1 MiB, from its first body's start to the part's body end, and otherwise starts a new extent. So a part longer than 1 MiB is an extent of its own. An extent's bytes are the file's bytes from its first body's start to its last body's end, the zeros between bodies included, and they follow from the spans alone. A file the indexer wrote is one extent, its body.
+
+A range's slices are its overlaps with the rows above, with the bodies grouped into extents, in order. A slice of an extent is built: `[a, b)` of the file is `[a − start, b − start)` of the extent, where `start` is its first byte in the file. Every other slice needs no records.
+
+The S3 endpoint answers a data file's `GET` whose slices need no records on whichever node receives it. Any other range is read through the cache of the node that owns the file's path, which keeps each extent as an object of its own. An extent is built from one Kafka read of its parts' offsets: each part from the records of its own range, checked against its span. Concurrent reads of an extent wait for one build. A `HEAD` answers the stored length.
 
 ### Stats
 
@@ -128,13 +132,15 @@ Stats have one JSON form, used by the store and the fixtures: an object with `re
 3. A topic name never contains `/`, so the topic is always exactly one path segment.
 4. Building the same file twice gives the same bytes and the same stats, whether or not the registry is reachable.
 5. A file is never empty.
-6. For every file and every range of its bytes, the range's slices joined, each built slice read from its part, equal that range of the file built whole.
+6. For every file and every range of its bytes, the range's slices joined, each built slice read from its extent, equal that range of the file built whole.
 7. A range that overlaps no part's body is served without reading Kafka.
+8. A file's extents hold its parts in order, each part in exactly one, and an extent spans more than 1 MiB only when it holds a single part.
 
 ## Conformance
 
 - `mink-core` `file::tests::built_files_name_their_parts_by_their_spans`: a file the indexer wrote has its own range as its one span, and an assembled file's spans match its assembly hash.
-- `mink-iceberg` `slice::tests::slices_join_to_the_built_bytes`: invariant 6, over generated runs of parts and generated ranges, for files the indexer wrote and assembled ones.
+- `mink-iceberg` `slice::tests::slices_join_to_the_built_bytes`: invariants 6 and 8, over generated runs of parts and generated ranges, for files the indexer wrote and assembled ones.
+- `mink-iceberg` `slice::tests::a_part_built_to_another_length_is_refused`: the span check of an extent's parts.
 - `mink-store` `files::tests::built_files_survive_their_encoding`: a built file encoded for the cache decodes to the same built file.
 - `mink-conformance` `a_footer_read_needs_no_build`: invariant 7 end to end. A file's records are deleted from Kafka. A 65,536-byte suffix read of it still answers with the padding and the footer, and a read of its row groups fails.
 - `mink-conformance` `assembled_files_build_only_the_parts_a_query_reads`: an assembled file's first part is deleted from Kafka, and DuckDB, PyIceberg and Trino each count the rows of its other parts. The file is large enough that no engine reads it whole.

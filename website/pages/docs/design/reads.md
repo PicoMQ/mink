@@ -55,7 +55,7 @@ The catalog returns the table metadata, see [Snapshots](/docs/design/snapshots).
 | --- | --- |
 | Table metadata, manifest lists, manifests, statistics files | The bucket, through the cache. Checked against the bucket's ETag after a minute. |
 | Data file, everything but its row groups | Postgres, through the cache. No build. |
-| Data file, its row groups | Built from Kafka on the owner node of each part they fall in, through the owner's cache |
+| Data file, its row groups | Built from Kafka on the file's owner node, only the extents the read overlaps, through the owner's cache |
 | A tail's data file ([Snapshots](/docs/design/snapshots)) | Built whole from Kafka on its owner node, through the owner's cache. A tail is never committed, so Postgres has no row for it. |
 
 The endpoint answers `GET` with an optional `Range` header, and `HEAD`. A data file's `HEAD` comes from its stored statistics, without a build. Writes are refused with `403 AccessDenied`.
@@ -64,28 +64,35 @@ The endpoint answers `GET` with an optional `Range` header, and `HEAD`. A data f
 
 Engines open a Parquet file by reading a fixed amount from its end, up to 68 KiB with DuckDB, PyIceberg and Trino. Every data file has 69,632 zero bytes before its footer, so that read never reaches a row group. The padding, the footer and its length are known from Postgres, so the first read of a file needs no build, and an engine that skips all of a file's row groups by their statistics never causes a Kafka read.
 
-## Parts
+## Parts and extents
 
-A file the indexer wrote is one part. An assembled file is the parts it joined, each still a file of its own. A read of an assembled file's row groups builds only the parts those row groups belong to. A part is cached under its own path, so a part read before its bucket was assembled is still cached after.
+A file the indexer wrote is one part. An assembled file is the parts it joined, each still a file of its own. Mink builds an assembled file in extents: runs of consecutive parts up to 1 MiB, or one larger part on its own. A read of an assembled file's row groups builds only the extents those row groups fall in, each from one Kafka read.
+
+| Parts | Extents |
+| --- | --- |
+| Larger than 1 MiB, as on a busy topic | One per part, so a read builds exactly the parts it needs |
+| Smaller, as on a quiet topic | Packed together, so a read of many small parts is a few builds, not one per part |
+
+Below about 1 MiB, the fixed cost of a build, a Kafka read and its lookups, outweighs building a little more.
 
 ## Owners
 
-Each part has one owner among the nodes with the `s3` role, chosen by hashing each node's id with the part's path. The highest hash wins. A node forwards a read of a part it does not own to the owner, and relays the answer.
+Each data file has one owner among the nodes with the `s3` role, chosen by hashing each node's id with the file's path. The highest hash wins. A read that needs a build is forwarded to the owner, and the answer relayed. A read of stored bytes only, such as a footer read, is answered by whichever node receives it.
 
 | Case | Result |
 | --- | --- |
-| Owner answers | The owner serves from its cache, or builds the part once and caches it |
-| Owner unreachable within 5 seconds, or silent for 60 | The receiving node builds the part itself, without caching it |
-| A node joins or leaves | Only the parts it owns or would own move |
+| Owner answers | The owner serves from its cache, or builds the extents the read needs and caches them |
+| Owner unreachable within 5 seconds, or silent for 60 | The receiving node builds the extents itself, without caching them |
+| A node joins or leaves | Only the files it owns or would own move |
 
 ## Builds
 
-A build reads a part's committed records from Kafka and writes the Parquet with the file's schema. The bytes are the same every time, on any node.
+A build reads committed records from Kafka and writes the Parquet with the file's schema. The bytes are the same every time, on any node. It builds an extent, or a whole tail file.
 
-- A build answers with the whole part, so a read of any range of a part caches all of it.
-- Concurrent reads of one part wait for one build.
-- A node builds at most `max_builds` parts at once, by default the number of CPUs.
-- A built part whose length differs from what Postgres holds for it is never served. The endpoint answers `500` and logs it.
+- A build answers with the whole extent, so a read of any range of an extent caches all of it.
+- Concurrent reads of one extent wait for one build. The build runs as a task of its own, so it finishes and is cached even when the read that started it goes away.
+- A node runs at most `max_builds` builds at once, by default the number of CPUs.
+- A built part whose length differs from its span is never served. The endpoint answers `500` and logs it.
 
 ## Cache
 
@@ -101,5 +108,7 @@ A build reads a part's committed records from Kafka and writes the Parquet with 
 | `reused`, the default | On their second read |
 | `fetched` | All, as soon as they are fetched |
 | `evicted` | On eviction from memory |
+
+The cache holds what Postgres does not: built extents, and whole tail files. A stored file's padding and footer are never cached as data. They come from its row in Postgres, cached once per file.
 
 A file on disk survives a restart. Files are cached under their table's uuid. A table added again under the same name never reads the old table's files.

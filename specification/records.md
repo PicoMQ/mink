@@ -85,6 +85,8 @@ A create-time timestamp is `base_timestamp + timestamp_delta`. If that overflows
 
 Rows are built from records by `mink-iceberg`. The Kafka client returns records and knows nothing about the table schema.
 
+A read of an offset range asks for at most 65,536 bytes in its first fetch, and four times as many in each fetch after, up to the client's `max_bytes` of 8 MiB. A broker answers with whole batches from the fetch offset up to that size, so a small range reads little past its end, and a large one still reaches full fetches after a few round trips.
+
 ## Invariants
 
 1. A record is kept if and only if a `READ_COMMITTED` Kafka consumer returns it.
@@ -121,5 +123,6 @@ Tests:
 - `mink-kafka` `transaction::tests::fixtures_keep_exactly_the_committed_records`: invariants 1 and 3.
 - `mink-kafka` `transaction::tests::aborted_records_are_dropped_and_committed_ones_kept` and `transaction::tests::markers_never_become_records`: the committed records rule.
 - `mink-kafka` `transaction::tests::committed_records_do_not_depend_on_the_fetch_start`: invariant 2, a property over start offsets and response splits.
+- `mink-kafka` `cluster::tests::range_reads_start_with_small_fetches_and_grow`: the fetch sizes of a range read.
 - `mink-iceberg` `rows::tests::rows_follow_the_records` and `rows::tests::a_timestamp_that_overflows_microseconds_is_an_error`: the row mapping.
 - `mink-conformance` `kafka_reads_match_a_read_committed_consumer`: invariant 1 against a real consumer.

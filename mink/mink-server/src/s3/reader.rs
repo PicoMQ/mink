@@ -4,11 +4,11 @@ use std::ops::Range;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use axum::http::{HeaderValue, Method, StatusCode};
+use axum::http::{HeaderValue, Method};
 use bytes::Bytes;
 use futures::stream::{self, BoxStream};
 use futures::{StreamExt, TryStreamExt};
-use mink_core::{BuiltFile, File, TableLocation};
+use mink_core::{BuiltFile, File};
 use mink_iceberg::Slice;
 use mink_metrics::{Forward, Metrics};
 use nestor::{ReadRange, ReadStream};
@@ -51,6 +51,20 @@ pub(super) struct Ranged {
 
 pub(super) type ByteStream = BoxStream<'static, io::Result<Bytes>>;
 
+#[derive(Clone)]
+struct Served {
+    key: Arc<Key>,
+    table: Uuid,
+    built: Arc<BuiltFile>,
+    source: Source,
+}
+
+#[derive(Clone, Copy)]
+enum Source {
+    Cache,
+    Build,
+}
+
 enum Route<'a> {
     Here,
     Forwarded(reqwest::Response),
@@ -89,10 +103,67 @@ impl Reader {
         range: ReadRange,
     ) -> Result<Found, Error> {
         let table = self.table(key).await?;
-        if let Some(built) = self.built(key, table, request).await? {
-            return self.sliced(&built, table, range).await;
+        let Some(built) = self.built(key, table).await? else {
+            return self.whole(key, table, request, range).await;
+        };
+
+        let size = built.indexed().stats().bytes();
+        let range = range
+            .resolve(size)
+            .map_err(|_| Error::Unsatisfiable(size))?;
+        let slices = mink_iceberg::slices(&built, range.clone())?;
+
+        if let Some(stored) = stored(&slices) {
+            return Ok(Found::Stream(Ranged {
+                range,
+                size,
+                body: stream::iter(stored.into_iter().map(Ok)).boxed(),
+            }));
         }
 
+        let source = match self.route(key, Method::GET, request).await {
+            Route::Here => Source::Cache,
+            Route::Forwarded(answer) => return Ok(Found::Forwarded(answer)),
+            Route::Unreachable(_) => Source::Build,
+        };
+        let served = Served {
+            key: Arc::new(key.clone()),
+            table,
+            built: Arc::new(built),
+            source,
+        };
+        self.served(served, range, slices).await
+    }
+
+    pub(super) async fn head(&self, key: &Key, request: &Request<'_>) -> Result<Found, Error> {
+        let table = self.table(key).await?;
+        if let Some(built) = self.built(key, table).await? {
+            return Ok(Found::Length(built.indexed().stats().bytes()));
+        }
+
+        match self.route(key, Method::HEAD, request).await {
+            Route::Here => Ok(Found::Length(self.cache.length(key, table).await?)),
+            Route::Forwarded(answer) => Ok(Found::Forwarded(answer)),
+            Route::Unreachable(file) => {
+                Ok(Found::Length(self.cache.build(file).await?.len() as u64))
+            }
+        }
+    }
+
+    async fn built(&self, key: &Key, table: Uuid) -> Result<Option<BuiltFile>, Error> {
+        match self.cache.built(key, table).await {
+            Err(error) if error.store_unavailable() => Ok(None),
+            built => built,
+        }
+    }
+
+    async fn whole(
+        &self,
+        key: &Key,
+        table: Uuid,
+        request: &Request<'_>,
+        range: ReadRange,
+    ) -> Result<Found, Error> {
         match self.route(key, Method::GET, request).await {
             Route::Here => {
                 let range = self.sized(key, table, range).await?;
@@ -106,50 +177,14 @@ impl Reader {
         }
     }
 
-    pub(super) async fn head(&self, key: &Key, request: &Request<'_>) -> Result<Found, Error> {
-        let table = self.table(key).await?;
-        if let Some(built) = self.built(key, table, request).await? {
-            return Ok(Found::Length(built.indexed().stats().bytes()));
-        }
-
-        match self.route(key, Method::HEAD, request).await {
-            Route::Here => Ok(Found::Length(self.cache.length(key, table).await?)),
-            Route::Forwarded(answer) => Ok(Found::Forwarded(answer)),
-            Route::Unreachable(file) => {
-                Ok(Found::Length(self.cache.build(file).await?.len() as u64))
-            }
-        }
-    }
-
-    async fn built(
-        &self,
-        key: &Key,
-        table: Uuid,
-        request: &Request<'_>,
-    ) -> Result<Option<BuiltFile>, Error> {
-        if request.forwarded {
-            return Ok(None);
-        }
-
-        match self.cache.built(key, table).await {
-            Err(error) if error.store_unavailable() => Ok(None),
-            built => built,
-        }
-    }
-
-    async fn sliced(
+    async fn served(
         self: &Arc<Self>,
-        built: &BuiltFile,
-        table: Uuid,
-        range: ReadRange,
+        served: Served,
+        range: Range<u64>,
+        slices: Vec<Slice>,
     ) -> Result<Found, Error> {
-        let size = built.indexed().stats().bytes();
-        let range = range
-            .resolve(size)
-            .map_err(|_| Error::Unsatisfiable(size))?;
-
-        let slices = mink_iceberg::slices(built, range.clone())?;
-        let built = slices
+        let size = served.built.indexed().stats().bytes();
+        let first = slices
             .iter()
             .position(|slice| matches!(slice, Slice::Built { .. }));
         let mut slices = slices.into_iter();
@@ -157,17 +192,16 @@ impl Reader {
         let mut opened = Vec::new();
         for slice in slices
             .by_ref()
-            .take(built.map_or(usize::MAX, |index| index + 1))
+            .take(first.map_or(usize::MAX, |index| index + 1))
         {
-            opened.push(self.piece(slice, table).await?);
+            opened.push(self.piece(&served, slice).await?);
         }
-        let first = stream::iter(opened).flatten();
 
         let reader = self.clone();
         let rest = stream::iter(slices)
             .map(move |slice| {
-                let reader = reader.clone();
-                async move { reader.piece(slice, table).await.map_err(io::Error::other) }
+                let (reader, served) = (reader.clone(), served.clone());
+                async move { reader.piece(&served, slice).await.map_err(io::Error::other) }
             })
             .buffered(LOOKAHEAD)
             .try_flatten();
@@ -175,55 +209,28 @@ impl Reader {
         Ok(Found::Stream(Ranged {
             range,
             size,
-            body: first.chain(rest).boxed(),
+            body: stream::iter(opened).flatten().chain(rest).boxed(),
         }))
     }
 
-    async fn piece(&self, slice: Slice, table: Uuid) -> Result<ByteStream, Error> {
+    async fn piece(&self, served: &Served, slice: Slice) -> Result<ByteStream, Error> {
         match slice {
             Slice::Bytes(bytes) => Ok(stream::once(async { Ok(bytes) }).boxed()),
-            Slice::Built { file, range } => self.part(&file, range, table).await,
-        }
-    }
+            Slice::Built { extent, range } => match served.source {
+                Source::Cache => {
+                    let read = self
+                        .cache
+                        .read_extent(&served.key, served.table, &extent, range);
 
-    async fn part(&self, file: &File, range: Range<u64>, table: Uuid) -> Result<ByteStream, Error> {
-        let key = self.key(&TableLocation::data_file(
-            self.services.warehouse.root(),
-            file,
-        ))?;
-        let path = key.uri();
-        let header = HeaderValue::from_str(&format!("bytes={}-{}", range.start, range.end - 1))
-            .expect("a byte range is a header value");
-        let request = Request {
-            path: &path,
-            range: Some(&header),
-            forwarded: false,
-        };
-
-        match self.route(&key, Method::GET, &request).await {
-            Route::Here => {
-                let read = self.cache.read(&key, table, ReadRange::Bounded(range));
-
-                Ok(ranged(read.await?).body)
-            }
-            Route::Forwarded(answer) if answer.status() == StatusCode::NOT_FOUND => {
-                Err(Error::NoSuchKey(key.path().to_owned()))
-            }
-            Route::Forwarded(answer) => {
-                let answer = answer.error_for_status().map_err(Error::Forward)?;
-
-                Ok(answer.bytes_stream().map_err(io::Error::other).boxed())
-            }
-            Route::Unreachable(file) => {
-                let bytes = self.cache.build(file).await?;
-                let size = bytes.len() as u64;
-                if range.end > size {
-                    return Err(Error::Unsatisfiable(size));
+                    Ok(ranged(read.await?).body)
                 }
+                Source::Build => {
+                    let bytes = self.cache.build_extent(&served.built, extent).await?;
+                    let piece = bytes.slice(range.start as usize..range.end as usize);
 
-                let part = bytes.slice(range.start as usize..range.end as usize);
-                Ok(stream::once(async { Ok(part) }).boxed())
-            }
+                    Ok(stream::once(async { Ok(piece) }).boxed())
+                }
+            },
         }
     }
 
@@ -314,4 +321,14 @@ fn ranged(stream: ReadStream) -> Ranged {
         size,
         body: stream.map_err(io::Error::other).boxed(),
     }
+}
+
+fn stored(slices: &[Slice]) -> Option<Vec<Bytes>> {
+    slices
+        .iter()
+        .map(|slice| match slice {
+            Slice::Bytes(bytes) => Some(bytes.clone()),
+            Slice::Built { .. } => None,
+        })
+        .collect()
 }

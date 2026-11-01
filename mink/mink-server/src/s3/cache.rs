@@ -1,3 +1,4 @@
+use std::ops::Range;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -13,7 +14,7 @@ use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 use super::key::{Key, Object};
-use super::origin::{BuiltOrigin, FileOrigin};
+use super::origin::{BuiltOrigin, FileOrigin, extent_name};
 use crate::Error;
 use crate::services::Services;
 
@@ -104,9 +105,40 @@ impl Cache {
     ) -> Result<ReadStream, Error> {
         let (namespace, object) = self.object(key, table)?;
 
+        self.stream(key, namespace, &object, range).await
+    }
+
+    pub(crate) async fn read_extent(
+        &self,
+        key: &Key,
+        table: Uuid,
+        extent: &Range<u64>,
+        range: Range<u64>,
+    ) -> Result<ReadStream, Error> {
+        let object = object_name(table, &extent_name(key.path(), extent));
+
+        self.stream(key, self.files, &object, ReadRange::Bounded(range))
+            .await
+    }
+
+    pub(crate) async fn build_extent(
+        &self,
+        built: &BuiltFile,
+        extent: Range<u64>,
+    ) -> Result<Bytes, Error> {
+        self.origin.extent(built, extent).await
+    }
+
+    async fn stream(
+        &self,
+        key: &Key,
+        namespace: NamespaceId,
+        object: &str,
+        range: ReadRange,
+    ) -> Result<ReadStream, Error> {
         let mut stream = self
             .nestor
-            .get(namespace, &object, range)
+            .get(namespace, object, range)
             .await
             .map_err(|error| cache_error(key, error))?;
 
@@ -138,7 +170,7 @@ impl Cache {
         let Some(file) = key.file() else {
             return Ok(None);
         };
-        let object = format!("{table}/{}", key.path());
+        let object = object_name(table, key.path());
 
         let read = async {
             let stream = self
@@ -178,7 +210,7 @@ impl Cache {
 
     fn object(&self, key: &Key, table: Uuid) -> Result<(NamespaceId, String), Error> {
         match key.object() {
-            Object::Data(_) => Ok((self.files, format!("{table}/{}", key.path()))),
+            Object::Data(_) => Ok((self.files, object_name(table, key.path()))),
             Object::Metadata { .. } => {
                 let object = self.services.warehouse.key(key.path())?;
 
@@ -186,6 +218,10 @@ impl Cache {
             }
         }
     }
+}
+
+fn object_name(table: Uuid, name: &str) -> String {
+    format!("{table}/{name}")
 }
 
 impl Drop for Cache {
