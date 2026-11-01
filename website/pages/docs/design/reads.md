@@ -94,6 +94,20 @@ A build reads committed records from Kafka and writes the Parquet with the file'
 - A node runs at most `max_builds` builds at once, by default the number of CPUs.
 - A built part whose length differs from its span is never served. The endpoint answers `500` and logs it.
 
+PyIceberg reads each row group with a request of its own, through PyArrow's pool of 8 IO threads. On a cold cache, the requests of one file wait on one build and can hold all 8 threads, so builds run one at a time. A larger pool lets them overlap:
+
+```python
+import pyarrow
+
+pyarrow.set_io_thread_count(64)
+```
+
+| Cold scan of `lineitem`, 3.0 M rows in 168 files, 2 nodes | Time |
+| --- | --- |
+| PyIceberg 0.12 with PyArrow 26, 8 IO threads, the default | 47.4 s |
+| PyIceberg 0.12 with PyArrow 26, 64 IO threads | 23.8 s |
+| DuckDB 2.0 | 23.5 s |
+
 ## Cache
 
 | Tier | Setting |
