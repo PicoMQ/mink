@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::StreamExt;
-use mink_core::{File, TableLocation};
+use mink_core::{BuiltFile, File, TableLocation};
 use nestor::{GetOptions, GetResponse, ObjectMeta, Origin, OriginError};
 use tokio::sync::Semaphore;
 
@@ -16,6 +16,10 @@ pub(super) struct FileOrigin {
     services: Arc<Services>,
     runs: SharedRuns<File, Bytes>,
     permits: Semaphore,
+}
+
+pub(super) struct BuiltOrigin {
+    services: Arc<Services>,
 }
 
 impl FileOrigin {
@@ -46,43 +50,75 @@ impl FileOrigin {
     pub(super) fn building(&self) -> usize {
         self.services.config.max_builds - self.permits.available_permits()
     }
+}
 
-    fn file(&self, object: &str) -> Result<File, OriginError> {
-        let (_, path) = object.split_once('/').ok_or(OriginError::NotFound)?;
+impl BuiltOrigin {
+    pub(super) fn new(services: Arc<Services>) -> BuiltOrigin {
+        BuiltOrigin { services }
+    }
 
-        TableLocation::parse_data_file(self.services.warehouse.root(), path)
-            .ok_or(OriginError::NotFound)
+    async fn encoded(&self, object: &str) -> Result<Bytes, OriginError> {
+        let file = file(&self.services, object)?;
+        let built = stored(&self.services, &file).await?;
+
+        Ok(mink_store::built_bytes(&built))
     }
 }
 
 #[async_trait]
 impl Origin for FileOrigin {
     async fn get(&self, object: &str, _: GetOptions) -> Result<GetResponse, OriginError> {
-        let file = self.file(object)?;
+        let file = file(&self.services, object)?;
 
-        let bytes = self.build(&file).await.map_err(origin_error)?;
-
-        let size = bytes.len() as u64;
-        Ok(GetResponse {
-            meta: ObjectMeta::new(size, None),
-            range: 0..size,
-            body: futures::stream::once(std::future::ready(Ok(bytes))).boxed(),
-        })
+        Ok(response(self.build(&file).await.map_err(origin_error)?))
     }
 
     async fn head(&self, object: &str) -> Result<ObjectMeta, OriginError> {
-        let file = self.file(object)?;
+        let file = file(&self.services, object)?;
+        let built = stored(&self.services, &file).await?;
 
-        let stored = self
-            .services
-            .store
-            .files()
-            .stats(&file)
-            .await
-            .map_err(|error| origin_error(error.into()))?;
+        Ok(ObjectMeta::new(built.indexed().stats().bytes(), None))
+    }
+}
 
-        let stats = stored.ok_or(OriginError::NotFound)?;
-        Ok(ObjectMeta::new(stats.bytes(), None))
+#[async_trait]
+impl Origin for BuiltOrigin {
+    async fn get(&self, object: &str, _: GetOptions) -> Result<GetResponse, OriginError> {
+        Ok(response(self.encoded(object).await?))
+    }
+
+    async fn head(&self, object: &str) -> Result<ObjectMeta, OriginError> {
+        Ok(ObjectMeta::new(
+            self.encoded(object).await?.len() as u64,
+            None,
+        ))
+    }
+}
+
+fn file(services: &Services, object: &str) -> Result<File, OriginError> {
+    let (_, path) = object.split_once('/').ok_or(OriginError::NotFound)?;
+
+    TableLocation::parse_data_file(services.warehouse.root(), path).ok_or(OriginError::NotFound)
+}
+
+async fn stored(services: &Services, file: &File) -> Result<BuiltFile, OriginError> {
+    let built = services
+        .store
+        .files()
+        .built(file)
+        .await
+        .map_err(|error| origin_error(error.into()))?;
+
+    built.ok_or(OriginError::NotFound)
+}
+
+fn response(bytes: Bytes) -> GetResponse {
+    let size = bytes.len() as u64;
+
+    GetResponse {
+        meta: ObjectMeta::new(size, None),
+        range: 0..size,
+        body: futures::stream::once(std::future::ready(Ok(bytes))).boxed(),
     }
 }
 

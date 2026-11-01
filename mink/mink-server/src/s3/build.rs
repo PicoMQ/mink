@@ -29,10 +29,10 @@ async fn contents(services: &Services, file: &File) -> Result<Bytes, Error> {
     let store = &services.store;
     let topic = file.partition().topic();
 
-    let parts = match file.assembly() {
-        Some(_) => Some(store.files().parts(file).await?.ok_or_else(not_found)?),
-        None => None,
-    };
+    if file.assembly().is_some() {
+        return Err(not_found());
+    }
+    let stored = store.files().built(file).await?;
 
     let schema = services
         .schemas
@@ -49,14 +49,15 @@ async fn contents(services: &Services, file: &File) -> Result<Bytes, Error> {
 
     let specs = store.time_specs().list(topic).await?;
 
-    let built = mink_iceberg::file_contents(file, parts.as_deref(), &records, &specs, &schema)?;
-    let bytes = built.ok_or_else(not_found)?;
+    let contents = mink_iceberg::file_contents(file, &records, &specs, &schema)?;
+    let bytes = contents.ok_or_else(not_found)?;
+    let length = stored.map(|stored| stored.indexed().stats().bytes());
 
-    match store.files().stats(file).await? {
-        Some(stored) if stored.bytes() != bytes.len() as u64 => Err(Error::BuiltLengthMismatch {
+    match length {
+        Some(length) if length != bytes.len() as u64 => Err(Error::BuiltLengthMismatch {
             path,
             built: bytes.len() as u64,
-            stored: stored.bytes(),
+            stored: length,
         }),
         _ => Ok(bytes),
     }

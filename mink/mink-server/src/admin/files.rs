@@ -134,11 +134,16 @@ async fn file(
     let mut detail = item(&stored);
     detail["path"] = json!(TableLocation::data_file(root, &parsed));
     detail["replacedSnapshotId"] = json!(stored.replaced_snapshot_id());
-    detail["partsRanges"] = stored
-        .parts()
-        .unwrap_or_default()
+    detail["spans"] = stored
+        .spans()
         .iter()
-        .map(|range| json!({ "startOffset": range.start(), "endOffset": range.end() }))
+        .map(|span| {
+            json!({
+                "startOffset": span.range().start(),
+                "endOffset": span.range().end(),
+                "bodyLength": span.body_length(),
+            })
+        })
         .collect();
     detail["columns"] = Value::Array(columns);
     Ok(Json(detail))
@@ -171,7 +176,7 @@ fn item(stored: &StoredFile) -> Value {
         "specId": file.time().spec_id(),
         "schemaId": file.schema_id(),
         "version": file.version().number(),
-        "parts": stored.parts().map_or(0, <[_]>::len),
+        "parts": stored.spans().len(),
         "records": stats.records(),
         "bytes": stats.bytes(),
         "firstTimestampAtMs": stats.first_timestamp_ms(),

@@ -12,8 +12,8 @@ pub(crate) use http::router;
 mod tests {
     use bytes::Bytes;
     use mink_core::{
-        DaySketches, File, IndexedFile, Member, Partition, Stats, TableLocation, TimePartition,
-        Topic,
+        BuiltFile, DaySketches, File, IndexedFile, Member, Partition, Span, Stats, TableLocation,
+        TimePartition, Topic,
     };
     use reqwest::StatusCode;
     use uuid::Uuid;
@@ -164,25 +164,39 @@ mod tests {
             .start(&lease, 0)
             .await
             .unwrap();
+        let built = BuiltFile::new(
+            IndexedFile::new(file.clone(), Stats::new(3, 69_654, 0)),
+            Bytes::new(),
+            vec![Span::new(file.range(), 10)],
+        )
+        .unwrap();
         node.services
             .store
             .files()
-            .add(
-                &lease,
-                &mink_conformance::built(&[IndexedFile::new(file.clone(), Stats::new(3, 1, 0))]),
-                &DaySketches::default(),
-            )
+            .add(&lease, &[built], &DaySketches::default())
+            .await
+            .unwrap();
+        let path = url(
+            &node,
+            &TableLocation::data_file("s3://mink/warehouse", &file),
+        );
+        let client = reqwest::Client::new();
+
+        let stored = client
+            .get(&path)
+            .header("range", "bytes=-65536")
+            .send()
+            .await
+            .unwrap();
+        let rows = client
+            .get(&path)
+            .header("range", "bytes=4-13")
+            .send()
             .await
             .unwrap();
 
-        let response = reqwest::get(url(
-            &node,
-            &TableLocation::data_file("s3://mink/warehouse", &file),
-        ))
-        .await
-        .unwrap();
-
-        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(stored.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(rows.status(), StatusCode::INTERNAL_SERVER_ERROR);
         node.shutdown().await.unwrap();
     }
 

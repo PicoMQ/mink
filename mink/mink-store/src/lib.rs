@@ -17,7 +17,7 @@ use mink_core::{File, Partition, Scope};
 use sqlx::PgPool;
 use sqlx::migrate::MigrateError;
 
-pub use files::{Files, StoredFile};
+pub use files::{Files, StoredFile, built_bytes, parse_built};
 pub use leases::{Lease, LeaseHolder, Leases};
 pub use members::Members;
 pub use objects::Objects;
@@ -97,8 +97,8 @@ pub enum Error {
     },
     #[error("{0:?} cannot take part in this assembly")]
     MixedAssembly(File),
-    #[error("{0:?} has no stored footer")]
-    MissingFooter(File),
+    #[error("{0:?} is not stored")]
+    MissingFile(File),
     #[error("a schema of {topic} merged over table schema {based_on} cannot be schema {id}")]
     UnexpectedSchemaId {
         topic: String,

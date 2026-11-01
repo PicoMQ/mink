@@ -52,13 +52,10 @@ impl Writer {
         let replaced: Vec<File> = run.iter().map(|indexed| indexed.file().clone()).collect();
         let first = &replaced[0];
 
-        let footers = store.files().footers(&replaced).await?;
-        let mut parts = Vec::new();
+        let mut built = Vec::with_capacity(replaced.len());
         for file in &replaced {
-            match store.files().parts(file).await? {
-                Some(stored) => parts.extend(stored),
-                None => parts.push(file.range()),
-            }
+            let stored = store.files().built(file).await?;
+            built.push(stored.ok_or_else(|| mink_store::Error::MissingFile(file.clone()))?);
         }
 
         let topic = first.partition().topic();
@@ -68,7 +65,7 @@ impl Writer {
             .table_schema(topic, first.schema_id())
             .await?;
 
-        Ok(mink_iceberg::assemble(run, &footers, parts, &schema)?)
+        Ok(mink_iceberg::assemble(&built, &schema)?)
     }
 }
 
@@ -89,7 +86,7 @@ fn sized_runs(files: &[IndexedFile], limit: u64) -> Vec<&[IndexedFile]> {
     let mut bytes = 0;
 
     for (index, indexed) in files.iter().enumerate() {
-        let size = indexed.stats().bytes();
+        let size = mink_iceberg::unpadded(indexed.stats().bytes());
         if index > start && bytes + size > limit {
             runs.push(&files[start..index]);
             start = index;
@@ -108,7 +105,7 @@ fn sized_runs(files: &[IndexedFile], limit: u64) -> Vec<&[IndexedFile]> {
 mod tests {
     use std::time::Duration;
 
-    use mink_core::{Granularity, Stats};
+    use mink_core::{Granularity, Span, Stats};
 
     use super::*;
     use crate::Config;
@@ -145,12 +142,19 @@ mod tests {
         let merged = live(writer.commit().await.unwrap().unwrap()).await;
 
         assert_eq!(assembled.len(), 1);
-        assert!(assembled[0].assembles(&mink_conformance::ranges(&[(0, 10), (10, 20)])));
-        assert_eq!(merged.len(), 1);
-        assert!(merged[0].assembles(&mink_conformance::ranges(&[(0, 10), (10, 20), (20, 30)])));
+        let ranges = |file: File| async move {
+            let built = store.files().built(&file).await.unwrap().unwrap();
+
+            built.spans().iter().map(Span::range).collect::<Vec<_>>()
+        };
         assert_eq!(
-            store.files().parts(&merged[0]).await.unwrap(),
-            Some(mink_conformance::ranges(&[(0, 10), (10, 20), (20, 30)]))
+            ranges(assembled[0].clone()).await,
+            mink_conformance::ranges(&[(0, 10), (10, 20)])
+        );
+        assert_eq!(merged.len(), 1);
+        assert_eq!(
+            ranges(merged[0].clone()).await,
+            mink_conformance::ranges(&[(0, 10), (10, 20), (20, 30)])
         );
     }
 
@@ -160,7 +164,7 @@ mod tests {
             .map(|index| {
                 let file = mink_conformance::file("orders", 0, index * 10, index * 10 + 10);
 
-                IndexedFile::new(file.file().clone(), Stats::new(10, 5, 0))
+                IndexedFile::new(file.file().clone(), Stats::new(10, 69_637, 0))
             })
             .collect();
 

@@ -4,7 +4,7 @@
       "file": "s3://warehouse/conformance/data/p=0/0-20.t0.s0.v1.parquet",
       "name": "codec_none",
       "stats": {
-        "bytes": 1727,
+        "bytes": 71359,
         "first_timestamp_ms": 1793142250508,
         "lower": {
           "1": "00000000",
@@ -33,7 +33,7 @@
       "file": "s3://warehouse/conformance/data/p=0/0-10.t0.s0.v1.parquet",
       "name": "truncated_last_batch",
       "stats": {
-        "bytes": 1556,
+        "bytes": 71188,
         "first_timestamp_ms": 1793142250508,
         "lower": {
           "1": "00000000",
@@ -62,7 +62,7 @@
       "file": "s3://warehouse/conformance/data/p=0/0-20.t0.s0.v1.parquet",
       "name": "codec_gzip",
       "stats": {
-        "bytes": 1727,
+        "bytes": 71359,
         "first_timestamp_ms": 1793142254045,
         "lower": {
           "1": "00000000",
@@ -91,7 +91,7 @@
       "file": "s3://warehouse/conformance/data/p=0/0-20.t0.s0.v1.parquet",
       "name": "codec_snappy",
       "stats": {
-        "bytes": 1738,
+        "bytes": 71370,
         "first_timestamp_ms": 1793142257531,
         "lower": {
           "1": "00000000",
@@ -120,7 +120,7 @@
       "file": "s3://warehouse/conformance/data/p=0/0-20.t0.s0.v1.parquet",
       "name": "codec_lz4",
       "stats": {
-        "bytes": 1727,
+        "bytes": 71359,
         "first_timestamp_ms": 1793142261040,
         "lower": {
           "1": "00000000",
@@ -149,7 +149,7 @@
       "file": "s3://warehouse/conformance/data/p=0/0-20.t0.s0.v1.parquet",
       "name": "codec_zstd",
       "stats": {
-        "bytes": 1727,
+        "bytes": 71359,
         "first_timestamp_ms": 1793142264551,
         "lower": {
           "1": "00000000",
@@ -178,7 +178,7 @@
       "file": "s3://warehouse/conformance/data/p=0/0-20.t0.s0.v1.parquet",
       "name": "log_append_time",
       "stats": {
-        "bytes": 1727,
+        "bytes": 71359,
         "first_timestamp_ms": 1793142268106,
         "lower": {
           "1": "00000000",
@@ -207,7 +207,7 @@
       "file": "s3://warehouse/conformance/data/p=0/3-20.t0.s0.v1.parquet",
       "name": "fetch_inside_a_batch",
       "stats": {
-        "bytes": 1700,
+        "bytes": 71332,
         "first_timestamp_ms": 1793142271602,
         "lower": {
           "1": "00000000",
@@ -236,7 +236,7 @@
       "file": "s3://warehouse/conformance/data/p=0/0-4.t0.s0.v1.parquet",
       "name": "headers_and_nulls",
       "stats": {
-        "bytes": 1477,
+        "bytes": 71109,
         "first_timestamp_ms": 1793142275131,
         "lower": {
           "1": "00000000",
@@ -265,7 +265,7 @@
       "file": "s3://warehouse/conformance/data/p=0/0-5.t0.s0.v1.parquet",
       "name": "committed_transaction",
       "stats": {
-        "bytes": 1493,
+        "bytes": 71125,
         "first_timestamp_ms": 1793142278626,
         "lower": {
           "1": "00000000",
@@ -294,7 +294,7 @@
       "file": "s3://warehouse/conformance/data/p=0/6-9.t0.s0.v1.parquet",
       "name": "aborted_transaction",
       "stats": {
-        "bytes": 1460,
+        "bytes": 71092,
         "first_timestamp_ms": 1793142282223,
         "lower": {
           "1": "00000000",
@@ -323,7 +323,7 @@
       "file": "s3://warehouse/conformance/data/p=0/0-10.t0.s0.v1.parquet",
       "name": "interleaved_producers",
       "stats": {
-        "bytes": 1521,
+        "bytes": 71153,
         "first_timestamp_ms": 1793142286202,
         "lower": {
           "1": "00000000",

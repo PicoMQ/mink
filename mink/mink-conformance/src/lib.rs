@@ -10,7 +10,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 use bytes::Bytes;
-use mink_core::{BuiltFile, File, IndexedFile, OffsetRange, Partition, Stats, TimePartition};
+use mink_core::{BuiltFile, File, IndexedFile, OffsetRange, Partition, Span, Stats, TimePartition};
 
 pub use data::{DataFixture, bless_data, data_fixtures};
 pub use kafka::{
@@ -45,7 +45,11 @@ pub fn service(variable: &str) -> Option<String> {
 pub fn built(files: &[IndexedFile]) -> Vec<BuiltFile> {
     files
         .iter()
-        .map(|indexed| BuiltFile::new(indexed.clone(), Bytes::new()))
+        .map(|indexed| {
+            let span = Span::new(indexed.file().range(), 0);
+
+            BuiltFile::new(indexed.clone(), Bytes::new(), vec![span]).unwrap()
+        })
         .collect()
 }
 

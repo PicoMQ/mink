@@ -29,6 +29,10 @@ impl Key {
         &self.path
     }
 
+    pub(crate) fn uri(&self) -> String {
+        format!("/{}", self.path.trim_start_matches("s3://"))
+    }
+
     pub(crate) fn object(&self) -> &Object {
         &self.object
     }

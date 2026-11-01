@@ -26,7 +26,7 @@ pub fn generate(bless: bool) -> anyhow::Result<()> {
     let entries: Vec<_> = fixtures
         .iter()
         .zip(&written)
-        .map(|(fixture, (bytes, stats))| (fixture, bytes, stats))
+        .map(|(fixture, (bytes, built))| (fixture, bytes, built.indexed().stats()))
         .collect();
     mink_conformance::bless_data(&entries)?;
     println!("wrote {} files to conformance/fixtures/data", entries.len());
