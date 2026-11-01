@@ -92,10 +92,10 @@ impl Cluster {
         let mut records = Vec::new();
         let mut offset = offsets.start_offset();
         let mut stall = Backoff::new(self.config.retry_deadline());
-        let mut max_bytes = FIRST_FETCH_BYTES.min(self.config.max_bytes());
+        let mut fetch_bytes = FIRST_FETCH_BYTES.min(self.config.max_bytes());
 
         while offset < end {
-            let data = self.fetch(partition, offset, max_bytes).await?;
+            let data = self.fetch(partition, offset, fetch_bytes).await?;
             let aborted = data.aborted_transactions.unwrap_or_default();
             let batches = Batch::parse(data.records.unwrap_or_default())?;
 
@@ -109,7 +109,7 @@ impl Cluster {
             };
 
             stall = Backoff::new(self.config.retry_deadline());
-            max_bytes = max_bytes.saturating_mul(4).min(self.config.max_bytes());
+            fetch_bytes = fetch_bytes.saturating_mul(4).min(self.config.max_bytes());
             let kept = committed(batches, &aborted, offset);
             records.extend(kept.into_iter().take_while(|record| record.offset() < end));
             offset = next;
@@ -122,12 +122,12 @@ impl Cluster {
         &mut self,
         partition: &Partition,
         offset: i64,
-        max_bytes: i32,
+        fetch_bytes: i32,
     ) -> Result<PartitionData, Error> {
         let max_wait_ms = self.config.max_wait_ms();
 
         self.on_leader(partition, move |connection, partition| {
-            Box::pin(connection.fetch(partition, offset, max_wait_ms, max_bytes))
+            Box::pin(connection.fetch(partition, offset, max_wait_ms, fetch_bytes))
         })
         .await
     }

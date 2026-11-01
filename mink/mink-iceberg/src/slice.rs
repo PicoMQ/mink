@@ -22,10 +22,10 @@ pub enum Slice {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Extent {
     range: Range<u64>,
-    bodies: Vec<(Span, u64)>,
+    spans: Vec<(Span, u64)>,
 }
 
-struct Cuts {
+struct Slicer {
     range: Range<u64>,
     position: u64,
     slices: Vec<Slice>,
@@ -54,24 +54,24 @@ impl Extent {
     }
 
     pub fn parts(&self, file: &File) -> Result<Vec<File>, Error> {
-        self.bodies
+        self.spans
             .iter()
             .map(|(span, _)| Ok(file.part(span.range())?))
             .collect()
     }
 
-    pub fn bytes(&self, file: &File, parts: &[Bytes]) -> Result<Bytes, Error> {
-        if parts.len() != self.bodies.len() {
+    pub fn bytes(&self, file: &File, part_bytes: &[Bytes]) -> Result<Bytes, Error> {
+        if part_bytes.len() != self.spans.len() {
             return Err(Error::Framing(format!(
                 "an extent of {} parts was given {}",
-                self.bodies.len(),
-                parts.len()
+                self.spans.len(),
+                part_bytes.len()
             )));
         }
         let bodies = self
-            .bodies
+            .spans
             .iter()
-            .zip(parts)
+            .zip(part_bytes)
             .map(|((span, start), part)| Ok((*start, body(file, span, part)?)))
             .collect::<Result<Vec<_>, Error>>()?;
         if let [(_, body)] = bodies.as_slice() {
@@ -88,13 +88,13 @@ impl Extent {
     }
 }
 
-impl Cuts {
+impl Slicer {
     fn take(
         &mut self,
         length: u64,
         whole: impl FnOnce() -> Result<Slice, Error>,
     ) -> Result<(), Error> {
-        if let Some(within) = self.within(length) {
+        if let Some(within) = self.overlap(length) {
             self.slices.push(whole()?.cut(within));
         }
         self.position += length;
@@ -102,7 +102,7 @@ impl Cuts {
     }
 
     fn zeros(&mut self, length: u64) {
-        if let Some(within) = self.within(length) {
+        if let Some(within) = self.overlap(length) {
             let mut left = (within.end - within.start) as usize;
             while left > 0 {
                 let chunk = left.min(ZEROS.len());
@@ -114,7 +114,7 @@ impl Cuts {
         self.position += length;
     }
 
-    fn within(&self, length: u64) -> Option<Range<u64>> {
+    fn overlap(&self, length: u64) -> Option<Range<u64>> {
         let end = self.position + length;
         let (start, stop) = (self.range.start.max(self.position), self.range.end.min(end));
 
@@ -125,10 +125,10 @@ impl Cuts {
 fn body(file: &File, span: &Span, part: &Bytes) -> Result<Bytes, Error> {
     let length = body_length(part.len() as u64, footer(part)?.len())?;
     if length != span.body_length() {
-        return Err(Error::PartLength {
+        return Err(Error::BuiltLengthMismatch {
             file: file.part(span.range())?,
             built: length,
-            span: span.body_length(),
+            stored: span.body_length(),
         });
     }
 
@@ -157,11 +157,11 @@ fn packed(built: &BuiltFile, limit: u64) -> Vec<Extent> {
         match extents.last_mut() {
             Some(extent) if end - extent.range.start <= limit => {
                 extent.range.end = end;
-                extent.bodies.push((*span, start));
+                extent.spans.push((*span, start));
             }
             _ => extents.push(Extent {
                 range: start..end,
-                bodies: vec![(*span, start)],
+                spans: vec![(*span, start)],
             }),
         }
     }
@@ -172,19 +172,19 @@ fn packed(built: &BuiltFile, limit: u64) -> Vec<Extent> {
 fn sliced(built: &BuiltFile, range: Range<u64>, extents: &[Extent]) -> Result<Vec<Slice>, Error> {
     let footer = built.footer();
 
-    let mut cuts = Cuts {
+    let mut slicer = Slicer {
         range,
         position: 0,
         slices: Vec::new(),
     };
-    cuts.take(MAGIC.len() as u64, || {
+    slicer.take(MAGIC.len() as u64, || {
         Ok(Slice::Bytes(Bytes::from_static(MAGIC)))
     })?;
     for extent in extents {
-        let gap = extent.range.start - cuts.position;
+        let gap = extent.range.start - slicer.position;
         let length = extent.range.end - extent.range.start;
-        cuts.zeros(gap);
-        cuts.take(length, || {
+        slicer.zeros(gap);
+        slicer.take(length, || {
             Ok(Slice::Extent {
                 extent: extent.range(),
                 within: 0..length,
@@ -197,13 +197,13 @@ fn sliced(built: &BuiltFile, range: Range<u64>, extents: &[Extent]) -> Result<Ve
         .indexed()
         .stats()
         .bytes()
-        .checked_sub(cuts.position + (footer.len() + TRAILER) as u64)
+        .checked_sub(slicer.position + (footer.len() + TRAILER) as u64)
         .ok_or_else(|| Error::Framing("a file is shorter than its framing".to_owned()))?;
-    cuts.zeros(padding);
-    cuts.take(footer.len() as u64, || Ok(Slice::Bytes(footer.clone())))?;
-    cuts.take(TRAILER as u64, || Ok(Slice::Bytes(Bytes::from(trailer))))?;
+    slicer.zeros(padding);
+    slicer.take(footer.len() as u64, || Ok(Slice::Bytes(footer.clone())))?;
+    slicer.take(TRAILER as u64, || Ok(Slice::Bytes(Bytes::from(trailer))))?;
 
-    Ok(cuts.slices)
+    Ok(slicer.slices)
 }
 
 #[cfg(test)]
@@ -243,13 +243,13 @@ mod tests {
         let swapped = extent.bytes(file.indexed().file(), &[large.0.clone(), small.0.clone()]);
         let short = extent.bytes(file.indexed().file(), std::slice::from_ref(&small.0));
 
-        assert!(matches!(swapped, Err(Error::PartLength { .. })));
+        assert!(matches!(swapped, Err(Error::BuiltLengthMismatch { .. })));
         assert!(matches!(short, Err(Error::Framing(_))));
     }
 
     proptest::proptest! {
         #[test]
-        fn slices_join_to_the_built_bytes(lengths in vec(1i64..300, 1..6), limit in 1u64..40_000, cuts in (any::<u64>(), any::<u64>())) {
+        fn slices_join_to_the_built_bytes(lengths in vec(1i64..300, 1..6), limit in 1u64..40_000, bounds in (any::<u64>(), any::<u64>())) {
             let mut start = 0;
             let mut files = Vec::new();
             for length in lengths {
@@ -275,7 +275,7 @@ mod tests {
             let identity = file.indexed().file();
             let extents = packed(&file, limit);
             let length = bytes.len() as u64;
-            let (a, b) = (cuts.0 % (length + 1), cuts.1 % (length + 1));
+            let (a, b) = (bounds.0 % (length + 1), bounds.1 % (length + 1));
             let range = a.min(b)..a.max(b);
 
             let extent_bytes = |range: &Range<u64>| -> Bytes {
@@ -292,13 +292,13 @@ mod tests {
                 })
                 .collect();
             let footer_read = slices(&file, length - 65_536..length).unwrap();
-            let held: Vec<Span> = extents.iter().flat_map(|extent| extent.bodies.iter().map(|(span, _)| *span)).collect();
+            let held: Vec<Span> = extents.iter().flat_map(|extent| extent.spans.iter().map(|(span, _)| *span)).collect();
 
             proptest::prop_assert_eq!(joined, bytes[range.start as usize..range.end as usize].to_vec());
             proptest::prop_assert!(footer_read.iter().all(|slice| matches!(slice, Slice::Bytes(_))));
             proptest::prop_assert_eq!(held, file.spans().to_vec());
             proptest::prop_assert!(extents.windows(2).all(|pair| pair[0].range.end <= pair[1].range.start));
-            proptest::prop_assert!(extents.iter().all(|extent| extent.range.end - extent.range.start <= limit || extent.bodies.len() == 1));
+            proptest::prop_assert!(extents.iter().all(|extent| extent.range.end - extent.range.start <= limit || extent.spans.len() == 1));
             proptest::prop_assert!(self::extents(&file).iter().all(|found| self::extent(&file, found.range()).as_ref() == Some(found)));
         }
     }

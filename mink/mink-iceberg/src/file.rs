@@ -51,7 +51,7 @@ pub fn build_file(
     let (records, rows, bytes, body_length) = parquet_file(file, records, granularity, schema)?;
 
     let stats_builder = collected(schema.schema(), &rows, bytes.len(), &records, None)?;
-    let built = described(file, &bytes, body_length, stats_builder.stats)?;
+    let built = built_file(file, &bytes, body_length, stats_builder.stats)?;
     Ok((bytes, built))
 }
 
@@ -83,12 +83,12 @@ pub(crate) fn index_file(
         .map(|sketch_builder| sketch_builder.sketches)
         .unwrap_or_default();
     Ok((
-        described(file, &bytes, body_length, stats_builder.stats)?,
+        built_file(file, &bytes, body_length, stats_builder.stats)?,
         sketches,
     ))
 }
 
-fn described(
+fn built_file(
     file: &File,
     bytes: &[u8],
     body_length: u64,

@@ -9,8 +9,9 @@ pub(crate) const TRAILER: usize = 8;
 pub(crate) const ALIGNMENT: u64 = 4_096;
 const LONGEST_FIXED_READ: u64 = 65_536;
 const DUCKDB_SHARE: u64 = 1_024;
+const PADDING_SHARE: u64 = DUCKDB_SHARE / 2;
 
-pub(crate) fn bodies(built: &BuiltFile) -> Range<u64> {
+pub(crate) fn body_range(built: &BuiltFile) -> Range<u64> {
     let starts = body_starts(built);
     let last = starts.len() - 1;
 
@@ -19,12 +20,12 @@ pub(crate) fn bodies(built: &BuiltFile) -> Range<u64> {
 
 pub(crate) fn body_starts(built: &BuiltFile) -> Vec<u64> {
     match built.indexed().file().assembly() {
-        Some(_) => aligned(built.spans().iter().map(Span::body_length)),
+        Some(_) => aligned_starts(built.spans().iter().map(Span::body_length)),
         None => vec![MAGIC.len() as u64],
     }
 }
 
-pub(crate) fn aligned(lengths: impl IntoIterator<Item = u64>) -> Vec<u64> {
+pub(crate) fn aligned_starts(lengths: impl IntoIterator<Item = u64>) -> Vec<u64> {
     let mut next = ALIGNMENT;
 
     lengths
@@ -39,7 +40,7 @@ pub(crate) fn aligned(lengths: impl IntoIterator<Item = u64>) -> Vec<u64> {
 
 pub(crate) fn padding(unpadded_length: u64) -> u64 {
     unpadded_length
-        .div_ceil(DUCKDB_SHARE / 2)
+        .div_ceil(PADDING_SHARE)
         .next_power_of_two()
         .max(LONGEST_FIXED_READ)
         + ALIGNMENT

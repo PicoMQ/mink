@@ -69,7 +69,7 @@ Readers open a file by reading from its end before they know the footer's length
 | --- | --- |
 | PyIceberg 0.12, through Arrow | The last 65,536 bytes |
 | Trino 484 | The last 49,152 bytes. Files of up to 4.5 MB were read whole, and of 10.6 MB not. |
-| DuckDB 2.0 | The last `max(16,384, 2^⌈log₂(L / 1,024)⌉)` bytes, its start rounded down to a multiple of 4,096. A 0.6 MB file was read whole, and a 2.7 MB file not. |
+| DuckDB 2.0 | The last `max(16,384, 2^⌈log₂(L / 1,024)⌉)` bytes, its start rounded down to a multiple of 4,096. Files of about 1 MB were read whole, and of 2.7 MB not. |
 
 The padding of a file whose bytes without it number `U` is `max(65,536, 2^⌈log₂(U / 512)⌉) + 4,096` bytes. When the padding is shorter than `U`, `U / 512 ≥ L / 1,024`; when it is not, `L` is under 140 KiB and DuckDB reads 16,384 bytes. Either way every read above starts inside the padding. Nothing it reads comes from records, so it is served without a build (Slices). Files up to 32 MiB get 69,632 bytes, a 1 GiB file about 2 MiB, never more than 0.4% of a large file.
 

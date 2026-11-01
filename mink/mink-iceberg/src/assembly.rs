@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
+use std::ops::Range;
 
 use bytes::Bytes;
 #[cfg(test)]
@@ -13,7 +14,7 @@ use parquet::file::metadata::{
 use crate::Error;
 #[cfg(test)]
 use crate::framing::{MAGIC, body_length, footer, padding};
-use crate::framing::{TRAILER, aligned, bodies, file_length};
+use crate::framing::{TRAILER, aligned_starts, body_range, file_length};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct MergedFooter {
@@ -21,10 +22,9 @@ struct MergedFooter {
     length: u64,
 }
 
-struct Replaced<'a> {
+struct Bodies<'a> {
     footer: &'a [u8],
-    start: u64,
-    length: u64,
+    range: Range<u64>,
 }
 
 impl MergedFooter {
@@ -37,19 +37,17 @@ impl MergedFooter {
     }
 }
 
-impl<'a> Replaced<'a> {
-    fn new(footer: &'a [u8], start: u64, length: u64) -> Replaced<'a> {
-        Replaced {
-            footer,
-            start,
-            length,
-        }
+impl<'a> Bodies<'a> {
+    fn new(footer: &'a [u8], range: Range<u64>) -> Bodies<'a> {
+        Bodies { footer, range }
     }
 
-    fn of(built: &'a BuiltFile) -> Replaced<'a> {
-        let bodies = bodies(built);
+    fn of(built: &'a BuiltFile) -> Bodies<'a> {
+        Bodies::new(built.footer(), body_range(built))
+    }
 
-        Replaced::new(built.footer(), bodies.start, bodies.end - bodies.start)
+    fn length(&self) -> u64 {
+        self.range.end - self.range.start
     }
 }
 
@@ -62,8 +60,8 @@ pub fn assemble(run: &[BuiltFile], schema: &Schema) -> Result<Assembly, Error> {
         .first()
         .ok_or_else(|| Error::Assembly("an assembly needs files".to_owned()))?;
 
-    let sized: Vec<Replaced> = run.iter().map(Replaced::of).collect();
-    let merged = merged_footer(&sized)?;
+    let bodies: Vec<Bodies> = run.iter().map(Bodies::of).collect();
+    let merged = merged_footer(&bodies)?;
 
     let spans: Vec<Span> = run.iter().flat_map(BuiltFile::spans).copied().collect();
     let ranges: Vec<OffsetRange> = spans.iter().map(Span::range).collect();
@@ -87,15 +85,16 @@ pub fn assemble(run: &[BuiltFile], schema: &Schema) -> Result<Assembly, Error> {
     Ok(Assembly::new(built, replaced)?)
 }
 
-fn merged_footer(files: &[Replaced]) -> Result<MergedFooter, Error> {
+fn merged_footer(bodies: &[Bodies]) -> Result<MergedFooter, Error> {
     let mut row_groups = Vec::new();
     let mut first: Option<ParquetMetaData> = None;
-    let starts = aligned(files.iter().map(|file| file.length));
+    let starts = aligned_starts(bodies.iter().map(Bodies::length));
     let too_long = || Error::Assembly("an assembly is too long".to_owned());
+    let empty = || Error::Assembly("an assembly needs files".to_owned());
 
-    for (file, start) in files.iter().zip(&starts) {
-        let metadata = ParquetMetaDataReader::decode_metadata(file.footer)?;
-        let shift = i64::try_from(start - file.start).map_err(|_| too_long())?;
+    for (replaced, start) in bodies.iter().zip(&starts) {
+        let metadata = ParquetMetaDataReader::decode_metadata(replaced.footer)?;
+        let shift = i64::try_from(start - replaced.range.start).map_err(|_| too_long())?;
 
         for row_group in metadata.row_groups() {
             row_groups.push(shifted(row_group, shift, row_groups.len())?);
@@ -104,19 +103,15 @@ fn merged_footer(files: &[Replaced]) -> Result<MergedFooter, Error> {
         first.get_or_insert(metadata);
     }
 
-    let first = first.ok_or_else(|| Error::Assembly("an assembly needs parts".to_owned()))?;
+    let first = first.ok_or_else(empty)?;
     let merged = merged(&first, row_groups);
 
     let mut written = Vec::new();
     ParquetMetaDataWriter::new(&mut written, &merged).finish()?;
     written.truncate(written.len() - TRAILER);
 
-    let (last, start) = files
-        .iter()
-        .zip(&starts)
-        .next_back()
-        .ok_or_else(|| Error::Assembly("an assembly needs parts".to_owned()))?;
-    let length = file_length(start + last.length, written.len());
+    let (last, start) = bodies.iter().zip(&starts).next_back().ok_or_else(empty)?;
+    let length = file_length(start + last.length(), written.len());
 
     Ok(MergedFooter {
         footer: Bytes::from(written),
@@ -179,29 +174,27 @@ fn merged_stats(schema: &Schema, replaced: &[&Stats], length: u64) -> Result<Sta
 
 #[cfg(test)]
 pub(crate) fn assembled_bytes(parts: &[Bytes]) -> Result<Bytes, Error> {
-    let sized = parts
+    let bodies = parts
         .iter()
         .map(|part| {
             let footer = footer(part)?;
+            let start = MAGIC.len() as u64;
+            let length = body_length(part.len() as u64, footer.len())?;
 
-            Ok(Replaced::new(
-                footer,
-                MAGIC.len() as u64,
-                body_length(part.len() as u64, footer.len())?,
-            ))
+            Ok(Bodies::new(footer, start..start + length))
         })
         .collect::<Result<Vec<_>, Error>>()?;
-    let assembled = merged_footer(&sized)?;
-    let starts = aligned(sized.iter().map(|sized| sized.length));
+    let assembled = merged_footer(&bodies)?;
+    let starts = aligned_starts(bodies.iter().map(Bodies::length));
 
     let mut bytes = BytesMut::with_capacity(assembled.length as usize);
     bytes.extend_from_slice(MAGIC);
 
-    for ((part, sized), start) in parts.iter().zip(&sized).zip(starts) {
-        let body = sized.length as usize;
+    for ((part, body), start) in parts.iter().zip(&bodies).zip(starts) {
+        let range = body.range.start as usize..body.range.end as usize;
 
         bytes.resize(start as usize, 0);
-        bytes.extend_from_slice(&part[MAGIC.len()..MAGIC.len() + body]);
+        bytes.extend_from_slice(&part[range]);
     }
 
     let unpadded_length = (bytes.len() + assembled.footer.len() + TRAILER) as u64;
@@ -343,7 +336,7 @@ mod tests {
             let bytes = assembled_bytes(&parts.iter().map(|(bytes, _)| bytes.clone()).collect::<Vec<_>>()).unwrap();
             let whole = File::assembled(Partition::new("orders", 0).unwrap(), TimePartition::new(0, Some(5)), 0, FileVersion::V1, &ranges).unwrap();
             let starts = body_starts(assembly.built());
-            let end = bodies(assembly.built()).end;
+            let end = body_range(assembly.built()).end;
             let (_, direct) = built(&hourly(whole.start_offset(), whole.end_offset(), 5), &records);
             let stats = assembly.built().indexed().stats();
 

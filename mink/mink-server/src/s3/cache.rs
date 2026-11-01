@@ -123,10 +123,11 @@ impl Cache {
 
     pub(crate) async fn build_extent(
         &self,
+        table: Uuid,
         built: &BuiltFile,
         extent: Range<u64>,
     ) -> Result<Bytes, Error> {
-        self.origin.extent(built, extent).await
+        self.origin.extent(table, built, extent).await
     }
 
     async fn stream(
@@ -187,8 +188,8 @@ impl Cache {
         }
     }
 
-    pub(crate) async fn build(&self, file: &File) -> Result<Bytes, Error> {
-        self.origin.build(file).await
+    pub(crate) async fn build(&self, table: Uuid, file: &File) -> Result<Bytes, Error> {
+        self.origin.build(table, file).await
     }
 
     pub(crate) fn usage(&self) -> Usage {

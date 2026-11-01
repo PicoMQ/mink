@@ -9,7 +9,7 @@ use crate::Error;
 use crate::services::Services;
 
 pub(super) async fn build(services: &Services, file: &File) -> Result<Bytes, Error> {
-    measured(services, whole(services, file)).await
+    measured(services, file_bytes(services, file)).await
 }
 
 pub(super) async fn extent(
@@ -17,7 +17,7 @@ pub(super) async fn extent(
     built: &BuiltFile,
     range: Range<u64>,
 ) -> Result<Bytes, Error> {
-    measured(services, joined(services, built, range)).await
+    measured(services, extent_bytes(services, built, range)).await
 }
 
 async fn measured(
@@ -39,11 +39,11 @@ async fn measured(
     built
 }
 
-async fn whole(services: &Services, file: &File) -> Result<Bytes, Error> {
+async fn file_bytes(services: &Services, file: &File) -> Result<Bytes, Error> {
+    let stored = services.store.files().built(file).await?;
     if file.assembly().is_some() {
         return Err(not_found(services, file));
     }
-    let stored = services.store.files().built(file).await?;
 
     let bytes = from_kafka(services, std::slice::from_ref(file))
         .await?
@@ -60,20 +60,26 @@ async fn whole(services: &Services, file: &File) -> Result<Bytes, Error> {
     }
 }
 
-async fn joined(services: &Services, built: &BuiltFile, range: Range<u64>) -> Result<Bytes, Error> {
+async fn extent_bytes(
+    services: &Services,
+    built: &BuiltFile,
+    range: Range<u64>,
+) -> Result<Bytes, Error> {
     let file = built.indexed().file();
     let extent = mink_iceberg::extent(built, range).ok_or_else(|| not_found(services, file))?;
-    let parts = from_kafka(services, &extent.parts(file)?).await?;
+    let part_bytes = from_kafka(services, &extent.parts(file)?).await?;
 
-    match extent.bytes(file, &parts) {
+    match extent.bytes(file, &part_bytes) {
         Ok(bytes) => Ok(bytes),
-        Err(mink_iceberg::Error::PartLength { file, built, span }) => {
-            Err(Error::BuiltLengthMismatch {
-                path: path(services, &file),
-                built,
-                stored: span,
-            })
-        }
+        Err(mink_iceberg::Error::BuiltLengthMismatch {
+            file,
+            built,
+            stored,
+        }) => Err(Error::BuiltLengthMismatch {
+            path: path(services, &file),
+            built,
+            stored,
+        }),
         Err(error) => Err(error.into()),
     }
 }

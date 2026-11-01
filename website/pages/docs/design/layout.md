@@ -93,7 +93,7 @@ After assembly, a filter on a typed column reads the assembled file. The file ke
 | `WHERE amount > 990`, amounts scattered | 3 of 3 | 27 parts |
 | `WHERE _kafka_partition = 1` | 1 of 3 | 12 parts |
 
-Engines read a small file in one request: DuckDB 2.0 a file of 1.5 MB, Trino 484 one of 4.5 MB. A request for a whole assembled file builds all its parts. Each assembled file above is about 7.7 MB, and DuckDB read it by row group.
+Engines read a small file in one request. DuckDB 2.0 read files of about 1 MB whole but not one of 2.7 MB, and Trino 484 files of up to 4.5 MB but not one of 10.6 MB. A request for a whole assembled file builds all its parts. Each assembled file above is about 7.7 MB, and DuckDB read it by row group.
 
 ## Manifests
 

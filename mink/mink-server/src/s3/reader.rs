@@ -52,17 +52,9 @@ pub(super) struct Ranged {
 pub(super) type ByteStream = BoxStream<'static, io::Result<Bytes>>;
 
 #[derive(Clone)]
-struct Served {
-    key: Arc<Key>,
-    table: Uuid,
-    built: Arc<BuiltFile>,
-    source: Source,
-}
-
-#[derive(Clone, Copy)]
 enum Source {
-    Cache,
-    Build,
+    Cache { key: Arc<Key>, table: Uuid },
+    Build { table: Uuid, built: Arc<BuiltFile> },
 }
 
 enum Route<'a> {
@@ -113,26 +105,28 @@ impl Reader {
             .map_err(|_| Error::Unsatisfiable(size))?;
         let slices = mink_iceberg::slices(&built, range.clone())?;
 
-        if let Some(in_hand) = in_hand(&slices) {
+        if let Some(bytes) = bytes_only(&slices) {
             return Ok(Found::Stream(Ranged {
                 range,
                 size,
-                body: stream::iter(in_hand.into_iter().map(Ok)).boxed(),
+                body: stream::iter(bytes.into_iter().map(Ok)).boxed(),
             }));
         }
 
         let source = match self.route(key, Method::GET, request).await {
-            Route::Here => Source::Cache,
+            Route::Here => Source::Cache {
+                key: Arc::new(key.clone()),
+                table,
+            },
             Route::Forwarded(answer) => return Ok(Found::Forwarded(answer)),
-            Route::Unreachable(_) => Source::Build,
+            Route::Unreachable(_) => Source::Build {
+                table,
+                built: Arc::new(built),
+            },
         };
-        let served = Served {
-            key: Arc::new(key.clone()),
-            table,
-            built: Arc::new(built),
-            source,
-        };
-        self.served(served, range, slices).await
+        let body = self.body(source, slices).await?;
+
+        Ok(Found::Stream(Ranged { range, size, body }))
     }
 
     pub(super) async fn head(&self, key: &Key, request: &Request<'_>) -> Result<Found, Error> {
@@ -144,9 +138,9 @@ impl Reader {
         match self.route(key, Method::HEAD, request).await {
             Route::Here => Ok(Found::Length(self.cache.length(key, table).await?)),
             Route::Forwarded(answer) => Ok(Found::Forwarded(answer)),
-            Route::Unreachable(file) => {
-                Ok(Found::Length(self.cache.build(file).await?.len() as u64))
-            }
+            Route::Unreachable(file) => Ok(Found::Length(
+                self.cache.build(table, file).await?.len() as u64,
+            )),
         }
     }
 
@@ -173,17 +167,15 @@ impl Reader {
                 )))
             }
             Route::Forwarded(answer) => Ok(Found::Forwarded(answer)),
-            Route::Unreachable(file) => Ok(Found::Bytes(self.cache.build(file).await?)),
+            Route::Unreachable(file) => Ok(Found::Bytes(self.cache.build(table, file).await?)),
         }
     }
 
-    async fn served(
+    async fn body(
         self: &Arc<Self>,
-        served: Served,
-        range: Range<u64>,
+        source: Source,
         slices: Vec<Slice>,
-    ) -> Result<Found, Error> {
-        let size = served.built.indexed().stats().bytes();
+    ) -> Result<ByteStream, Error> {
         let first = slices
             .iter()
             .position(|slice| matches!(slice, Slice::Extent { .. }));
@@ -194,43 +186,35 @@ impl Reader {
             .by_ref()
             .take(first.map_or(usize::MAX, |index| index + 1))
         {
-            opened.push(self.piece(&served, slice).await?);
+            opened.push(self.open(&source, slice).await?);
         }
 
         let reader = self.clone();
         let rest = stream::iter(slices)
             .map(move |slice| {
-                let (reader, served) = (reader.clone(), served.clone());
-                async move { reader.piece(&served, slice).await.map_err(io::Error::other) }
+                let (reader, source) = (reader.clone(), source.clone());
+                async move { reader.open(&source, slice).await.map_err(io::Error::other) }
             })
             .buffered(LOOKAHEAD)
             .try_flatten();
 
-        Ok(Found::Stream(Ranged {
-            range,
-            size,
-            body: stream::iter(opened).flatten().chain(rest).boxed(),
-        }))
+        Ok(stream::iter(opened).flatten().chain(rest).boxed())
     }
 
-    async fn piece(&self, served: &Served, slice: Slice) -> Result<ByteStream, Error> {
-        match slice {
-            Slice::Bytes(bytes) => Ok(stream::once(async { Ok(bytes) }).boxed()),
-            Slice::Extent { extent, within } => match served.source {
-                Source::Cache => {
-                    let read = self
-                        .cache
-                        .read_extent(&served.key, served.table, &extent, within);
+    async fn open(&self, source: &Source, slice: Slice) -> Result<ByteStream, Error> {
+        match (slice, source) {
+            (Slice::Bytes(bytes), _) => Ok(stream::once(async { Ok(bytes) }).boxed()),
+            (Slice::Extent { extent, within }, Source::Cache { key, table }) => {
+                let read = self.cache.read_extent(key, *table, &extent, within);
 
-                    Ok(ranged(read.await?).body)
-                }
-                Source::Build => {
-                    let bytes = self.cache.build_extent(&served.built, extent).await?;
-                    let piece = bytes.slice(within.start as usize..within.end as usize);
+                Ok(ranged(read.await?).body)
+            }
+            (Slice::Extent { extent, within }, Source::Build { table, built }) => {
+                let extent = self.cache.build_extent(*table, built, extent).await?;
+                let bytes = extent.slice(within.start as usize..within.end as usize);
 
-                    Ok(stream::once(async { Ok(piece) }).boxed())
-                }
-            },
+                Ok(stream::once(async { Ok(bytes) }).boxed())
+            }
         }
     }
 
@@ -323,7 +307,7 @@ fn ranged(stream: ReadStream) -> Ranged {
     }
 }
 
-fn in_hand(slices: &[Slice]) -> Option<Vec<Bytes>> {
+fn bytes_only(slices: &[Slice]) -> Option<Vec<Bytes>> {
     slices
         .iter()
         .map(|slice| match slice {

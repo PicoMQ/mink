@@ -70,8 +70,8 @@ pub enum Error {
     Assembly(String),
     #[error("framing a file: {0}")]
     Framing(String),
-    #[error("{file:?} built a body of {built} bytes, not the {span} of its span")]
-    PartLength { file: File, built: u64, span: u64 },
+    #[error("{file:?} built a body of {built} bytes where its span holds {stored}")]
+    BuiltLengthMismatch { file: File, built: u64, stored: u64 },
     #[error("{file:?} names its schema, not schema {schema_id}")]
     FileSchema { file: File, schema_id: i32 },
 }
