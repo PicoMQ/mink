@@ -23,7 +23,7 @@ A table's file count decides how much metadata engines read and how well filters
 | `assembly_delay` | How long after a bucket ends its files are assembled. A file that arrives later for that bucket is assembled on a later commit. |
 | `assembled_bytes` | The largest assembled file |
 
-A read of any range of a data file builds the whole file from Kafka on a cache miss. A larger `assembled_bytes` gives fewer files, and a cache miss on one of them reads more of Kafka.
+A cache miss builds only the extents a read overlaps, see [Reads](/docs/design/reads#parts-and-extents).
 
 ## Cache
 
@@ -35,7 +35,7 @@ A cache miss on a data file reads its offset range from Kafka again. The cache d
 | `cache_dir` | Turns on the disk tier, which keeps cached files across restarts |
 | `cache_disk_bytes` | The disk tier's size |
 | `cache_admission` | `reused` keeps one-off scans off the disk. `fetched` writes every block. `evicted` writes only what leaves memory. |
-| `max_builds` | Builds at once. Each holds a whole file in memory. |
+| `max_builds` | Builds at once. Each holds one extent, or a whole tail file, in memory. |
 
 Adding `s3` nodes adds cache, see [Reads](/docs/design/reads). The hit ratio is in the `nestor_*` [metrics](/docs/operations/metrics#cache).
 

@@ -85,7 +85,7 @@ A create-time timestamp is `base_timestamp + timestamp_delta`. If that overflows
 
 Rows are built from records by `mink-iceberg`. The Kafka client returns records and knows nothing about the table schema.
 
-A read of an offset range asks for at most 65,536 bytes in its first fetch, and four times as many in each fetch after, up to the client's `max_bytes` of 8 MiB. A broker answers with whole batches from the fetch offset up to that size, so a small range reads little past its end, and a large one still reaches full fetches after a few round trips.
+A read of an offset range asks for at most 65,536 bytes in its first fetch, and four times as many in each fetch after, up to the client's `max_bytes` of 8 MiB.
 
 ## Invariants
 

@@ -102,7 +102,7 @@ Durations are a number and a unit: `ms`, `s`, `m` or `h`. Sizes are bytes. Every
 | `cache_dir` | none | Directory of the disk tier. Without it, the cache has no disk tier. |
 | `cache_disk_bytes` | `53687091200` | Size of the disk tier |
 | `cache_admission` | `reused` | Which blocks go to disk: `reused`, `fetched` or `evicted`. See [Reads](/docs/design/reads#cache). |
-| `max_builds` | the number of CPUs | Data files the node builds at once |
+| `max_builds` | the number of CPUs | Builds the node runs at once |
 
 ## Console
 

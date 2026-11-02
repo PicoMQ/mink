@@ -54,7 +54,7 @@ A file's bytes are a Parquet file. They are a function of the file's identity, t
 | Row groups | At most 131,072 rows each |
 | Statistics | Parquet column chunk statistics |
 | Page index | None: no column index and no offset index |
-| Padding | Zero bytes between the last row group and the footer, so a file's bytes are `PAR1`, its row groups, the padding, its footer, the footer's length as a 4-byte little-endian integer, and `PAR1`. Its length is set by the readers below. |
+| Padding | Zero bytes between the last row group and the footer, so a file's bytes are `PAR1`, its row groups, the padding, its footer, the footer's length as a 4-byte little-endian integer, and `PAR1`. Its length follows the padding rule below. |
 | Dictionary encoding | On |
 | Writer version | Parquet 1.0 |
 | `created_by` | `mink file version 1` |
@@ -69,35 +69,42 @@ Readers open a file by reading from its end before they know the footer's length
 | --- | --- |
 | PyIceberg 0.12, through Arrow | The last 65,536 bytes |
 | Trino 484 | The last 49,152 bytes. Files of up to 4.5 MB were read whole, and of 10.6 MB not. |
-| DuckDB 2.0 | The last `max(16,384, 2^⌈log₂(L / 1,024)⌉)` bytes, its start rounded down to a multiple of 4,096. Files of about 1 MB were read whole, and of 2.7 MB not. |
+| DuckDB 2.0 | The last `max(16,384, 2^⌈log₂(L / 1,024)⌉)` bytes, its start rounded down to a multiple of 4,096. Later reads are rounded out to multiples of 4,096. Files of about 1 MB were read whole, and of 2.7 MB not. |
 
-The padding of a file whose bytes without it number `U` is `max(65,536, 2^⌈log₂(U / 512)⌉) + 4,096` bytes. When the padding is shorter than `U`, `U / 512 ≥ L / 1,024`; when it is not, `L` is under 140 KiB and DuckDB reads 16,384 bytes. Either way every read above starts inside the padding. Nothing it reads comes from records, so it is served without a build (Slices). Files up to 32 MiB get 69,632 bytes, a 1 GiB file about 2 MiB, never more than 0.4% of a large file.
+The padding of a file whose bytes without it number `U` is `p(U) = max(65,536, 2^⌈log₂(U / 512)⌉) + 4,096` bytes. Every first read above starts inside it:
 
-The padding of a file of `L` bytes is `p(L − p(L))`, where `p` is the rule above, for every length (Conformance). DuckDB rounds every later read to multiples of 4,096 too, which is why an assembled file starts each part on one (Assembled bytes).
+- When `p(U) < U`, `U / 512 ≥ L / 1,024`, so DuckDB's read is shorter than the padding.
+- Otherwise `L` is under 140 KiB, and DuckDB reads 16,384 bytes.
+
+Files up to 32 MiB get 69,632 bytes, a 1 GiB file 2 MiB and 4 KiB, never more than 0.4% of a large file. The padding of a file of `L` bytes is `p(L − p(L))` for every length (Conformance).
 
 ### Assembled bytes
 
 An assembled file's bytes are `PAR1`, then each part's body in part order, then the padding, the merged footer, its length as a 4-byte little-endian integer, and `PAR1`. Each part is built as the file of its range, bucket, spec, schema and version, from the same records. A part's body is its bytes from offset 4 up to its padding: its row groups.
 
-The first body starts at byte 4,096, and each later body at the first multiple of 4,096 at or after the end of the one before. The bytes in between are zeros. A read rounded out to multiples of 4,096 then stays inside the bodies it was meant for, and an assembled file assembled again moves by a multiple of 4,096, so its parts stay where the rule puts them.
+The first body starts at byte 4,096, and each later body at the first multiple of 4,096 at or after the end of the one before. The bytes in between are zeros. A read rounded out to multiples of 4,096 stays inside the bodies it overlaps. An assembled file assembled again moves by a multiple of 4,096, and its bodies stay aligned.
 
 The merged footer is the parts' Parquet `FileMetaData` with their row groups in part order; each row group's `file_offset` and every column chunk's `data_page_offset` and `dictionary_page_offset` moved by where the part's row groups now start (a column chunk's own `file_offset` is always 0); each row group's `ordinal` its position in the file; and `num_rows` the sum of the parts'. Its schema and `created_by` are the parts', which all parts share. The footer is serialized as the `parquet` crate serializes any footer, so its length follows from the parts' stored footers alone.
 
 ### Slices
 
-Every byte of a stored file is known without a build except its parts' bodies. Postgres stores for every file the indexer or an assembly writes its length (`Stats.bytes`), its footer and its spans. A tail's files are not stored (`metadata.md` Tail), so they have no slices and are built whole. A span is one part's offset range and the length of its body. A file the indexer wrote is its own single part, and its body length is its length less `PAR1`, the padding, the footer, and the footer's length and `PAR1`.
+A span is one part's offset range and the length of its body. A file the indexer wrote is its own single part, and its body length is its length less `PAR1`, the padding, the footer, and the footer's length and `PAR1`. Postgres stores every committed file's length (`Stats.bytes`), footer and spans. Every byte of a stored file is known from them except its parts' bodies. A tail's files are not stored (`metadata.md` Tail). They have no slices and are built whole.
 
 | Bytes | Length | Comes from |
 | --- | --- | --- |
 | `PAR1` | 4 | A constant |
-| Each part's body, in part order, at its start (Assembled bytes), with zeros before it | The span's body length | The part, its bytes from offset 4 |
+| Each part's body, in part order | The span's body length | The part, its bytes from offset 4 |
+| Zeros before each body | Up to the body's start: byte 4 in a file the indexer wrote, as Assembled bytes says in an assembled one | Zeros |
 | The padding | `p(U)`, Version 1 | Zeros |
 | The footer | The stored footer's length | The stored footer |
 | The footer's length and `PAR1` | 8 | The stored footer's length |
 
-A file the indexer wrote has its one body at byte 4. A part is the file of its range with the assembled file's partition, spec, bucket, schema and version, and no assembly.
+Bodies are built in extents. An extent is a run of consecutive parts:
 
-Bodies are built in extents. An extent is a run of consecutive parts. Taking the parts in order, a part joins the extent before it if the extent then still spans at most 1 MiB, from its first body's start to the part's body end, and otherwise starts a new extent. So a part longer than 1 MiB is an extent of its own. An extent's bytes are the file's bytes from its first body's start to its last body's end, the zeros between bodies included, and they follow from the spans alone. A file the indexer wrote is one extent, its body.
+- Taking the parts in order, a part joins the extent before it if the extent then still spans at most 1 MiB, from its first body's start to the part's body end. Otherwise it starts a new extent.
+- A part whose body is longer than 1 MiB is an extent of its own.
+- An extent's bytes are the file's bytes from its first body's start to its last body's end, the zeros between bodies included.
+- A file the indexer wrote is one extent, its body.
 
 A range's slices are its overlaps with the rows above, with the bodies grouped into extents, in order. A slice of an extent is built: `[a, b)` of the file is `[a − start, b − start)` of the extent, where `start` is its first byte in the file. Every other slice needs no records.
 
@@ -140,12 +147,12 @@ Stats have one JSON form, used by the store and the fixtures: an object with `re
 
 ## Conformance
 
+- `mink-iceberg` `framing::tests::padding_covers_every_first_read_and_comes_back_off`: the padding rule, over file lengths up to 1 TiB: every first read in the readers table starts inside the padding, and `p(L − p(L))` gives the padding back.
 - `mink-core` `file::tests::built_files_name_their_parts_by_their_spans`: a file the indexer wrote has its own range as its one span, and an assembled file's spans match its assembly hash.
 - `mink-iceberg` `slice::tests::slices_join_to_the_built_bytes`: invariants 6 and 8, over generated runs of parts and generated ranges, for files the indexer wrote and assembled ones.
 - `mink-iceberg` `slice::tests::a_part_built_to_another_length_is_refused`: the span check of an extent's parts.
-- `mink-server` `s3::tests::stored_files_answer_footer_reads_anywhere_and_build_on_their_owner`: the S3 rules for a stored file across nodes: a footer read answered where it arrives, a row read forwarded to the file's owner, and with the owner unreachable, a build where the read arrived that is not cached.
-- `mink-iceberg` `framing::tests::padding_covers_every_first_read_and_comes_back_off`: the padding rule, over file lengths up to 1 TiB: every first read in the readers table starts inside the padding, and `p(L − p(L))` gives the padding back.
 - `mink-store` `files::tests::built_files_survive_their_encoding`: a built file encoded for the cache decodes to the same built file.
+- `mink-server` `s3::tests::stored_files_answer_footer_reads_anywhere_and_build_on_their_owner`: the S3 rules for a stored file across nodes: a footer read answered where it arrives, a row read forwarded to the file's owner, and with the owner unreachable, a build where the read arrived that is not cached.
 - `mink-conformance` `a_footer_read_needs_no_build`: invariant 7 end to end. A file's records are deleted from Kafka. A 65,536-byte suffix read of it still answers with the padding and the footer, and a read of its row groups fails.
 - `mink-conformance` `assembled_files_build_only_the_parts_a_query_reads`: an assembled file's first part is deleted from Kafka, and DuckDB, PyIceberg and Trino each count the rows of its other parts. The file is large enough that no engine reads it whole.
 - `mink-iceberg` `file::tests::typed_files_carry_bounds_for_their_primitive_columns`: Stats for a typed schema: string bounds truncated to 16 characters, NaN counts, and nulls of optional and raw columns.

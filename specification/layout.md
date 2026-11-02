@@ -25,7 +25,7 @@ A range becomes one file per bucket among its committed records: the file of buc
 
 A bucket of a partition has ended once its end is at least `assembly_delay` before now (`TimeSpecs::bucket_ended`). Files with no bucket, under `none`, are never assembled. The writer assembles the files of each ended bucket: for every partition, spec, bucket and schema, it groups the live files in offset order into runs whose summed lengths, each less its padding (`file.md` Version 1), stay within `assembled_bytes`, and replaces each run of two or more files with one assembled file. A run may hold an assembled file: records that reach a bucket after it was assembled land in new small files, and the next assembly adds them to it.
 
-An assembled file is a file (`file.md` Identity) whose parts are the ranges of the indexer's files it holds, in offset order: the files it replaces, with an assembled one among them standing for its own parts. Its bytes are those files' row groups, byte for byte, under one footer (`file.md` Assembled bytes). The writer reads the replaced files' footers, parts and table schema from Postgres, and `mink_iceberg::assemble` computes the file's length, stats and footer from them, without reading Kafka:
+An assembled file is a file (`file.md` Identity) whose parts are the ranges of the indexer's files it holds, in offset order: the files it replaces, with an assembled one among them standing for its own parts. Its bytes are those files' row groups, byte for byte, under one footer (`file.md` Assembled bytes). The writer reads the replaced files' footers, spans and table schema from Postgres, and `mink_iceberg::assemble` computes the file's spans, length, stats and footer from them, without reading Kafka:
 
 | Field | Value |
 | --- | --- |
@@ -35,8 +35,6 @@ An assembled file is a file (`file.md` Identity) whose parts are the ranges of t
 | `lower`, `upper` | The smallest lower and the largest upper bound of each field over the replaced files |
 | `nulls`, `nans` | The sums of the replaced files' counts |
 | Footer | The replaced files' footers merged (`file.md` Assembled bytes), stored like any file's footer |
-
-The spans are stored with the assembled file, so a read of one part's rows builds only the extent that part is in (`file.md` Slices).
 
 The writer adds the assembled files and replaces their parts in the commit that drops the parts from the table. A replaced file stays buildable for as long as a kept snapshot lists it (`metadata.md` Snapshots), and its row is removed with the last such snapshot.
 
@@ -71,7 +69,7 @@ A table with `n` buckets in Kafka's retention therefore lists at most one manife
 ## Invariants
 
 1. Every row of a file with a bucket has that bucket, so the file's partition value holds for all of it.
-2. Assembly never reads Kafka; an assembled file's length, stats, footer and spans follow from the stored rows of the files it replaces.
+2. Assembly never reads Kafka. An assembled file's length, stats, footer and spans follow from the stored rows of the files it replaces.
 3. An assembled file's rows are its parts' rows, in part order, and its bytes rebuild to exactly the length the writer computed.
 4. A query over one bucket opens only that bucket's manifests and reads only that bucket's files.
 
