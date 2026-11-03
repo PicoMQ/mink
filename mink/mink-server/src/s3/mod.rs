@@ -12,9 +12,10 @@ pub(crate) use http::router;
 mod tests {
     use bytes::Bytes;
     use mink_core::{
-        DaySketches, File, IndexedFile, Member, Partition, Stats, TableLocation, TimePartition,
-        Topic,
+        BuiltFile, DaySketches, File, Granularity, IndexedFile, Member, Offsets, Partition, Span,
+        Stats, TableLocation, TimePartition, Topic,
     };
+    use mink_iceberg::FileSchema;
     use reqwest::StatusCode;
     use uuid::Uuid;
 
@@ -164,25 +165,39 @@ mod tests {
             .start(&lease, 0)
             .await
             .unwrap();
+        let built = BuiltFile::new(
+            IndexedFile::new(file.clone(), Stats::new(3, 69_654, 0)),
+            Bytes::new(),
+            vec![Span::new(file.range(), 10)],
+        )
+        .unwrap();
         node.services
             .store
             .files()
-            .add(
-                &lease,
-                &mink_conformance::built(&[IndexedFile::new(file.clone(), Stats::new(3, 1, 0))]),
-                &DaySketches::default(),
-            )
+            .add(&lease, &[built], &DaySketches::default())
+            .await
+            .unwrap();
+        let path = url(
+            &node,
+            &TableLocation::data_file("s3://mink/warehouse", &file),
+        );
+        let client = reqwest::Client::new();
+
+        let stored = client
+            .get(&path)
+            .header("range", "bytes=-65536")
+            .send()
+            .await
+            .unwrap();
+        let rows = client
+            .get(&path)
+            .header("range", "bytes=4-13")
+            .send()
             .await
             .unwrap();
 
-        let response = reqwest::get(url(
-            &node,
-            &TableLocation::data_file("s3://mink/warehouse", &file),
-        ))
-        .await
-        .unwrap();
-
-        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(stored.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(rows.status(), StatusCode::INTERNAL_SERVER_ERROR);
         node.shutdown().await.unwrap();
     }
 
@@ -242,33 +257,8 @@ mod tests {
         let values: Vec<&str> = values.iter().map(String::as_str).collect();
         mink_conformance::produce_values(&bootstrap, topic.name(), 0, &values);
 
-        let unreachable = Member::new(
-            Uuid::new_v4(),
-            vec![Role::S3],
-            Some("http://127.0.0.1:9".to_owned()),
-            None,
-        );
+        let unreachable = unreachable_member(&first).await;
         let members = first.services.store.members();
-        members
-            .register(&unreachable, std::time::Duration::from_secs(60))
-            .await
-            .unwrap();
-        let first_member = Member::new(
-            first.services.membership.id(),
-            vec![Role::S3],
-            Some(format!("http://{}", first.s3_address().unwrap())),
-            None,
-        );
-        first
-            .services
-            .membership
-            .renew(
-                &first.services.store,
-                &first_member,
-                first.services.config.lease_ttl,
-            )
-            .await
-            .unwrap();
 
         let partition = Partition::new(topic.name(), 0).unwrap();
         let files: Vec<String> = (0..40)
@@ -346,6 +336,119 @@ mod tests {
         members.remove(unreachable.id()).await.unwrap();
         first.shutdown().await.unwrap();
         second.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn stored_files_answer_footer_reads_anywhere_and_build_on_their_owner() {
+        let (Some(bootstrap), Some((first, second))) = (kafka(), s3_nodes().await) else {
+            return;
+        };
+        let unreachable = unreachable_member(&first).await;
+        let (first_id, second_id) = (
+            first.services.membership.id(),
+            second.services.membership.id(),
+        );
+        let at_second = stored_file(&bootstrap, &first, second_id).await;
+        let at_nobody = stored_file(&bootstrap, &first, unreachable.id()).await;
+        let client = reqwest::Client::new();
+        let read = |node: &crate::Node, path: &str, range: &'static str| {
+            client.get(url(node, path)).header("range", range).send()
+        };
+
+        let footer = read(&first, &at_second, "bytes=-65536").await.unwrap();
+        let rows = read(&first, &at_second, "bytes=4-13").await.unwrap();
+        let direct = read(&second, &at_second, "bytes=4-13").await.unwrap();
+        let built = builds(&first);
+        let fallback = read(&first, &at_nobody, "bytes=4-13").await.unwrap();
+        let fallback_again = read(&first, &at_nobody, "bytes=4-13").await.unwrap();
+
+        assert_eq!(footer.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(served_by(&footer), first_id.to_string());
+        assert_eq!(rows.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(served_by(&rows), second_id.to_string());
+        assert_eq!(rows.bytes().await.unwrap(), direct.bytes().await.unwrap());
+        assert_eq!(fallback.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(served_by(&fallback), first_id.to_string());
+        assert_eq!(fallback_again.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(builds(&first), built + 2);
+
+        first
+            .services
+            .store
+            .members()
+            .remove(unreachable.id())
+            .await
+            .unwrap();
+        first.shutdown().await.unwrap();
+        second.shutdown().await.unwrap();
+    }
+
+    async fn unreachable_member(first: &crate::Node) -> Member {
+        let unreachable = Member::new(
+            Uuid::new_v4(),
+            vec![Role::S3],
+            Some("http://127.0.0.1:9".to_owned()),
+            None,
+        );
+        first
+            .services
+            .store
+            .members()
+            .register(&unreachable, std::time::Duration::from_secs(60))
+            .await
+            .unwrap();
+        let first_member = Member::new(
+            first.services.membership.id(),
+            vec![Role::S3],
+            Some(format!("http://{}", first.s3_address().unwrap())),
+            None,
+        );
+        first
+            .services
+            .membership
+            .renew(
+                &first.services.store,
+                &first_member,
+                first.services.config.lease_ttl,
+            )
+            .await
+            .unwrap();
+
+        unreachable
+    }
+
+    async fn stored_file(bootstrap: &str, node: &crate::Node, owner: Uuid) -> String {
+        loop {
+            let topic = produced(bootstrap, node, 40).await;
+            let partition = Partition::new(topic.name(), 0).unwrap();
+            let file = File::v1(partition.clone(), 0, 40, TimePartition::new(0, None), 0).unwrap();
+            let path = TableLocation::data_file("s3://mink/warehouse", &file);
+            let owned = node
+                .services
+                .membership
+                .remote_owner(&path)
+                .is_some_and(|member| member.id() == owner);
+            if !owned {
+                continue;
+            }
+
+            let offsets = Offsets::new(partition, 0, 40).unwrap();
+            let mut cluster = node.services.kafka.cluster().await.unwrap();
+            let records = cluster.read(&offsets).await.unwrap();
+            let (_, built) =
+                mink_iceberg::build_file(&file, &records, Granularity::None, &FileSchema::Binary)
+                    .unwrap();
+            let lease = testing::partition_lease(&node.services, &topic, 0).await;
+            let store = &node.services.store;
+            store.indexed_ranges().start(&lease, 0).await.unwrap();
+            store
+                .files()
+                .add(&lease, &[built], &DaySketches::default())
+                .await
+                .unwrap();
+
+            return path;
+        }
     }
 
     fn builds(node: &crate::Node) -> u64 {

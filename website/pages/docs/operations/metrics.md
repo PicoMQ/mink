@@ -38,8 +38,8 @@ Scrape every node. Each counts only its own work. Label values come from fixed s
 | `mink_s3_requests_total` | counter | `method`: `get`, `head`. `object`: `data`, `metadata`. `status` | S3 requests answered or forwarded |
 | `mink_s3_sent_bytes_total` | counter | | Response bytes this node sent |
 | `mink_s3_forwarded_total` | counter | `result`: `ok`, `unreachable` | Reads forwarded to a file's owner |
-| `mink_builds_total` | counter | `result`: `ok`, `error` | Data files built from Kafka |
-| `mink_build_duration_seconds` | histogram | | Time to build one data file |
+| `mink_builds_total` | counter | `result`: `ok`, `error` | Builds from Kafka, each an extent of a stored file or a whole tail file |
+| `mink_build_duration_seconds` | histogram | | Time of one build |
 | `mink_registry_requests_total` | counter | `result`: `ok`, `missing`, `error` | Schema Registry requests |
 | `mink_admin_requests_total` | counter | `status` | Admin API requests |
 | `mink_cache_bytes` | gauge | | Bytes in the cache's memory tier |

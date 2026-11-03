@@ -1,4 +1,3 @@
-use std::io;
 use std::sync::Arc;
 
 use axum::Router;
@@ -8,15 +7,14 @@ use axum::http::{self, HeaderMap, HeaderValue, StatusCode, Uri, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use bytes::Bytes;
-use futures::TryStreamExt;
 use mink_metrics::{Method, Object};
-use nestor::{ReadRange, ReadStream};
+use nestor::ReadRange;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::cache::Cache;
 use super::key::Key;
-use super::reader::{Found, Reader, Request};
+use super::reader::{Found, Ranged, Reader, Request};
 use crate::Error;
 use crate::forward::FORWARDED_BY;
 use crate::services::Services;
@@ -107,7 +105,7 @@ fn answer(
 ) -> Response {
     match found {
         Ok(Found::Bytes(bytes)) => served(reader, body(name, bytes, range)),
-        Ok(Found::Stream(stream)) => served(reader, streamed(name, stream, range.is_some())),
+        Ok(Found::Stream(ranged)) => served(reader, streamed(name, ranged, range.is_some())),
         Ok(Found::Length(size)) => served(reader, length(name, size)),
         Ok(Found::Forwarded(answer)) => relayed(answer),
         Err(error) => failure(&error),
@@ -203,9 +201,8 @@ fn body(key: &str, bytes: Bytes, range: Option<&ReadRange>) -> Response {
     }
 }
 
-fn streamed(key: &str, stream: ReadStream, partial: bool) -> Response {
-    let range = stream.range();
-    let size = stream.size().unwrap_or(range.end);
+fn streamed(key: &str, ranged: Ranged, partial: bool) -> Response {
+    let Ranged { range, size, body } = ranged;
 
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -223,8 +220,7 @@ fn streamed(key: &str, stream: ReadStream, partial: bool) -> Response {
         false => StatusCode::OK,
     };
 
-    let body = Body::from_stream(stream.map_err(io::Error::other));
-    (status, headers, body).into_response()
+    (status, headers, Body::from_stream(body)).into_response()
 }
 
 fn read_range(range: &str) -> Option<ReadRange> {

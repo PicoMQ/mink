@@ -13,7 +13,7 @@ mod time;
 mod topic;
 
 pub use error::Error;
-pub use file::{Assembly, AssemblyHash, BuiltFile, File, FileVersion, IndexedFile, Stats};
+pub use file::{Assembly, AssemblyHash, BuiltFile, File, FileVersion, IndexedFile, Span, Stats};
 pub use granularity::{Granularity, TimePartition, TimeSpec, TimeSpecs, utc_day};
 pub use location::TableLocation;
 pub use member::{Member, Role};

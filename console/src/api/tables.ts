@@ -72,7 +72,7 @@ export interface Column {
 interface DataFileDetail extends DataFile {
   path: string
   replacedSnapshotId: number | null
-  partsRanges: { startOffset: number; endOffset: number }[]
+  spans: { startOffset: number; endOffset: number; bodyLength: number }[]
   columns: Column[]
 }
 

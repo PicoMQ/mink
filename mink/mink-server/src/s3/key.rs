@@ -1,10 +1,12 @@
 use mink_core::{File, TableLocation};
 
+#[derive(Clone)]
 pub(crate) struct Key {
     path: String,
     object: Object,
 }
 
+#[derive(Clone)]
 pub(crate) enum Object {
     Metadata { topic: String },
     Data(File),

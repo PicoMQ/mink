@@ -33,13 +33,19 @@ pub struct IndexedFile {
 pub struct BuiltFile {
     indexed: IndexedFile,
     footer: Bytes,
+    spans: Vec<Span>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Assembly {
     built: BuiltFile,
-    parts: Vec<OffsetRange>,
     replaced: Vec<File>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Span {
+    range: OffsetRange,
+    body_length: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -78,9 +84,9 @@ impl AssemblyHash {
         AssemblyHash { value }
     }
 
-    pub fn of(parts: &[OffsetRange]) -> AssemblyHash {
+    pub fn of(parts: impl IntoIterator<Item = OffsetRange>) -> AssemblyHash {
         let lines: String = parts
-            .iter()
+            .into_iter()
             .map(|part| format!("{}:{}\n", part.start(), part.end()))
             .collect();
         let digest = Sha256::digest(lines.as_bytes());
@@ -152,7 +158,7 @@ impl File {
             range,
             time,
             schema_id,
-            Some(AssemblyHash::of(parts)),
+            Some(AssemblyHash::of(parts.iter().copied())),
             version,
         )
     }
@@ -219,14 +225,39 @@ impl File {
         self.version
     }
 
-    pub fn assembles(&self, parts: &[OffsetRange]) -> bool {
+    pub fn part(&self, range: OffsetRange) -> Result<File, Error> {
+        File::identified(
+            self.partition.clone(),
+            range,
+            self.time,
+            self.schema_id,
+            None,
+            self.version,
+        )
+    }
+
+    pub fn assembles(&self, parts: impl IntoIterator<Item = OffsetRange>) -> bool {
         self.assembly == Some(AssemblyHash::of(parts))
     }
 }
 
 impl BuiltFile {
-    pub fn new(indexed: IndexedFile, footer: Bytes) -> BuiltFile {
-        BuiltFile { indexed, footer }
+    pub fn new(indexed: IndexedFile, footer: Bytes, spans: Vec<Span>) -> Result<BuiltFile, Error> {
+        let file = indexed.file();
+        let named = match file.assembly() {
+            Some(_) => file.assembles(spans.iter().map(Span::range)),
+            None => matches!(spans.as_slice(), [span] if span.range() == file.range()),
+        };
+
+        if !named {
+            return Err(Error::Parts);
+        }
+
+        Ok(BuiltFile {
+            indexed,
+            footer,
+            spans,
+        })
     }
 
     pub fn indexed(&self) -> &IndexedFile {
@@ -236,14 +267,14 @@ impl BuiltFile {
     pub fn footer(&self) -> &Bytes {
         &self.footer
     }
+
+    pub fn spans(&self) -> &[Span] {
+        &self.spans
+    }
 }
 
 impl Assembly {
-    pub fn new(
-        built: BuiltFile,
-        parts: Vec<OffsetRange>,
-        replaced: Vec<File>,
-    ) -> Result<Assembly, Error> {
+    pub fn new(built: BuiltFile, replaced: Vec<File>) -> Result<Assembly, Error> {
         let assembled = built.indexed().file();
         let matches = |file: &File| {
             file.partition() == assembled.partition()
@@ -252,7 +283,7 @@ impl Assembly {
                 && file.version() == assembled.version()
         };
 
-        if !assembled.assembles(&parts) {
+        if assembled.assembly().is_none() {
             return Err(Error::Parts);
         }
 
@@ -260,23 +291,29 @@ impl Assembly {
             return Err(Error::AssemblyFiles(assembled.clone()));
         }
 
-        Ok(Assembly {
-            built,
-            parts,
-            replaced,
-        })
+        Ok(Assembly { built, replaced })
     }
 
     pub fn built(&self) -> &BuiltFile {
         &self.built
     }
 
-    pub fn parts(&self) -> &[OffsetRange] {
-        &self.parts
-    }
-
     pub fn replaced(&self) -> &[File] {
         &self.replaced
+    }
+}
+
+impl Span {
+    pub fn new(range: OffsetRange, body_length: u64) -> Span {
+        Span { range, body_length }
+    }
+
+    pub fn range(&self) -> OffsetRange {
+        self.range
+    }
+
+    pub fn body_length(&self) -> u64 {
+        self.body_length
     }
 }
 
@@ -379,6 +416,13 @@ mod tests {
             .collect()
     }
 
+    fn spans(parts: &[(i64, i64)]) -> Vec<Span> {
+        ranges(parts)
+            .into_iter()
+            .map(|range| Span::new(range, 100))
+            .collect()
+    }
+
     #[test]
     fn files_are_rejected_with_an_empty_range_or_a_negative_id() {
         let partition = Partition::new("orders", 0).unwrap();
@@ -418,31 +462,62 @@ mod tests {
         let file = assembled(&[(0, 10), (20, 30)]).unwrap();
 
         assert_eq!((file.start_offset(), file.end_offset()), (0, 30));
-        assert!(file.assembles(&ranges(&[(0, 10), (20, 30)])));
-        assert!(!file.assembles(&ranges(&[(0, 10), (20, 29)])));
+        assert!(file.assembles(ranges(&[(0, 10), (20, 30)])));
+        assert!(!file.assembles(ranges(&[(0, 10), (20, 29)])));
         assert_eq!(assembled(&[(0, 10)]), Err(Error::Parts));
         assert_eq!(assembled(&[(0, 10), (5, 30)]), Err(Error::Parts));
         assert_eq!(assembled(&[(0, 10), (20, 20)]), Err(Error::Parts));
     }
 
     #[test]
+    fn built_files_name_their_parts_by_their_spans() {
+        let partition = Partition::new("orders", 0).unwrap();
+        let file = File::v1(partition.clone(), 0, 10, hourly(), 0).unwrap();
+        let assembled = File::assembled(
+            partition,
+            hourly(),
+            0,
+            FileVersion::V1,
+            &ranges(&[(0, 10), (10, 20)]),
+        )
+        .unwrap();
+        let built = |file: &File, parts: &[(i64, i64)]| {
+            let indexed = IndexedFile::new(file.clone(), Stats::new(2, 2, 0));
+
+            BuiltFile::new(indexed, Bytes::new(), spans(parts))
+        };
+
+        assert!(built(&file, &[(0, 10)]).is_ok());
+        assert!(built(&assembled, &[(0, 10), (10, 20)]).is_ok());
+        assert_eq!(built(&file, &[(0, 9)]), Err(Error::Parts));
+        assert_eq!(built(&file, &[(0, 5), (5, 10)]), Err(Error::Parts));
+        assert_eq!(built(&assembled, &[(0, 20)]), Err(Error::Parts));
+    }
+
+    #[test]
     fn an_assembly_replaces_files_of_its_own_partition_time_schema_and_version() {
         let partition = Partition::new("orders", 0).unwrap();
-        let parts = ranges(&[(0, 10), (10, 20)]);
-        let assembled =
-            File::assembled(partition.clone(), hourly(), 0, FileVersion::V1, &parts).unwrap();
+        let assembled = File::assembled(
+            partition.clone(),
+            hourly(),
+            0,
+            FileVersion::V1,
+            &ranges(&[(0, 10), (10, 20)]),
+        )
+        .unwrap();
         let built = BuiltFile::new(
             IndexedFile::new(assembled, Stats::new(2, 2, 0)),
             Bytes::new(),
-        );
+            spans(&[(0, 10), (10, 20)]),
+        )
+        .unwrap();
         let part = |start, schema_id| {
             File::v1(partition.clone(), start, start + 10, hourly(), schema_id).unwrap()
         };
 
-        let same = Assembly::new(built.clone(), parts.clone(), vec![part(0, 0), part(10, 0)]);
-        let other_schema =
-            Assembly::new(built.clone(), parts.clone(), vec![part(0, 0), part(10, 1)]);
-        let one = Assembly::new(built, parts, vec![part(0, 0)]);
+        let same = Assembly::new(built.clone(), vec![part(0, 0), part(10, 0)]);
+        let other_schema = Assembly::new(built.clone(), vec![part(0, 0), part(10, 1)]);
+        let one = Assembly::new(built, vec![part(0, 0)]);
 
         assert!(same.is_ok());
         assert!(matches!(other_schema, Err(Error::AssemblyFiles(_))));

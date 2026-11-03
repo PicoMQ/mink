@@ -249,19 +249,19 @@ async fn add_assembly(
 
     let mut flattened = Vec::new();
     for replaced in assembly.replaced() {
-        match files::stored_parts(connection, replaced).await? {
-            Some(parts) => flattened.extend(parts),
-            None => flattened.push(replaced.range()),
-        }
+        let spans = files::stored_spans(connection, replaced)
+            .await?
+            .ok_or_else(|| Error::MixedAssembly(assembled.clone()))?;
+        flattened.extend(spans);
 
         files::replace(connection, replaced, snapshot.id()).await?;
     }
 
-    if flattened != assembly.parts() {
+    if flattened != assembly.built().spans() {
         return Err(Error::MixedAssembly(assembled.clone()));
     }
 
-    files::insert_assembled(connection, assembly, snapshot.id()).await
+    files::insert(connection, assembly.built(), Some(snapshot.id())).await
 }
 
 fn check_id(topic: &str, snapshot: &Snapshot, latest: Option<&Snapshot>) -> Result<(), Error> {
@@ -791,8 +791,8 @@ mod tests {
             .map(Snapshot::id)
             .collect();
         assert_eq!(ids, [2]);
-        assert_eq!(store.files().stats(&trimmed).await.unwrap(), None);
-        assert!(store.files().stats(&indexed_only).await.unwrap().is_some());
+        assert_eq!(store.files().built(&trimmed).await.unwrap(), None);
+        assert!(store.files().built(&indexed_only).await.unwrap().is_some());
         assert!(
             matches!(latest, Err(Error::LatestSnapshot { id: 2, .. })),
             "{latest:?}"

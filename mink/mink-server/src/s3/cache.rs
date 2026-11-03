@@ -1,8 +1,10 @@
+use std::ops::Range;
 use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
-use mink_core::File;
+use futures::TryStreamExt;
+use mink_core::{BuiltFile, File};
 use nestor::{
     CacheConfig, Consistency, DiskConfig, FetchPolicy, Namespace, NamespaceId, Nestor, NestorError,
     ReadRange, ReadStream,
@@ -12,7 +14,7 @@ use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 use super::key::{Key, Object};
-use super::origin::FileOrigin;
+use super::origin::{BuiltOrigin, FileOrigin, object_name};
 use crate::Error;
 use crate::services::Services;
 
@@ -23,6 +25,7 @@ const UPKEEP_INTERVAL: Duration = Duration::from_secs(5);
 pub(crate) struct Cache {
     nestor: Nestor,
     files: NamespaceId,
+    built: NamespaceId,
     metadata: NamespaceId,
     origin: Arc<FileOrigin>,
     services: Arc<Services>,
@@ -58,6 +61,8 @@ impl Cache {
             .consistency(Consistency::Immutable)
             .readahead(0)
             .fetch(builds);
+        let built = Namespace::new("built", Arc::new(BuiltOrigin::new(services.clone())))
+            .consistency(Consistency::Immutable);
         let metadata = Namespace::new(
             "metadata",
             Arc::new(ObjectStoreOrigin::new(services.warehouse.store())),
@@ -65,9 +70,13 @@ impl Cache {
         .consistency(Consistency::Etag { ttl: METADATA_TTL });
 
         let nestor = Nestor::builder(cache).build().await.map_err(Error::Cache)?;
-        let (files, metadata) = services
-            .metrics
-            .with_recorder(|| (nestor.register(files), nestor.register(metadata)));
+        let (files, built, metadata) = services.metrics.with_recorder(|| {
+            (
+                nestor.register(files),
+                nestor.register(built),
+                nestor.register(metadata),
+            )
+        });
 
         let metrics = services.metrics.clone();
         let upkeep = tokio::spawn(async move {
@@ -80,6 +89,7 @@ impl Cache {
         Ok(Cache {
             nestor,
             files,
+            built,
             metadata,
             origin,
             services,
@@ -95,9 +105,41 @@ impl Cache {
     ) -> Result<ReadStream, Error> {
         let (namespace, object) = self.object(key, table)?;
 
+        self.stream(key, namespace, &object, range).await
+    }
+
+    pub(crate) async fn read_extent(
+        &self,
+        key: &Key,
+        table: Uuid,
+        extent: &Range<u64>,
+        range: Range<u64>,
+    ) -> Result<ReadStream, Error> {
+        let object = object_name(table, key.path(), Some(extent));
+
+        self.stream(key, self.files, &object, ReadRange::Bounded(range))
+            .await
+    }
+
+    pub(crate) async fn build_extent(
+        &self,
+        table: Uuid,
+        built: &BuiltFile,
+        extent: Range<u64>,
+    ) -> Result<Bytes, Error> {
+        self.origin.extent(table, built, extent).await
+    }
+
+    async fn stream(
+        &self,
+        key: &Key,
+        namespace: NamespaceId,
+        object: &str,
+        range: ReadRange,
+    ) -> Result<ReadStream, Error> {
         let mut stream = self
             .nestor
-            .get(namespace, &object, range)
+            .get(namespace, object, range)
             .await
             .map_err(|error| cache_error(key, error))?;
 
@@ -125,8 +167,29 @@ impl Cache {
         Ok(meta.size)
     }
 
-    pub(crate) async fn build(&self, file: &File) -> Result<Bytes, Error> {
-        self.origin.build(file).await
+    pub(crate) async fn built(&self, key: &Key, table: Uuid) -> Result<Option<BuiltFile>, Error> {
+        let Some(file) = key.file() else {
+            return Ok(None);
+        };
+        let object = object_name(table, key.path(), None);
+
+        let read = async {
+            let stream = self
+                .nestor
+                .get(self.built, &object, ReadRange::Full)
+                .await?;
+            stream.try_collect::<Vec<Bytes>>().await
+        };
+
+        match read.await {
+            Ok(chunks) => Ok(Some(mink_store::parse_built(file, &chunks.concat())?)),
+            Err(error) if error.is_not_found() => Ok(None),
+            Err(error) => Err(cache_error(key, error)),
+        }
+    }
+
+    pub(crate) async fn build(&self, table: Uuid, file: &File) -> Result<Bytes, Error> {
+        self.origin.build(table, file).await
     }
 
     pub(crate) fn usage(&self) -> Usage {
@@ -148,7 +211,7 @@ impl Cache {
 
     fn object(&self, key: &Key, table: Uuid) -> Result<(NamespaceId, String), Error> {
         match key.object() {
-            Object::Data(_) => Ok((self.files, format!("{table}/{}", key.path()))),
+            Object::Data(_) => Ok((self.files, object_name(table, key.path(), None))),
             Object::Metadata { .. } => {
                 let object = self.services.warehouse.key(key.path())?;
 

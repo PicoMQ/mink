@@ -436,9 +436,15 @@ mod tests {
             return;
         };
         setup.index(0, 0, 10).await;
-        let mut first = setup.writer(WRITER, Duration::from_millis(200)).await;
+        let mut first = setup.writer(WRITER, TTL).await;
         first.commit().await.unwrap().unwrap();
-        tokio::time::sleep(Duration::from_millis(250)).await;
+        setup
+            .services
+            .store
+            .leases()
+            .release(&first.lease)
+            .await
+            .unwrap();
         setup.index(0, 10, 20).await;
 
         let mut second = setup.writer(NEXT_WRITER, TTL).await;

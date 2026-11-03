@@ -1,9 +1,9 @@
 use bytes::Bytes;
 use mink_core::{
-    Assembly, AssemblyHash, BuiltFile, DaySketches, File, FileVersion, IndexedFile, OffsetRange,
-    Offsets, Partition, Stats, TimePartition,
+    AssemblyHash, BuiltFile, DaySketches, File, FileVersion, IndexedFile, OffsetRange, Offsets,
+    Partition, Span, TimePartition,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 use sqlx::postgres::PgArguments;
 use sqlx::query::QueryAs;
 use sqlx::types::Json;
@@ -42,13 +42,22 @@ pub struct Files<'a> {
 }
 
 #[derive(FromRow)]
-struct PartsRow {
-    parts: Option<Json<Vec<(i64, i64)>>>,
+struct SpansRow {
+    spans: Json<Vec<StoredSpan>>,
 }
+
+#[derive(FromRow)]
+struct BuiltRow {
+    stats: Json<Value>,
+    footer: Vec<u8>,
+    spans: Json<Vec<StoredSpan>>,
+}
+
+type StoredSpan = (i64, i64, u64);
 
 pub struct StoredFile {
     indexed: IndexedFile,
-    parts: Option<Vec<OffsetRange>>,
+    spans: Vec<Span>,
     added_snapshot_id: Option<i64>,
     replaced_snapshot_id: Option<i64>,
 }
@@ -57,7 +66,7 @@ pub struct StoredFile {
 struct StoredRow {
     #[sqlx(flatten)]
     file: FileRow,
-    parts: Option<Json<Vec<(i64, i64)>>>,
+    spans: Json<Vec<StoredSpan>>,
     added_snapshot_id: Option<i64>,
     replaced_snapshot_id: Option<i64>,
 }
@@ -107,7 +116,7 @@ impl<'a> Files<'a> {
         overlaps(&mut transaction, partition, first, last).await?;
 
         for built in &files {
-            insert(&mut transaction, built).await?;
+            insert(&mut transaction, built, None).await?;
         }
         sketches::union(&mut transaction, partition.topic(), sketches).await?;
 
@@ -118,35 +127,21 @@ impl<'a> Files<'a> {
         Ok(range)
     }
 
-    pub async fn stats(&self, file: &File) -> Result<Option<Stats>, Error> {
-        let sql = concat!("SELECT stats FROM file WHERE ", identity!());
-        let stats: Option<(Json<Value>,)> = identified(sqlx::query_as(sql), file)?
+    pub async fn built(&self, file: &File) -> Result<Option<BuiltFile>, Error> {
+        let sql = concat!("SELECT stats, footer, spans FROM file WHERE ", identity!());
+        let row: Option<BuiltRow> = identified(sqlx::query_as(sql), file)?
             .fetch_optional(self.pool)
             .await?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let indexed = IndexedFile::new(file.clone(), parse_stats(&row.stats.0)?);
 
-        stats.map(|(Json(stats),)| parse_stats(&stats)).transpose()
-    }
-
-    pub async fn footers(&self, files: &[File]) -> Result<Vec<Bytes>, Error> {
-        let sql = concat!("SELECT footer FROM file WHERE ", identity!());
-        let mut footers = Vec::with_capacity(files.len());
-
-        for file in files {
-            let footer: Option<(Vec<u8>,)> = identified(sqlx::query_as(sql), file)?
-                .fetch_optional(self.pool)
-                .await?;
-            let (bytes,) = footer.ok_or_else(|| Error::MissingFooter(file.clone()))?;
-
-            footers.push(Bytes::from(bytes));
-        }
-
-        Ok(footers)
-    }
-
-    pub async fn parts(&self, file: &File) -> Result<Option<Vec<OffsetRange>>, Error> {
-        let mut connection = self.pool.acquire().await?;
-
-        stored_parts(&mut connection, file).await
+        Ok(Some(BuiltFile::new(
+            indexed,
+            Bytes::from(row.footer),
+            parse_spans(row.spans)?,
+        )?))
     }
 
     pub async fn page(
@@ -159,7 +154,7 @@ impl<'a> Files<'a> {
     ) -> Result<Vec<StoredFile>, Error> {
         let rows: Vec<StoredRow> = sqlx::query_as(
             "SELECT partition, start_offset, end_offset, spec_id, bucket, schema_id, assembly, \
-             version, stats, parts, added_snapshot_id, replaced_snapshot_id FROM file \
+             version, stats, spans, added_snapshot_id, replaced_snapshot_id FROM file \
              WHERE topic = $1 AND replaced_snapshot_id IS NULL \
              AND ($2::INTEGER IS NULL OR partition = $2) AND ($3::INTEGER IS NULL OR bucket = $3) \
              AND ($4::INTEGER IS NULL OR (partition, start_offset, end_offset, spec_id, \
@@ -194,7 +189,7 @@ impl<'a> Files<'a> {
     pub async fn find(&self, file: &File) -> Result<Option<StoredFile>, Error> {
         let sql = concat!(
             "SELECT partition, start_offset, end_offset, spec_id, bucket, schema_id, assembly, \
-             version, stats, parts, added_snapshot_id, replaced_snapshot_id FROM file WHERE ",
+             version, stats, spans, added_snapshot_id, replaced_snapshot_id FROM file WHERE ",
             identity!()
         );
         let row: Option<StoredRow> = identified(sqlx::query_as(sql), file)?
@@ -222,23 +217,64 @@ impl<'a> Files<'a> {
     }
 }
 
-pub(crate) async fn stored_parts(
+pub(crate) async fn stored_spans(
     connection: &mut PgConnection,
     file: &File,
-) -> Result<Option<Vec<OffsetRange>>, Error> {
-    let sql = concat!("SELECT parts FROM file WHERE ", identity!());
-    let row: Option<PartsRow> = identified(sqlx::query_as(sql), file)?
+) -> Result<Option<Vec<Span>>, Error> {
+    let sql = concat!("SELECT spans FROM file WHERE ", identity!());
+    let row: Option<SpansRow> = identified(sqlx::query_as(sql), file)?
         .fetch_optional(&mut *connection)
         .await?;
 
-    let parts = row.and_then(|row| row.parts).map(|Json(parts)| {
-        parts
-            .into_iter()
-            .map(|(start, end)| OffsetRange::new(start, end))
-            .collect::<Result<Vec<_>, _>>()
-    });
+    row.map(|row| parse_spans(row.spans)).transpose()
+}
 
-    Ok(parts.transpose()?)
+pub fn built_bytes(built: &BuiltFile) -> Bytes {
+    let head = json!({
+        "stats": stats_json(built.indexed().stats()),
+        "spans": spans_json(built.spans()).0,
+    });
+    let head = serde_json::to_vec(&head).expect("a JSON value serializes");
+
+    let mut bytes = Vec::with_capacity(4 + head.len() + built.footer().len());
+    bytes.extend_from_slice(&(head.len() as u32).to_le_bytes());
+    bytes.extend_from_slice(&head);
+    bytes.extend_from_slice(built.footer());
+    Bytes::from(bytes)
+}
+
+pub fn parse_built(file: &File, bytes: &[u8]) -> Result<BuiltFile, Error> {
+    let malformed = || Error::Corrupt(format!("the built bytes of {file:?}"));
+
+    let (length, rest) = bytes.split_first_chunk::<4>().ok_or_else(malformed)?;
+    let (head, footer) = rest
+        .split_at_checked(u32::from_le_bytes(*length) as usize)
+        .ok_or_else(malformed)?;
+    let head: Value = serde_json::from_slice(head).map_err(|_| malformed())?;
+    let spans = serde_json::from_value(head["spans"].clone()).map_err(|_| malformed())?;
+
+    let indexed = IndexedFile::new(file.clone(), parse_stats(&head["stats"])?);
+    Ok(BuiltFile::new(
+        indexed,
+        Bytes::copy_from_slice(footer),
+        parse_spans(Json(spans))?,
+    )?)
+}
+
+fn spans_json(spans: &[Span]) -> Json<Vec<StoredSpan>> {
+    Json(
+        spans
+            .iter()
+            .map(|span| (span.range().start(), span.range().end(), span.body_length()))
+            .collect(),
+    )
+}
+
+fn parse_spans(Json(spans): Json<Vec<StoredSpan>>) -> Result<Vec<Span>, Error> {
+    spans
+        .into_iter()
+        .map(|(start, end, body_length)| Ok(Span::new(OffsetRange::new(start, end)?, body_length)))
+        .collect()
 }
 
 pub(crate) async fn listed_in(
@@ -263,42 +299,16 @@ pub(crate) async fn listed_in(
     from_rows(offsets.partition().topic(), rows)
 }
 
-pub(crate) async fn insert(connection: &mut PgConnection, built: &BuiltFile) -> Result<(), Error> {
-    insert_row(connection, built, None, None).await
-}
-
-pub(crate) async fn insert_assembled(
-    connection: &mut PgConnection,
-    assembly: &Assembly,
-    snapshot_id: i64,
-) -> Result<(), Error> {
-    let parts: Vec<(i64, i64)> = assembly
-        .parts()
-        .iter()
-        .map(|part| (part.start(), part.end()))
-        .collect();
-
-    insert_row(
-        connection,
-        assembly.built(),
-        Some(Json(parts)),
-        Some(snapshot_id),
-    )
-    .await
-}
-
-async fn insert_row(
+pub(crate) async fn insert(
     connection: &mut PgConnection,
     built: &BuiltFile,
-    parts: Option<Json<Vec<(i64, i64)>>>,
     added_snapshot_id: Option<i64>,
 ) -> Result<(), Error> {
     let indexed = built.indexed();
     let file = indexed.file();
-
     sqlx::query(
         "INSERT INTO file (topic, partition, start_offset, end_offset, spec_id, bucket, \
-         schema_id, assembly, version, stats, footer, parts, added_snapshot_id) \
+         schema_id, assembly, version, stats, footer, spans, added_snapshot_id) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
     )
     .bind(file.partition().topic())
@@ -312,7 +322,7 @@ async fn insert_row(
     .bind(version(file.version())?)
     .bind(Json(stats_json(indexed.stats())))
     .bind(built.footer().to_vec())
-    .bind(parts)
+    .bind(spans_json(built.spans()))
     .bind(added_snapshot_id)
     .execute(&mut *connection)
     .await?;
@@ -505,8 +515,8 @@ impl StoredFile {
         &self.indexed
     }
 
-    pub fn parts(&self) -> Option<&[OffsetRange]> {
-        self.parts.as_deref()
+    pub fn spans(&self) -> &[Span] {
+        &self.spans
     }
 
     pub fn added_snapshot_id(&self) -> Option<i64> {
@@ -519,19 +529,11 @@ impl StoredFile {
 }
 
 fn stored(topic: &str, row: StoredRow) -> Result<StoredFile, Error> {
-    let parts = row
-        .parts
-        .map(|Json(parts)| {
-            parts
-                .into_iter()
-                .map(|(start, end)| OffsetRange::new(start, end))
-                .collect::<Result<Vec<_>, _>>()
-        })
-        .transpose()?;
+    let spans = parse_spans(row.spans)?;
 
     Ok(StoredFile {
         indexed: from_row(topic, row.file)?,
-        parts,
+        spans,
         added_snapshot_id: row.added_snapshot_id,
         replaced_snapshot_id: row.replaced_snapshot_id,
     })
@@ -583,7 +585,7 @@ fn from_row(topic: &str, row: FileRow) -> Result<IndexedFile, Error> {
 
 #[cfg(test)]
 mod tests {
-    use mink_core::Scope;
+    use mink_core::{Assembly, Scope, Stats};
 
     use super::*;
     use crate::testing::{self, INDEXER, TTL, WRITER, file};
@@ -622,9 +624,10 @@ mod tests {
             (50, 120)
         );
         let committed = file(&topic, 0, 50, 100);
+        let built = store.files().built(committed.file()).await.unwrap();
         assert_eq!(
-            store.files().stats(committed.file()).await.unwrap(),
-            Some(committed.stats().clone())
+            built.map(|built| built.indexed().clone()),
+            Some(committed.clone())
         );
     }
 
@@ -769,6 +772,37 @@ mod tests {
         assert_eq!(ranges(straddling), [(10, 20)]);
     }
 
+    #[test]
+    fn built_files_survive_their_encoding() {
+        let ranges = mink_conformance::ranges(&[(0, 10), (10, 20)]);
+        let assembled = File::assembled(
+            Partition::new("orders", 0).unwrap(),
+            TimePartition::new(0, Some(5)),
+            0,
+            FileVersion::V1,
+            &ranges,
+        )
+        .unwrap();
+        let stats = Stats::new(20, 140_000, 7)
+            .with_bounds(2, vec![0], vec![19])
+            .with_nulls(4, 3);
+        let spans = ranges.iter().map(|range| Span::new(*range, 1000)).collect();
+        let built = BuiltFile::new(
+            IndexedFile::new(assembled.clone(), stats),
+            Bytes::from_static(b"footer"),
+            spans,
+        )
+        .unwrap();
+
+        let bytes = built_bytes(&built);
+
+        assert_eq!(parse_built(&assembled, &bytes).unwrap(), built);
+        assert!(matches!(
+            parse_built(&assembled, &bytes[..3]),
+            Err(Error::Corrupt(_))
+        ));
+    }
+
     #[tokio::test]
     async fn assembled_files_replace_their_parts_from_their_snapshot_on() {
         let Some(store) = testing::store().await else {
@@ -799,21 +833,24 @@ mod tests {
             .unwrap();
 
         let replaced = vec![indexed[0].file().clone(), indexed[1].file().clone()];
-        let parts = mink_conformance::ranges(&[(0, 10), (10, 20)]);
+        let spans = |ranges: &[OffsetRange]| -> Vec<Span> {
+            ranges.iter().map(|range| Span::new(*range, 0)).collect()
+        };
+        let ranges = mink_conformance::ranges(&[(0, 10), (10, 20)]);
         let assembled = File::assembled(
             indexed[0].file().partition().clone(),
             indexed[0].file().time(),
             0,
             FileVersion::V1,
-            &parts,
+            &ranges,
         )
         .unwrap();
-        let built = |file: &File| {
+        let built = |file: &File, ranges: &[OffsetRange]| {
             let indexed = IndexedFile::new(file.clone(), Stats::new(20, 2000, 0));
 
-            BuiltFile::new(indexed, Bytes::from_static(b"footer"))
+            BuiltFile::new(indexed, Bytes::from_static(b"footer"), spans(ranges)).unwrap()
         };
-        let assembly = Assembly::new(built(&assembled), parts.clone(), replaced.clone()).unwrap();
+        let assembly = Assembly::new(built(&assembled, &ranges), replaced.clone()).unwrap();
         let wrong_parts = mink_conformance::ranges(&[(0, 5), (5, 20)]);
         let misassembled = File::assembled(
             indexed[0].file().partition().clone(),
@@ -823,7 +860,7 @@ mod tests {
             &wrong_parts,
         )
         .unwrap();
-        let mismatch = Assembly::new(built(&misassembled), wrong_parts, replaced.clone()).unwrap();
+        let mismatch = Assembly::new(built(&misassembled, &wrong_parts), replaced.clone()).unwrap();
         let second = testing::snapshot(&writer, &topic, 2, &[(0, 30)]);
 
         let rejected = store
@@ -863,20 +900,12 @@ mod tests {
             paths(snapshots.files(&second).await.unwrap()),
             [(0, 20, true), (20, 30, false)]
         );
-        assert_eq!(store.files().parts(&assembled).await.unwrap(), Some(parts));
         assert_eq!(
-            store
-                .files()
-                .footers(std::slice::from_ref(&assembled))
-                .await
-                .unwrap(),
-            [Bytes::from_static(b"footer")]
+            store.files().built(&assembled).await.unwrap(),
+            Some(built(&assembled, &ranges))
         );
         let unstored = file(&topic, 0, 40, 50).file().clone();
-        assert!(matches!(
-            store.files().footers(&[unstored]).await,
-            Err(Error::MissingFooter(_))
-        ));
+        assert_eq!(store.files().built(&unstored).await.unwrap(), None);
 
         let third = testing::snapshot(&writer, &topic, 3, &[(0, 30)]);
         let again = snapshots
@@ -885,7 +914,7 @@ mod tests {
         assert!(matches!(again, Err(Error::MixedAssembly(_))), "{again:?}");
 
         snapshots.expire(&writer, 1).await.unwrap();
-        assert_eq!(store.files().stats(&replaced[0]).await.unwrap(), None);
-        assert!(store.files().stats(&assembled).await.unwrap().is_some());
+        assert_eq!(store.files().built(&replaced[0]).await.unwrap(), None);
+        assert!(store.files().built(&assembled).await.unwrap().is_some());
     }
 }

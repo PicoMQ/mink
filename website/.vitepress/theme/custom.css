@@ -198,17 +198,16 @@ html {
 .VPHome::before {
   content: "";
   position: fixed;
-  z-index: 0;
+  z-index: 3;
   pointer-events: none;
   top: calc(var(--vp-nav-height) + 2.5rem);
   right: calc(var(--mink-nav-edge) + 5rem);
   width: var(--mink-animal-w);
   height: var(--mink-animal-h);
-  background-image: url("/images/mink.jpg");
+  background-image: url("/images/mink.webp");
   background-repeat: no-repeat;
   background-position: right top;
   background-size: contain;
-  mix-blend-mode: multiply;
 }
 
 @media (max-width: 959px) {

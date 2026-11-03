@@ -1,17 +1,20 @@
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
+use std::ops::Range;
 
-use bytes::{Bytes, BytesMut};
+use bytes::Bytes;
+#[cfg(test)]
+use bytes::BytesMut;
 use iceberg::spec::{Datum, PrimitiveType, Schema};
-use mink_core::{Assembly, BuiltFile, File, IndexedFile, OffsetRange, Stats};
+use mink_core::{Assembly, BuiltFile, File, IndexedFile, OffsetRange, Span, Stats};
 use parquet::file::metadata::{
     FileMetaData, ParquetMetaData, ParquetMetaDataReader, ParquetMetaDataWriter, RowGroupMetaData,
 };
 
 use crate::Error;
-
-const MAGIC: &[u8; 4] = b"PAR1";
-const TRAILER: usize = 8;
+#[cfg(test)]
+use crate::framing::{MAGIC, body_length, footer, padding};
+use crate::framing::{TRAILER, aligned_starts, body_range, file_length};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct MergedFooter {
@@ -19,9 +22,9 @@ struct MergedFooter {
     length: u64,
 }
 
-struct SizedFooter<'a> {
+struct Bodies<'a> {
     footer: &'a [u8],
-    length: u64,
+    range: Range<u64>,
 }
 
 impl MergedFooter {
@@ -34,39 +37,36 @@ impl MergedFooter {
     }
 }
 
-impl<'a> SizedFooter<'a> {
-    fn new(footer: &'a [u8], length: u64) -> SizedFooter<'a> {
-        SizedFooter { footer, length }
+impl<'a> Bodies<'a> {
+    fn new(footer: &'a [u8], range: Range<u64>) -> Bodies<'a> {
+        Bodies { footer, range }
     }
 
-    fn body_length(&self) -> Result<u64, Error> {
-        let framing = (self.footer.len() + MAGIC.len() + TRAILER) as u64;
+    fn of(built: &'a BuiltFile) -> Bodies<'a> {
+        Bodies::new(built.footer(), body_range(built))
+    }
 
-        self.length
-            .checked_sub(framing)
-            .ok_or_else(|| Error::Assembly("a part is shorter than its footer".to_owned()))
+    fn length(&self) -> u64 {
+        self.range.end - self.range.start
     }
 }
 
-pub fn assemble(
-    run: &[IndexedFile],
-    footers: &[Bytes],
-    parts: Vec<OffsetRange>,
-    schema: &Schema,
-) -> Result<Assembly, Error> {
-    let replaced: Vec<File> = run.iter().map(|indexed| indexed.file().clone()).collect();
+pub fn assemble(run: &[BuiltFile], schema: &Schema) -> Result<Assembly, Error> {
+    let replaced: Vec<File> = run
+        .iter()
+        .map(|built| built.indexed().file().clone())
+        .collect();
     let first = replaced
         .first()
         .ok_or_else(|| Error::Assembly("an assembly needs files".to_owned()))?;
 
-    let sized: Vec<SizedFooter> = footers
-        .iter()
-        .zip(run)
-        .map(|(footer, indexed)| SizedFooter::new(footer, indexed.stats().bytes()))
-        .collect();
-    let merged = merged_footer(&sized)?;
+    let bodies: Vec<Bodies> = run.iter().map(Bodies::of).collect();
+    let merged = merged_footer(&bodies)?;
 
-    let stats: Vec<&Stats> = run.iter().map(IndexedFile::stats).collect();
+    let spans: Vec<Span> = run.iter().flat_map(BuiltFile::spans).copied().collect();
+    let ranges: Vec<OffsetRange> = spans.iter().map(Span::range).collect();
+
+    let stats: Vec<&Stats> = run.iter().map(|built| built.indexed().stats()).collect();
     let stats = merged_stats(schema, &stats, merged.length())?;
 
     let file = File::assembled(
@@ -74,66 +74,44 @@ pub fn assemble(
         first.time(),
         first.schema_id(),
         first.version(),
-        &parts,
+        &ranges,
     )?;
-    let built = BuiltFile::new(IndexedFile::new(file, stats), merged.footer().clone());
+    let built = BuiltFile::new(
+        IndexedFile::new(file, stats),
+        merged.footer().clone(),
+        spans,
+    )?;
 
-    Ok(Assembly::new(built, parts, replaced)?)
+    Ok(Assembly::new(built, replaced)?)
 }
 
-pub(crate) fn footer(bytes: &[u8]) -> Result<&[u8], Error> {
-    let invalid = || Error::Assembly("the bytes are not a Parquet file".to_owned());
-
-    let trailer = bytes
-        .len()
-        .checked_sub(TRAILER)
-        .filter(|start| *start >= MAGIC.len())
-        .ok_or_else(invalid)?;
-    if &bytes[trailer + 4..] != MAGIC || &bytes[..MAGIC.len()] != MAGIC {
-        return Err(invalid());
-    }
-
-    let length = u32::from_le_bytes(
-        bytes[trailer..trailer + 4]
-            .try_into()
-            .map_err(|_| invalid())?,
-    );
-    let start = trailer
-        .checked_sub(length as usize)
-        .filter(|start| *start >= MAGIC.len())
-        .ok_or_else(invalid)?;
-
-    Ok(&bytes[start..trailer])
-}
-
-fn merged_footer(files: &[SizedFooter]) -> Result<MergedFooter, Error> {
+fn merged_footer(bodies: &[Bodies]) -> Result<MergedFooter, Error> {
     let mut row_groups = Vec::new();
     let mut first: Option<ParquetMetaData> = None;
-    let mut position = MAGIC.len() as i64;
+    let starts = aligned_starts(bodies.iter().map(Bodies::length));
+    let too_long = || Error::Assembly("an assembly is too long".to_owned());
+    let empty = || Error::Assembly("an assembly needs files".to_owned());
 
-    for file in files {
-        let metadata = ParquetMetaDataReader::decode_metadata(file.footer)?;
-        let shift = position - MAGIC.len() as i64;
+    for (replaced, start) in bodies.iter().zip(&starts) {
+        let metadata = ParquetMetaDataReader::decode_metadata(replaced.footer)?;
+        let shift = i64::try_from(start - replaced.range.start).map_err(|_| too_long())?;
 
         for row_group in metadata.row_groups() {
             row_groups.push(shifted(row_group, shift, row_groups.len())?);
         }
 
-        position += i64::try_from(file.body_length()?)
-            .map_err(|_| Error::Assembly("a part is too long".to_owned()))?;
         first.get_or_insert(metadata);
     }
 
-    let first = first.ok_or_else(|| Error::Assembly("an assembly needs parts".to_owned()))?;
+    let first = first.ok_or_else(empty)?;
     let merged = merged(&first, row_groups);
 
     let mut written = Vec::new();
     ParquetMetaDataWriter::new(&mut written, &merged).finish()?;
     written.truncate(written.len() - TRAILER);
 
-    let length = u64::try_from(position)
-        .map_err(|_| Error::Assembly("an assembly is too long".to_owned()))?
-        + (written.len() + TRAILER) as u64;
+    let (last, start) = bodies.iter().zip(&starts).next_back().ok_or_else(empty)?;
+    let length = file_length(start + last.length(), written.len());
 
     Ok(MergedFooter {
         footer: Bytes::from(written),
@@ -194,22 +172,33 @@ fn merged_stats(schema: &Schema, replaced: &[&Stats], length: u64) -> Result<Sta
     Ok(merged)
 }
 
+#[cfg(test)]
 pub(crate) fn assembled_bytes(parts: &[Bytes]) -> Result<Bytes, Error> {
-    let sized = parts
+    let bodies = parts
         .iter()
-        .map(|part| Ok(SizedFooter::new(footer(part)?, part.len() as u64)))
+        .map(|part| {
+            let footer = footer(part)?;
+            let start = MAGIC.len() as u64;
+            let length = body_length(part.len() as u64, footer.len())?;
+
+            Ok(Bodies::new(footer, start..start + length))
+        })
         .collect::<Result<Vec<_>, Error>>()?;
-    let assembled = merged_footer(&sized)?;
+    let assembled = merged_footer(&bodies)?;
+    let starts = aligned_starts(bodies.iter().map(Bodies::length));
 
     let mut bytes = BytesMut::with_capacity(assembled.length as usize);
     bytes.extend_from_slice(MAGIC);
 
-    for (part, sized) in parts.iter().zip(&sized) {
-        let body = sized.body_length()? as usize;
+    for ((part, body), start) in parts.iter().zip(&bodies).zip(starts) {
+        let range = body.range.start as usize..body.range.end as usize;
 
-        bytes.extend_from_slice(&part[MAGIC.len()..MAGIC.len() + body]);
+        bytes.resize(start as usize, 0);
+        bytes.extend_from_slice(&part[range]);
     }
 
+    let unpadded_length = (bytes.len() + assembled.footer.len() + TRAILER) as u64;
+    bytes.resize(bytes.len() + padding(unpadded_length) as usize, 0);
     bytes.extend_from_slice(&assembled.footer);
     bytes.extend_from_slice(&(assembled.footer.len() as u32).to_le_bytes());
     bytes.extend_from_slice(MAGIC);
@@ -296,19 +285,18 @@ mod tests {
 
     use super::*;
     use crate::file::build_file;
+    use crate::framing::{ALIGNMENT, body_starts};
     use crate::schema::FileSchema;
     use crate::testing::{hour_records, hourly, inside, rows_of};
 
-    fn indexed(file: &File, records: &[mink_core::Record]) -> (Bytes, IndexedFile) {
-        let (bytes, stats) = build_file(
+    fn built(file: &File, records: &[mink_core::Record]) -> (Bytes, BuiltFile) {
+        build_file(
             file,
             &inside(records, file),
             Granularity::Hour,
             &FileSchema::Binary,
         )
-        .unwrap();
-
-        (bytes, IndexedFile::new(file.clone(), stats))
+        .unwrap()
     }
 
     #[test]
@@ -316,7 +304,7 @@ mod tests {
         let records = hour_records(0..300, |_| 5);
         let parts: Vec<Bytes> = [(0, 100), (100, 120), (150, 300)]
             .iter()
-            .map(|(start, end)| indexed(&hourly(*start, *end, 5), &records).0)
+            .map(|(start, end)| built(&hourly(*start, *end, 5), &records).0)
             .collect();
 
         let assembled = assembled_bytes(&parts).unwrap();
@@ -336,31 +324,30 @@ mod tests {
                 start += length + 3;
             }
             let records = hour_records(0..start, |_| 5);
-            let built: Vec<(Bytes, IndexedFile)> = files.iter().map(|file| indexed(file, &records)).collect();
-            let run: Vec<IndexedFile> = built.iter().map(|(_, indexed)| indexed.clone()).collect();
-            let footers: Vec<Bytes> = built
-                .iter()
-                .map(|(bytes, _)| Bytes::copy_from_slice(footer(bytes).unwrap()))
-                .collect();
-            let parts: Vec<OffsetRange> = files.iter().map(File::range).collect();
+            let parts: Vec<(Bytes, BuiltFile)> = files.iter().map(|file| built(file, &records)).collect();
+            let run: Vec<BuiltFile> = parts.iter().map(|(_, built)| built.clone()).collect();
+            let ranges: Vec<OffsetRange> = files.iter().map(File::range).collect();
 
-            let assembly = assemble(&run, &footers, parts.clone(), binary_schema()).unwrap();
-            let first = assemble(&run[..2], &footers[..2], parts[..2].to_vec(), binary_schema()).unwrap();
-            let again_run: Vec<IndexedFile> = [first.built().indexed().clone()].into_iter().chain(run[2..].iter().cloned()).collect();
-            let again_footers: Vec<Bytes> = [first.built().footer().clone()].into_iter().chain(footers[2..].iter().cloned()).collect();
-            let again = assemble(&again_run, &again_footers, parts.clone(), binary_schema()).unwrap();
+            let assembly = assemble(&run, binary_schema()).unwrap();
+            let first = assemble(&run[..2], binary_schema()).unwrap();
+            let again_run: Vec<BuiltFile> = [first.built().clone()].into_iter().chain(run[2..].iter().cloned()).collect();
+            let again = assemble(&again_run, binary_schema()).unwrap();
 
-            let bytes = assembled_bytes(&built.iter().map(|(bytes, _)| bytes.clone()).collect::<Vec<_>>()).unwrap();
-            let whole = File::assembled(Partition::new("orders", 0).unwrap(), TimePartition::new(0, Some(5)), 0, FileVersion::V1, &parts).unwrap();
-            let (_, direct) = indexed(&hourly(whole.start_offset(), whole.end_offset(), 5), &records);
+            let bytes = assembled_bytes(&parts.iter().map(|(bytes, _)| bytes.clone()).collect::<Vec<_>>()).unwrap();
+            let whole = File::assembled(Partition::new("orders", 0).unwrap(), TimePartition::new(0, Some(5)), 0, FileVersion::V1, &ranges).unwrap();
+            let starts = body_starts(assembly.built());
+            let end = body_range(assembly.built()).end;
+            let (_, direct) = built(&hourly(whole.start_offset(), whole.end_offset(), 5), &records);
             let stats = assembly.built().indexed().stats();
 
             proptest::prop_assert_eq!(again.built(), assembly.built());
+            proptest::prop_assert!(starts.iter().all(|start| start % ALIGNMENT == 0), "{starts:?}");
+            proptest::prop_assert_eq!(file_length(end, assembly.built().footer().len()), stats.bytes());
             proptest::prop_assert_eq!(bytes.len() as u64, stats.bytes());
             proptest::prop_assert_eq!(footer(&bytes).unwrap(), &assembly.built().footer()[..]);
-            proptest::prop_assert_eq!(stats.records(), run.iter().map(|indexed| indexed.stats().records()).sum::<u64>());
-            proptest::prop_assert_eq!(stats.lower().get(&2), direct.stats().lower().get(&2));
-            proptest::prop_assert_eq!(stats.upper().get(&3), direct.stats().upper().get(&3));
+            proptest::prop_assert_eq!(stats.records(), run.iter().map(|built| built.indexed().stats().records()).sum::<u64>());
+            proptest::prop_assert_eq!(stats.lower().get(&2), direct.indexed().stats().lower().get(&2));
+            proptest::prop_assert_eq!(stats.upper().get(&3), direct.indexed().stats().upper().get(&3));
         }
     }
 }

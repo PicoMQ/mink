@@ -42,13 +42,12 @@ CREATE TABLE file (
     version SMALLINT NOT NULL,
     stats JSONB NOT NULL,
     footer BYTEA NOT NULL,
-    parts JSONB,
+    spans JSONB NOT NULL,
     added_snapshot_id BIGINT,
     replaced_snapshot_id BIGINT,
     UNIQUE NULLS NOT DISTINCT (topic, partition, start_offset, end_offset, spec_id, bucket, schema_id, assembly, version),
     FOREIGN KEY (topic, spec_id) REFERENCES time_spec (topic, id) ON DELETE CASCADE,
     CHECK (start_offset >= 0 AND end_offset > start_offset),
-    CHECK ((assembly IS NULL) = (parts IS NULL)),
     CHECK ((assembly IS NULL) = (added_snapshot_id IS NULL))
 );
 

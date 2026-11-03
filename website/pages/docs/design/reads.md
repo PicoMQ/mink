@@ -1,9 +1,9 @@
 # Reads
 
-Engines read a table in two steps: load it from the REST catalog, then read its objects from the S3 endpoint. Metadata objects come from the bucket. Data files are built from Kafka on the node that owns them, and cached there.
+Engines read a table in two steps: load it from the REST catalog, then read its objects from the S3 endpoint. Metadata objects come from the bucket. A data file's footer comes from Postgres. Its row groups are built from Kafka on the file's owner node, and cached there.
 
 <div class="mink-diagram">
-<svg viewBox="0 0 660 340" width="660" role="img" aria-label="An engine loads the table from the catalog, which reads the snapshot from Postgres, then reads metadata and data files from the S3 endpoint. The S3 endpoint reads metadata objects from the bucket and forwards data file reads to the owner node, which serves them from its cache or builds them from Kafka.">
+<svg viewBox="0 0 660 340" width="660" role="img" aria-label="An engine loads the table from the catalog, which reads the snapshot from Postgres, then reads metadata and data files from the S3 endpoint. The S3 endpoint reads metadata objects from the bucket and forwards row group reads to the owner node, which serves them from its cache or builds them from Kafka.">
   <defs>
     <marker id="reads-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0 0.5 L7.5 4 L0 7.5 Z" class="arrow"/>
@@ -39,7 +39,8 @@ Engines read a table in two steps: load it from the REST catalog, then read its 
   <text x="183" y="60" text-anchor="middle" class="sub">1. load</text>
   <text x="183" y="166" text-anchor="middle" class="sub">2. read</text>
   <text x="433" y="60" text-anchor="middle" class="sub">snapshot</text>
-  <text x="433" y="166" text-anchor="middle" class="sub">forward</text>
+  <text x="433" y="148" text-anchor="middle" class="sub">row</text>
+  <text x="433" y="166" text-anchor="middle" class="sub">groups</text>
   <text x="318" y="236" class="sub">metadata</text>
   <text x="552" y="236" text-anchor="end" class="sub">build on a miss</text>
 </svg>
@@ -54,28 +55,74 @@ The catalog returns the table metadata, see [Snapshots](/docs/design/snapshots).
 | Object | Source |
 | --- | --- |
 | Table metadata, manifest lists, manifests, statistics files | The bucket, through the cache. Checked against the bucket's ETag after a minute. |
-| Data file | Built from Kafka on its owner node, through the owner's cache |
+| Data file, everything but its row groups | Postgres, through the cache. No build. |
+| Data file, its row groups | Built from Kafka on the file's owner node, only the extents the read overlaps, through the owner's cache |
+| A tail's data file ([Snapshots](/docs/design/snapshots)) | Built whole from Kafka on its owner node, through the owner's cache. Postgres has no row for it. |
 
 The endpoint answers `GET` with an optional `Range` header, and `HEAD`. A data file's `HEAD` comes from its stored statistics, without a build. Writes are refused with `403 AccessDenied`.
 
+## Footers
+
+Engines open a Parquet file by reading from its end:
+
+| Engine | First read |
+| --- | --- |
+| PyIceberg | 64 KiB |
+| Trino | 48 KiB |
+| DuckDB | The power of two at or above a 1,024th of the file, at least 16 KiB |
+
+Every data file has zeros before its footer, at least 68 KiB and never more than 0.4% of a large file. A first read stays inside them and the footer, which come from Postgres, so it needs no build. An engine that skips all of a file's row groups by their statistics never reads Kafka.
+
+## Parts and extents
+
+A file the indexer wrote is one part. An assembled file holds the parts it replaced. Mink builds a file in extents, each from one Kafka read. A read of row groups builds only the extents they fall in.
+
+| Parts | Extents |
+| --- | --- |
+| Over 1 MiB | One per part |
+| Under 1 MiB | Consecutive parts, packed up to 1 MiB |
+
+Measured on AWS with DuckDB 2.0, two nodes, each query on a cold cache:
+
+| Table | Query | Built from Kafka | Kafka read |
+| --- | --- | --- | --- |
+| `lineitem`: 3.0 M rows in 168 assembled files of about 1 MB, parts of about 28 KB | 500 offsets of one partition | 1 extent | 8.8 MB |
+| | One month by `_kafka_timestamp` | 2 extents | 14.4 MB |
+| | One week by `l_shipdate` | 2 extents | 19.5 MB |
+| | Full scan of `l_quantity` | 168 extents, one per file | 1,381 MB |
+| `large_parts`: 15,000 records of 10 KB in one file of 150 MB, 3 parts of 50 MB | 500 offsets inside the middle part | 1 extent of 3 | 57.6 MB |
+
 ## Owners
 
-Each data file has one owner among the nodes with the `s3` role, chosen by hashing each node's id with the file's path. The highest hash wins. A node forwards a read of a file it does not own to the owner, and relays the answer.
+Each data file has one owner among the nodes with the `s3` role, chosen by hashing each node's id with the file's path. The highest hash wins. A read of row groups is forwarded to the owner, and the answer relayed. Any other read, such as a footer read, is answered by the node that receives it.
 
 | Case | Result |
 | --- | --- |
-| Owner answers | The owner serves from its cache, or builds the file once and caches it |
-| Owner unreachable within 5 seconds, or silent for 60 | The receiving node builds the file itself, without caching it |
+| Owner answers | The owner serves from its cache, or builds the extents the read needs and caches them |
+| Owner unreachable within 5 seconds, or silent for 60 | The receiving node builds the extents itself, without caching them |
 | A node joins or leaves | Only the files it owns or would own move |
 
 ## Builds
 
-A build reads the file's committed records from Kafka and writes the Parquet with the file's schema. The bytes are the same every time, on any node.
+A build reads the committed records of an extent, or of a whole tail file, from Kafka and writes the Parquet with the file's schema. The bytes are the same every time, on any node.
 
-- A build answers with the whole file, so a read of any range caches all of it.
-- Concurrent reads of one file wait for one build.
-- A node builds at most `max_builds` files at once, by default the number of CPUs.
-- A built file whose length differs from its stored statistics is never served. The endpoint answers `500` and logs it.
+- A build answers with the whole extent, so a read of any range of an extent caches all of it.
+- Concurrent reads of one extent wait for one build. The build runs as a task of its own, and finishes and is cached even if the read that started it goes away.
+- A node runs at most `max_builds` builds at once, by default the number of CPUs.
+- A built part whose length differs from its span is never served. The endpoint answers `500` and logs it.
+
+PyIceberg reads each row group with a request of its own, through PyArrow's pool of 8 IO threads. On a cold cache, the requests of one file wait on one build and can hold all 8 threads, so builds run one at a time. A larger pool lets them overlap:
+
+```python
+import pyarrow
+
+pyarrow.set_io_thread_count(64)
+```
+
+| Cold scan of `lineitem`, 3.0 M rows in 168 files, 2 nodes | Time |
+| --- | --- |
+| PyIceberg 0.12 with PyArrow 26, 8 IO threads, the default | 47.4 s |
+| PyIceberg 0.12 with PyArrow 26, 64 IO threads | 23.8 s |
 
 ## Cache
 
@@ -91,5 +138,7 @@ A build reads the file's committed records from Kafka and writes the Parquet wit
 | `reused`, the default | On their second read |
 | `fetched` | All, as soon as they are fetched |
 | `evicted` | On eviction from memory |
+
+The cache holds built extents, whole tail files, and each stored file's row from Postgres. Padding and footers are served from that row.
 
 A file on disk survives a restart. Files are cached under their table's uuid. A table added again under the same name never reads the old table's files.

@@ -9,8 +9,8 @@ use iceberg::spec::{NestedField, PrimitiveType, Schema, Type};
 use std::collections::BTreeMap;
 
 use mink_core::{
-    BuiltFile, DaySketches, File, FileVersion, Granularity, IndexedFile, OffsetRange, Record,
-    Sketch, Stats, TimeSpecs, utc_day,
+    BuiltFile, DaySketches, File, FileVersion, Granularity, IndexedFile, Record, Sketch, Span,
+    Stats, TimeSpecs, utc_day,
 };
 use parquet::arrow::ArrowWriter;
 use parquet::arrow::arrow_writer::ArrowWriterOptions;
@@ -18,7 +18,7 @@ use parquet::basic::{Compression, ZstdLevel};
 use parquet::file::properties::{EnabledStatistics, WriterProperties, WriterVersion};
 
 use crate::Error;
-use crate::assembly::{assembled_bytes, footer};
+use crate::framing::{footer, padded};
 use crate::rows::rows;
 use crate::schema::FileSchema;
 
@@ -47,11 +47,12 @@ pub fn build_file(
     records: &[Record],
     granularity: Granularity,
     schema: &FileSchema,
-) -> Result<(Bytes, Stats), Error> {
-    let (records, rows, bytes) = parquet_file(file, records, granularity, schema)?;
+) -> Result<(Bytes, BuiltFile), Error> {
+    let (records, rows, bytes, body_length) = parquet_file(file, records, granularity, schema)?;
 
-    let built = collected(schema.schema(), &rows, bytes.len(), &records, None)?;
-    Ok((bytes, built.stats))
+    let stats_builder = collected(schema.schema(), &rows, bytes.len(), &records, None)?;
+    let built = built_file(file, &bytes, body_length, stats_builder.stats)?;
+    Ok((bytes, built))
 }
 
 pub(crate) fn index_file(
@@ -60,7 +61,7 @@ pub(crate) fn index_file(
     granularity: Granularity,
     schema: &FileSchema,
 ) -> Result<(BuiltFile, DaySketches), Error> {
-    let (records, rows, bytes) = parquet_file(file, records, granularity, schema)?;
+    let (records, rows, bytes, body_length) = parquet_file(file, records, granularity, schema)?;
     let days: Vec<i64> = records
         .iter()
         .map(|record| utc_day(record.timestamp_ms()))
@@ -70,26 +71,42 @@ pub(crate) fn index_file(
         sketches: DaySketches::default(),
     };
 
-    let built = collected(
+    let stats_builder = collected(
         schema.schema(),
         &rows,
         bytes.len(),
         &records,
         Some(sketch_builder),
     )?;
-    let footer = Bytes::copy_from_slice(footer(&bytes)?);
-    let indexed = IndexedFile::new(file.clone(), built.stats);
-
-    let sketches = built
+    let sketches = stats_builder
         .sketch_builder
         .map(|sketch_builder| sketch_builder.sketches)
         .unwrap_or_default();
-    Ok((BuiltFile::new(indexed, footer), sketches))
+    Ok((
+        built_file(file, &bytes, body_length, stats_builder.stats)?,
+        sketches,
+    ))
+}
+
+fn built_file(
+    file: &File,
+    bytes: &[u8],
+    body_length: u64,
+    stats: Stats,
+) -> Result<BuiltFile, Error> {
+    let footer = footer(bytes)?;
+    let span = Span::new(file.range(), body_length);
+    let indexed = IndexedFile::new(file.clone(), stats);
+
+    Ok(BuiltFile::new(
+        indexed,
+        Bytes::copy_from_slice(footer),
+        vec![span],
+    )?)
 }
 
 pub fn file_contents(
     file: &File,
-    parts: Option<&[OffsetRange]>,
     records: &[Record],
     specs: &TimeSpecs,
     schema: &FileSchema,
@@ -99,13 +116,8 @@ pub fn file_contents(
     };
     let granularity = spec.granularity();
 
-    let built = match parts {
-        Some(parts) => build_assembled(file, parts, records, granularity, schema),
-        None => build_file(file, records, granularity, schema).map(|(bytes, _)| bytes),
-    };
-
-    match built {
-        Ok(bytes) => Ok(Some(bytes)),
+    match build_file(file, records, granularity, schema) {
+        Ok((bytes, _)) => Ok(Some(bytes)),
         Err(Error::NoRecords(_) | Error::Schema(mink_schema::Error::UnmergedSchema { .. })) => {
             Ok(None)
         }
@@ -113,47 +125,12 @@ pub fn file_contents(
     }
 }
 
-pub(crate) fn build_assembled(
-    file: &File,
-    parts: &[OffsetRange],
-    records: &[Record],
-    granularity: Granularity,
-    schema: &FileSchema,
-) -> Result<Bytes, Error> {
-    if !file.assembles(parts) {
-        return Err(Error::Assembly(format!(
-            "{file:?} does not assemble its parts"
-        )));
-    }
-
-    let mut built = Vec::with_capacity(parts.len());
-    for part in parts {
-        let part_file = File::new(
-            file.partition().clone(),
-            part.start(),
-            part.end(),
-            file.time(),
-            file.schema_id(),
-            file.version(),
-        )?;
-        let inside: Vec<Record> = records
-            .iter()
-            .filter(|record| part.includes(record.offset()))
-            .cloned()
-            .collect();
-
-        built.push(build_file(&part_file, &inside, granularity, schema)?.0);
-    }
-
-    assembled_bytes(&built)
-}
-
 fn parquet_file(
     file: &File,
     records: &[Record],
     granularity: Granularity,
     schema: &FileSchema,
-) -> Result<(Vec<Record>, RecordBatch, Bytes), Error> {
+) -> Result<(Vec<Record>, RecordBatch, Bytes, u64), Error> {
     let records: Vec<Record> = records
         .iter()
         .filter(|record| granularity.bucket(record.timestamp_ms()) == file.time().bucket())
@@ -178,7 +155,9 @@ fn parquet_file(
     writer.write(&rows)?;
     writer.close()?;
 
-    Ok((records, rows, Bytes::from(bytes)))
+    let (bytes, body_length) = padded(bytes)?;
+
+    Ok((records, rows, Bytes::from(bytes), body_length))
 }
 
 fn check(file: &File, records: &[Record]) -> Result<(), Error> {
@@ -567,7 +546,12 @@ mod tests {
                 "{}: the bytes differ from the fixture",
                 fixture.name()
             );
-            assert_eq!(written.1, fixture.stats(), "{}", fixture.name());
+            assert_eq!(
+                written.1.indexed().stats(),
+                &fixture.stats(),
+                "{}",
+                fixture.name()
+            );
             assert_eq!(written, again, "{}", fixture.name());
         }
     }
@@ -589,13 +573,14 @@ mod tests {
             record(43, 3, None, None, vec![Header::new("b", None)]),
         ];
 
-        let (bytes, stats) = build_file(
+        let (bytes, built) = build_file(
             &file(7, 40, 44),
             &records,
             Granularity::None,
             &FileSchema::Binary,
         )
         .unwrap();
+        let stats = built.indexed().stats().clone();
 
         let expected = Stats::new(3, bytes.len() as u64, 1)
             .with_bounds(1, 7i32.to_le_bytes().to_vec(), 7i32.to_le_bytes().to_vec())
@@ -787,7 +772,8 @@ mod tests {
         .unwrap();
 
         let typed = FileSchema::Typed(Box::new(TypedSchema::new(schema, decoders).unwrap()));
-        let (_, stats) = build_file(&file, &records, Granularity::None, &typed).unwrap();
+        let (_, built) = build_file(&file, &records, Granularity::None, &typed).unwrap();
+        let stats = built.indexed().stats();
 
         assert_eq!(stats.lower()[&10], b"abcdefghijklmnop");
         assert_eq!(stats.upper()[&10], b"b");
@@ -825,7 +811,8 @@ mod tests {
         );
 
         assert_eq!(buckets, BTreeSet::from([Some(4), Some(5)]));
-        assert_eq!((late.records(), current.records()), (1, 9));
+        let records = |built: &BuiltFile| built.indexed().stats().records();
+        assert_eq!((records(&late), records(&current)), (1, 9));
         assert!(matches!(missing, Err(Error::NoRecords(_))));
     }
 

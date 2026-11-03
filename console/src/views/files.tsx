@@ -24,7 +24,7 @@ export function Files({ name }: { name: string; table: TableDetail }) {
     { name: 'offsets', header: 'Offsets', width: '14rem', cell: (file) => `${format.count(file.startOffset)} - ${format.count(file.endOffset)}` },
     { name: 'bucket', header: 'Bucket', width: '8rem', kind: 'number', cell: (file) => file.bucket ?? 'none' },
     { name: 'schema', header: 'Schema', width: '7rem', cell: (file) => file.schemaId },
-    { name: 'parts', header: 'Parts', width: '6rem', kind: 'number', cell: (file) => file.parts || 'none' },
+    { name: 'parts', header: 'Parts', width: '6rem', kind: 'number', cell: (file) => file.parts },
     { name: 'records', header: 'Records', width: '9rem', kind: 'number', cell: (file) => format.count(file.records) },
     { name: 'bytes', header: 'Size', width: '8rem', kind: 'number', cell: (file) => format.bytes(file.bytes) },
   ]

@@ -47,7 +47,7 @@ async fn insert_file(
     sqlx::query(
         "INSERT INTO file \
          (topic, partition, start_offset, end_offset, spec_id, bucket, schema_id, version, stats, \
-         footer) VALUES ($1, 0, $2, $3, 0, $4, $5, 1, '{}', '\\x00')",
+         footer, spans) VALUES ($1, 0, $2, $3, 0, $4, $5, 1, '{}', '\\x00', '[]')",
     )
     .bind(topic)
     .bind(start)

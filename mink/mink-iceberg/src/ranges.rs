@@ -62,9 +62,9 @@ pub fn tail_files(
     let mut files = Vec::new();
 
     for file in bucket_files(offsets, records, spec, schema)? {
-        let (_, stats) = build_file(&file, records, spec.granularity(), schema)?;
+        let (_, built) = build_file(&file, records, spec.granularity(), schema)?;
 
-        files.push(IndexedFile::new(file, stats));
+        files.push(built.indexed().clone());
     }
 
     Ok(files)

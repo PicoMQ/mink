@@ -1,10 +1,15 @@
 use std::collections::HashMap;
+use std::io;
+use std::ops::Range;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use axum::http::{HeaderValue, Method};
 use bytes::Bytes;
-use mink_core::File;
+use futures::stream::{self, BoxStream};
+use futures::{StreamExt, TryStreamExt};
+use mink_core::{BuiltFile, File};
+use mink_iceberg::Slice;
 use mink_metrics::{Forward, Metrics};
 use nestor::{ReadRange, ReadStream};
 use uuid::Uuid;
@@ -16,6 +21,7 @@ use crate::forward::{Forwarder, Wait};
 use crate::services::Services;
 
 const ANSWER_TIMEOUT: Duration = Duration::from_secs(60);
+const LOOKAHEAD: usize = 2;
 
 pub(super) struct Reader {
     services: Arc<Services>,
@@ -32,9 +38,23 @@ pub(super) struct Request<'a> {
 
 pub(super) enum Found {
     Bytes(Bytes),
-    Stream(ReadStream),
+    Stream(Ranged),
     Length(u64),
     Forwarded(reqwest::Response),
+}
+
+pub(super) struct Ranged {
+    pub(super) range: Range<u64>,
+    pub(super) size: u64,
+    pub(super) body: ByteStream,
+}
+
+pub(super) type ByteStream = BoxStream<'static, io::Result<Bytes>>;
+
+#[derive(Clone)]
+enum Source {
+    Cache { key: Arc<Key>, table: Uuid },
+    Build { table: Uuid, built: Arc<BuiltFile> },
 }
 
 enum Route<'a> {
@@ -69,45 +89,131 @@ impl Reader {
     }
 
     pub(super) async fn get(
+        self: &Arc<Self>,
+        key: &Key,
+        request: &Request<'_>,
+        range: ReadRange,
+    ) -> Result<Found, Error> {
+        let table = self.table(key).await?;
+        let Some(built) = self.built(key, table).await? else {
+            return self.whole(key, table, request, range).await;
+        };
+
+        let size = built.indexed().stats().bytes();
+        let range = range
+            .resolve(size)
+            .map_err(|_| Error::Unsatisfiable(size))?;
+        let slices = mink_iceberg::slices(&built, range.clone())?;
+
+        if let Some(bytes) = bytes_only(&slices) {
+            return Ok(Found::Stream(Ranged {
+                range,
+                size,
+                body: stream::iter(bytes.into_iter().map(Ok)).boxed(),
+            }));
+        }
+
+        let source = match self.route(key, Method::GET, request).await {
+            Route::Here => Source::Cache {
+                key: Arc::new(key.clone()),
+                table,
+            },
+            Route::Forwarded(answer) => return Ok(Found::Forwarded(answer)),
+            Route::Unreachable(_) => Source::Build {
+                table,
+                built: Arc::new(built),
+            },
+        };
+        let body = self.body(source, slices).await?;
+
+        Ok(Found::Stream(Ranged { range, size, body }))
+    }
+
+    pub(super) async fn head(&self, key: &Key, request: &Request<'_>) -> Result<Found, Error> {
+        let table = self.table(key).await?;
+        if let Some(built) = self.built(key, table).await? {
+            return Ok(Found::Length(built.indexed().stats().bytes()));
+        }
+
+        match self.route(key, Method::HEAD, request).await {
+            Route::Here => Ok(Found::Length(self.cache.length(key, table).await?)),
+            Route::Forwarded(answer) => Ok(Found::Forwarded(answer)),
+            Route::Unreachable(file) => Ok(Found::Length(
+                self.cache.build(table, file).await?.len() as u64,
+            )),
+        }
+    }
+
+    async fn built(&self, key: &Key, table: Uuid) -> Result<Option<BuiltFile>, Error> {
+        match self.cache.built(key, table).await {
+            Err(error) if error.store_unavailable() => Ok(None),
+            built => built,
+        }
+    }
+
+    async fn whole(
         &self,
         key: &Key,
+        table: Uuid,
         request: &Request<'_>,
         range: ReadRange,
     ) -> Result<Found, Error> {
         match self.route(key, Method::GET, request).await {
             Route::Here => {
-                let table = self.table(key).await?;
                 let range = self.sized(key, table, range).await?;
 
-                Ok(Found::Stream(self.cache.read(key, table, range).await?))
+                Ok(Found::Stream(ranged(
+                    self.cache.read(key, table, range).await?,
+                )))
             }
             Route::Forwarded(answer) => Ok(Found::Forwarded(answer)),
-            Route::Unreachable(file) => {
-                self.table(key).await?;
-
-                Ok(Found::Bytes(self.cache.build(file).await?))
-            }
+            Route::Unreachable(file) => Ok(Found::Bytes(self.cache.build(table, file).await?)),
         }
     }
 
-    pub(super) async fn head(&self, key: &Key, request: &Request<'_>) -> Result<Found, Error> {
-        if let Some(stored) = self.stored_length(key).await? {
-            self.table(key).await?;
+    async fn body(
+        self: &Arc<Self>,
+        source: Source,
+        slices: Vec<Slice>,
+    ) -> Result<ByteStream, Error> {
+        let first = slices
+            .iter()
+            .position(|slice| matches!(slice, Slice::Extent { .. }));
+        let mut slices = slices.into_iter();
 
-            return Ok(Found::Length(stored));
+        let mut opened = Vec::new();
+        for slice in slices
+            .by_ref()
+            .take(first.map_or(usize::MAX, |index| index + 1))
+        {
+            opened.push(self.open(&source, slice).await?);
         }
 
-        match self.route(key, Method::HEAD, request).await {
-            Route::Here => {
-                let table = self.table(key).await?;
+        let reader = self.clone();
+        let rest = stream::iter(slices)
+            .map(move |slice| {
+                let (reader, source) = (reader.clone(), source.clone());
+                async move { reader.open(&source, slice).await.map_err(io::Error::other) }
+            })
+            .buffered(LOOKAHEAD)
+            .try_flatten();
 
-                Ok(Found::Length(self.cache.length(key, table).await?))
+        Ok(stream::iter(opened).flatten().chain(rest).boxed())
+    }
+
+    async fn open(&self, source: &Source, slice: Slice) -> Result<ByteStream, Error> {
+        match (slice, source) {
+            (Slice::Bytes(bytes), _) => Ok(stream::once(async { Ok(bytes) }).boxed()),
+            (Slice::Extent { extent, within }, Source::Cache { key, table }) => {
+                let read = self.cache.read_extent(key, *table, &extent, within);
+
+                Ok(ranged(read.await?).body)
             }
-            Route::Forwarded(answer) => Ok(Found::Forwarded(answer)),
-            Route::Unreachable(file) => {
-                self.table(key).await?;
+            (Slice::Extent { extent, within }, Source::Build { table, built }) => {
+                let extent = self.cache.build_extent(*table, built, extent).await?;
+                let bytes = extent.slice(within.start as usize..within.end as usize);
 
-                Ok(Found::Length(self.cache.build(file).await?.len() as u64))
+                Ok(stream::once(async { Ok(bytes) }).boxed())
             }
         }
     }
@@ -117,10 +223,7 @@ impl Reader {
             return Ok(range);
         };
 
-        let size = match self.stored_length(key).await? {
-            Some(size) => size,
-            None => self.cache.length(key, table).await?,
-        };
+        let size = self.cache.length(key, table).await?;
 
         Ok(ReadRange::Bounded(size.saturating_sub(*suffix)..size))
     }
@@ -158,23 +261,6 @@ impl Reader {
         }
     }
 
-    async fn stored_length(&self, key: &Key) -> Result<Option<u64>, Error> {
-        let Object::Data(file) = key.object() else {
-            return Ok(None);
-        };
-
-        match self.services.store.files().stats(file).await {
-            Ok(stats) => Ok(stats.map(|stats| stats.bytes())),
-            Err(error) => {
-                let error = Error::from(error);
-                match error.store_unavailable() {
-                    true => Ok(None),
-                    false => Err(error),
-                }
-            }
-        }
-    }
-
     async fn route<'a>(&self, key: &'a Key, method: Method, request: &Request<'_>) -> Route<'a> {
         let Object::Data(file) = key.object() else {
             return Route::Here;
@@ -208,4 +294,25 @@ impl Reader {
             }
         }
     }
+}
+
+fn ranged(stream: ReadStream) -> Ranged {
+    let range = stream.range();
+    let size = stream.size().unwrap_or(range.end);
+
+    Ranged {
+        range,
+        size,
+        body: stream.map_err(io::Error::other).boxed(),
+    }
+}
+
+fn bytes_only(slices: &[Slice]) -> Option<Vec<Bytes>> {
+    slices
+        .iter()
+        .map(|slice| match slice {
+            Slice::Bytes(bytes) => Some(bytes.clone()),
+            Slice::Extent { .. } => None,
+        })
+        .collect()
 }

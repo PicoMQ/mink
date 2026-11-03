@@ -750,6 +750,146 @@ async fn engines_read_only_the_queried_hour() {
     node.shutdown().await;
 }
 
+async fn admin(node: &TestNode, path: &str) -> Value {
+    reqwest::get(format!("{}/admin/{path}", node.admin))
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap()
+}
+
+fn noise(length: usize) -> String {
+    (0..length / 32)
+        .map(|_| Uuid::new_v4().simple().to_string())
+        .collect()
+}
+
+#[tokio::test]
+async fn a_footer_read_needs_no_build() {
+    let Some(env) = test_env().await else {
+        return;
+    };
+    let topic = format!("footer-{}", Uuid::new_v4().simple());
+    mink_conformance::create_topic(&env.bootstrap, &topic, 1).await;
+    mink_conformance::produce_values(&env.bootstrap, &topic, 0, &["a", "b", "c"]);
+    let node = start_node(&env, &topic, &Role::ALL, "").await;
+    wait_for_committed(&node, &topic, 3).await;
+    mink_conformance::delete_records(&env.bootstrap, &topic, 0, 3).await;
+
+    let files = admin(&node, &format!("tables/{topic}/files")).await;
+    let name = files["items"][0]["name"].as_str().unwrap();
+    let url = format!(
+        "http://127.0.0.1:{}/mink/warehouse/{topic}/data/{name}",
+        node.s3_port
+    );
+    let client = reqwest::Client::new();
+    let read = client
+        .get(&url)
+        .header("range", "bytes=-65536")
+        .send()
+        .await
+        .unwrap();
+    let status = read.status();
+    let body = read.bytes().await.unwrap();
+    let rows = client
+        .get(&url)
+        .header("range", "bytes=4-13")
+        .send()
+        .await
+        .unwrap();
+    node.shutdown().await;
+
+    assert_eq!(status, reqwest::StatusCode::PARTIAL_CONTENT);
+    assert!(!rows.status().is_success(), "{}", rows.status());
+    assert_eq!(body.len(), 65_536);
+    assert!(body.ends_with(b"PAR1"));
+    assert!(body[..1024].iter().all(|byte| *byte == 0));
+}
+
+#[tokio::test]
+async fn assembled_files_build_only_the_parts_a_query_reads() {
+    let (Some(env), Some(interpreter), Some(trino_url)) = (
+        test_env().await,
+        mink_conformance::service("TEST_PYICEBERG"),
+        mink_conformance::service("TEST_TRINO"),
+    ) else {
+        return;
+    };
+    let topic = format!("parts-{}", Uuid::new_v4().simple());
+    mink_conformance::create_topic(&env.bootstrap, &topic, 1).await;
+    let node = start_node(&env, &topic, &Role::ALL, r#"assembly_delay = "100ms""#).await;
+    let hour = mink_core::now_ms() / 3_600_000 - 2;
+
+    for batch in 0..3 {
+        let values: Vec<String> = (0..80).map(|_| noise(100_000)).collect();
+        let values: Vec<&str> = values.iter().map(String::as_str).collect();
+
+        mink_conformance::produce_at(
+            &env.bootstrap,
+            &topic,
+            0,
+            &values,
+            hour * 3_600_000 + batch * 1000,
+        );
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    let table = wait_for(&node, &topic, |table| {
+        summary(table)["total-records"] == "240" && summary(table)["total-data-files"] == "1"
+    })
+    .await;
+    let files = admin(&node, &format!("tables/{topic}/files")).await;
+    let name = files["items"][0]["name"].as_str().unwrap();
+    let detail = admin(&node, &format!("tables/{topic}/files/{name}")).await;
+    let spans = detail["spans"].as_array().unwrap();
+    assert!(spans.len() >= 2, "{detail}");
+    let second = spans[1]["startOffset"].as_i64().unwrap();
+    mink_conformance::delete_records(&env.bootstrap, &topic, 0, second).await;
+
+    let location = table["metadata-location"].as_str().unwrap();
+    let script = format!(
+        "import json\n\
+         import duckdb\n\
+         from pyiceberg.expressions import GreaterThanOrEqual\n\
+         from pyiceberg.table import StaticTable\n\
+         mink = {{'s3.endpoint': 'http://127.0.0.1:{port}', 's3.access-key-id': 'mink', 's3.secret-access-key': 'mink', 's3.region': 'us-east-1'}}\n\
+         table = StaticTable.from_metadata('{location}', mink)\n\
+         scanned = table.scan(row_filter=GreaterThanOrEqual('_kafka_offset', {second})).to_arrow().num_rows\n\
+         connection = duckdb.connect()\n\
+         connection.execute(\"INSTALL iceberg; LOAD iceberg; CREATE SECRET mink (TYPE S3, KEY_ID 'mink', SECRET 'mink', REGION 'us-east-1', ENDPOINT '127.0.0.1:{port}', URL_STYLE 'path', USE_SSL false)\")\n\
+         read = connection.execute(\"SELECT count(*) FROM iceberg_scan('{location}') WHERE _kafka_offset >= {second}\").fetchone()[0]\n\
+         print(json.dumps({{'pyiceberg': scanned, 'duckdb': read}}))\n",
+        port = node.s3_port,
+    );
+    let read = python(&interpreter, &script).await;
+
+    let catalog = format!("mink_{}", Uuid::new_v4().simple());
+    trino(
+        &trino_url,
+        &format!(
+            "CREATE CATALOG {catalog} USING iceberg WITH (\
+             \"iceberg.catalog.type\" = 'rest', \"iceberg.rest-catalog.uri\" = '{}', \
+             \"fs.native-s3.enabled\" = 'true', \"s3.endpoint\" = 'http://{}:{}', \"s3.path-style-access\" = 'true', \
+             \"s3.region\" = 'us-east-1', \"s3.aws-access-key\" = 'mink', \"s3.aws-secret-key\" = 'mink')",
+            node.catalog, env.host, node.s3_port
+        ),
+    )
+    .await;
+    let counted = trino(
+        &trino_url,
+        &format!(
+            "SELECT count(*) FROM {catalog}.kafka.\"{topic}\" WHERE _kafka_offset >= {second}"
+        ),
+    )
+    .await;
+    trino(&trino_url, &format!("DROP CATALOG {catalog}")).await;
+    node.shutdown().await;
+
+    let expected = 240 - second;
+    assert_eq!(read, json!({"pyiceberg": expected, "duckdb": expected}));
+    assert_eq!(counted, [json!([expected])]);
+}
+
 #[tokio::test]
 async fn pyiceberg_reads_the_statistics_file() {
     let (Some(env), Some(interpreter)) = (

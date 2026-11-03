@@ -58,7 +58,7 @@ export default function FileView() {
           { label: 'Path', value: endpoint ? <a href={download(endpoint, data.path)}>{data.path}</a> : data.path },
           {
             label: 'Parts',
-            value: data.partsRanges.length === 0 ? 'not assembled' : data.partsRanges.map((part) => `${part.startOffset}-${part.endOffset}`).join(', '),
+            value: data.spans.map((span) => `${span.startOffset}-${span.endOffset} (${format.bytes(span.bodyLength)})`).join(', '),
           },
         ]}
       />
