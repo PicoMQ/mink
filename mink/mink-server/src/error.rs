@@ -63,8 +63,22 @@ pub enum Error {
     Json(#[from] serde_json::Error),
     #[error(transparent)]
     Cache(NestorError),
+    #[error("external catalog {0} is not configured")]
+    NoSuchExternalCatalog(String),
+    #[error("the external table of {0} was replaced since it was registered")]
+    ReplacedExternalTable(String),
+    #[error("the external table of {0} no longer holds the offsets Mink committed to it")]
+    ExternalProgressLost(String),
+    #[error("table {0} has no external table")]
+    NoSuchExternalTable(String),
     #[error("the range is outside the object of {0} bytes")]
     Unsatisfiable(u64),
+}
+
+impl From<iceberg::Error> for Error {
+    fn from(error: iceberg::Error) -> Error {
+        Error::Iceberg(error.into())
+    }
 }
 
 impl Error {

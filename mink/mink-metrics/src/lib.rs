@@ -149,6 +149,17 @@ impl Metrics {
     pub fn leases(&self, scope: Scope, count: u64) {
         self.instruments.leases[scope as usize].store(count, Ordering::Relaxed);
     }
+
+    pub fn tier_gap(&self, skipped_offsets: u64) {
+        add(&self.instruments.tier_gaps, 1);
+        add(&self.instruments.tier_skipped_offsets, skipped_offsets);
+    }
+
+    pub fn tier_lag(&self, lag: Duration) {
+        self.instruments
+            .tier_lag_seconds
+            .store(lag.as_secs(), Ordering::Relaxed);
+    }
 }
 
 impl fmt::Debug for Metrics {

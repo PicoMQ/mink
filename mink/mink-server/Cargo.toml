@@ -15,9 +15,12 @@ mink-metrics = { workspace = true }
 mink-schema = { workspace = true }
 mink-store = { workspace = true }
 
+arrow-array = { workspace = true }
 async-trait = { workspace = true }
 aws-config = { workspace = true }
+aws-credential-types = { workspace = true }
 aws-sdk-glue = { workspace = true }
+aws-sigv4 = { workspace = true }
 axum = { workspace = true }
 base64 = { workspace = true }
 bytes = { workspace = true }
@@ -30,18 +33,21 @@ iceberg-catalog-rest = { workspace = true }
 nestor = { workspace = true }
 nestor-store = { workspace = true }
 object_store = { workspace = true }
-reqwest = { workspace = true }
+reqwest = { workspace = true, features = ["form"] }
 rust-embed = { workspace = true, features = ["debug-embed"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["net", "sync", "time"] }
+tokio = { workspace = true, features = ["io-util", "net", "sync", "time"] }
 tracing = { workspace = true }
+typetag = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
 mink-conformance = { workspace = true }
+
+parquet = { workspace = true }
 
 rdkafka = { workspace = true }
 

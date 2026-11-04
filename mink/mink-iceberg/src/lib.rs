@@ -11,6 +11,7 @@ mod slice;
 mod table;
 #[cfg(test)]
 mod testing;
+mod writer;
 
 use arrow_schema::ArrowError;
 use mink_core::{File, Partition};
@@ -19,10 +20,14 @@ pub use assembly::assemble;
 pub use file::{build_file, file_contents};
 pub use framing::unpadded;
 pub use ranges::{NewFiles, tail_files};
-pub use rows::{Decoded, decode};
+pub use rows::{Decoded, decode, record_batch};
 pub use schema::{FileSchema, TypedSchema};
 pub use slice::{Extent, Slice, extent, extents, slices};
-pub use table::{Change, FIRST_TAIL_SNAPSHOT_ID, FormatVersion, ObjectReader, Table};
+pub use table::{
+    Change, ExternalSnapshot, FIRST_TAIL_SNAPSHOT_ID, FormatVersion, ObjectReader, Table,
+    check_schema, end_offset_key, end_offsets, last_time_field_id, start_offset_key,
+};
+pub use writer::{data_files, encoded_data_files, write_data_files};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -40,6 +45,14 @@ pub enum Error {
     Iceberg(#[from] iceberg::Error),
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+    #[error("the sort order names field {0}, which is not a top-level column")]
+    SortField(i32),
+    #[error("a data file cannot be built: {0}")]
+    DataFile(String),
+    #[error("table property {key} has an unusable value {value:?}")]
+    TableProperty { key: String, value: String },
+    #[error("partition spec {0} is not a spec of the external table")]
+    UnknownPartitionSpec(i32),
     #[error("Iceberg format version {0} is not supported")]
     FormatVersion(u8),
     #[error("a snapshot of topic {snapshot} cannot be committed to the table of topic {table}")]
@@ -74,4 +87,23 @@ pub enum Error {
     BuiltLengthMismatch { file: File, built: u64, stored: u64 },
     #[error("{file:?} names its schema, not schema {schema_id}")]
     FileSchema { file: File, schema_id: i32 },
+    #[error("the external table's current schema is not the topic's schema")]
+    ExternalSchema,
+    #[error("partition field {0} of the external table differs from the time field with its id")]
+    ExternalPartitionField(i32),
+    #[error("the external table has equality deletes")]
+    EqualityDeletes,
+    #[error("the snapshot starts {0:?} before the external table's end offset")]
+    ExternalOffsets(Partition),
+    #[error("sequence number {given} is not above the external table's {listed}")]
+    ExternalSequenceNumber { listed: i64, given: i64 },
+}
+
+impl Error {
+    pub(crate) fn table_property(key: &str, value: &str) -> Error {
+        Error::TableProperty {
+            key: key.to_owned(),
+            value: value.to_owned(),
+        }
+    }
 }

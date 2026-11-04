@@ -26,7 +26,7 @@ Scrape every node. Each counts only its own work. Label values come from fixed s
 | `mink_snapshots_expired_total` | counter | | Snapshots expired |
 | `mink_objects_collected_total` | counter | | Metadata objects deleted |
 | `mink_worker_failures_total` | counter | `worker`: `indexer`, `writer` | Indexers and writers that ended with an error |
-| `mink_leases` | gauge | `scope`: `partition`, `topic` | Leases this node holds |
+| `mink_leases` | gauge | `scope`: `partition`, `topic`, `tier` | Leases this node holds |
 
 ## Reads
 
@@ -35,7 +35,7 @@ Scrape every node. Each counts only its own work. Label values come from fixed s
 | `mink_catalog_requests_total` | counter | `route`: `config`, `namespaces`, `tables`, `load`, `write`. `status`: `2xx`, `4xx`, `5xx` | Catalog requests |
 | `mink_tails_total` | counter | | Load tails built |
 | `mink_tail_duration_seconds` | histogram | | Time to build one tail |
-| `mink_s3_requests_total` | counter | `method`: `get`, `head`. `object`: `data`, `metadata`. `status` | S3 requests answered or forwarded |
+| `mink_s3_requests_total` | counter | `method`: `get`, `head`. `object`: `data`, `metadata`, `external`. `status` | S3 requests answered or forwarded |
 | `mink_s3_sent_bytes_total` | counter | | Response bytes this node sent |
 | `mink_s3_forwarded_total` | counter | `result`: `ok`, `unreachable` | Reads forwarded to a file's owner |
 | `mink_builds_total` | counter | `result`: `ok`, `error` | Builds from Kafka, each an extent of a stored file or a whole tail file |
@@ -43,12 +43,15 @@ Scrape every node. Each counts only its own work. Label values come from fixed s
 | `mink_registry_requests_total` | counter | `result`: `ok`, `missing`, `error` | Schema Registry requests |
 | `mink_admin_requests_total` | counter | `status` | Admin API requests |
 | `mink_cache_bytes` | gauge | | Bytes in the cache's memory tier |
+| `mink_tier_gaps_total` | counter | | Times tiering continued past offsets Kafka deleted before they were tiered |
+| `mink_tier_skipped_offsets_total` | counter | | Offsets in those gaps |
+| `mink_tier_lag_seconds` | gauge | | Age of the oldest record this node has not tiered yet. Alert well before it reaches the topic's retention |
 
 Histograms have buckets from 0.5 ms to 10 s.
 
 ## Cache
 
-The cache adds its own `nestor_*` metrics, labelled by `namespace`: `files` for data files, `metadata` for metadata objects.
+The cache adds its own `nestor_*` metrics, labelled by `namespace`: `files` for data files, `metadata` for metadata objects, `external` for the external table's files.
 
 | Metric | Counts |
 | --- | --- |

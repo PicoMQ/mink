@@ -36,7 +36,7 @@ fi
 
 status=0
 log "up"
-if ! compose up -d --wait kafka postgres rustfs schema-registry trino spark || ! compose run --rm createbucket ||
+if ! compose up -d --wait kafka postgres rustfs schema-registry iceberg-rest trino spark || ! compose run --rm createbucket ||
   ! compose run --rm createusers; then
   status=1
   log "the stack did not come up"

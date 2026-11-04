@@ -58,6 +58,8 @@ fn recording_never_allocates() {
         metrics.worker_failed(Worker::Writer);
         metrics.admin_request(404);
         metrics.leases(Scope::Partition, event);
+        metrics.tier_gap(3);
+        metrics.tier_lag(elapsed);
     }
     let recorded = allocations() - before;
 
@@ -70,4 +72,5 @@ fn recording_never_allocates() {
     assert!(text.contains("mink_commit_duration_seconds_count 100000"));
     assert!(text.contains(r#"mink_admin_requests_total{status="4xx"} 100000"#));
     assert!(text.contains(r#"mink_leases{scope="partition"} 99999"#));
+    assert!(text.contains("mink_tier_skipped_offsets_total 300000"));
 }

@@ -11,7 +11,7 @@ A file holds the records of an immutable range of offsets in one Kafka partition
 | `start_offset` | i64 | `>= 0`, the first offset in the range |
 | `end_offset` | i64 | `> start_offset`, the first offset after the range |
 | `spec_id` | i32 | `>= 0`, the topic's time spec the file is written with (`layout.md` Time partitioning) |
-| `bucket` | optional i32 | The time bucket of every record the file holds; absent exactly when the spec has no time field |
+| `bucket` | optional i32 | The time bucket of every record the file holds. Absent exactly when the spec has no time field |
 | `schema_id` | i32 | `>= 0`, the Iceberg schema the file is written with: 0, the binary schema, or one of the topic's typed schemas (`schema.md`) |
 | `assembly` | optional 16 hex digits | For an assembled file, the first 16 hex digits of the SHA-256 of its parts, one `start_offset:end_offset` line per part in offset order. Its parts are the ranges of the files the indexer wrote whose records it holds: at least two, the first starting at `start_offset` and the last ending at `end_offset` (`layout.md` Assembly). They are stored with the file as its spans (Slices) and read when it is built. Absent for a file the indexer wrote |
 | `version` | `FileVersion` | One of the file versions defined under Bytes. Rendered as its number. |
@@ -42,7 +42,7 @@ s3://mink/kafka/orders.v2/data/p=3/1200000-1400000.t0_499260.s2.v1.parquet
 
 A file's bytes are a Parquet file. They are a function of the file's identity, the committed records of its range (`records.md`), and, for a typed schema, the stored table schema and registry schemas, which never change. Building the same file twice gives the same bytes. A file holds at least one record: an offset range with no committed records has no file.
 
-`FileVersion` names the rules that turn records into bytes. Only the versions below exist, and every version-specific choice is made by matching on the version, so a new version is a new entry here, new fixtures, and a new variant. A file version never changes once released, because files written with it must rebuild to the same bytes for as long as a snapshot references them.
+`FileVersion` names the rules that turn records into bytes. Only the versions below exist. A new version is a new entry here, new fixtures, and a new variant. A file version never changes once released.
 
 ### File version 1
 
@@ -54,14 +54,14 @@ A file's bytes are a Parquet file. They are a function of the file's identity, t
 | Row groups | At most 131,072 rows each |
 | Statistics | Parquet column chunk statistics |
 | Page index | None: no column index and no offset index |
-| Padding | Zero bytes between the last row group and the footer, so a file's bytes are `PAR1`, its row groups, the padding, its footer, the footer's length as a 4-byte little-endian integer, and `PAR1`. Its length follows the padding rule below. |
+| Padding | Zero bytes between the last row group and the footer. A file's bytes are `PAR1`, its row groups, the padding, its footer, the footer's length as a 4-byte little-endian integer, and `PAR1`. Its length follows the padding rule below. |
 | Dictionary encoding | On |
 | Writer version | Parquet 1.0 |
 | `created_by` | `mink file version 1` |
 | Key-value metadata | None, including no embedded Arrow schema |
 | Everything else | The defaults of the `parquet` crate version in `Cargo.lock` |
 
-A `parquet` crate upgrade that changes any byte of a version 1 file is caught by the data fixtures. Such an upgrade needs a new file version, not new fixtures.
+A `parquet` crate upgrade that changes any byte of a version 1 file needs a new file version, not new fixtures.
 
 Readers open a file by reading from its end before they know the footer's length:
 
@@ -71,20 +71,22 @@ Readers open a file by reading from its end before they know the footer's length
 | Trino 484 | The last 49,152 bytes. Files of up to 4.5 MB were read whole, and of 10.6 MB not. |
 | DuckDB 2.0 | The last `max(16,384, 2^⌈log₂(L / 1,024)⌉)` bytes, its start rounded down to a multiple of 4,096. Later reads are rounded out to multiples of 4,096. Files of about 1 MB were read whole, and of 2.7 MB not. |
 
-The padding of a file whose bytes without it number `U` is `p(U) = max(65,536, 2^⌈log₂(U / 512)⌉) + 4,096` bytes. Every first read above starts inside it:
-
-- When `p(U) < U`, `U / 512 ≥ L / 1,024`, so DuckDB's read is shorter than the padding.
-- Otherwise `L` is under 140 KiB, and DuckDB reads 16,384 bytes.
-
-Files up to 32 MiB get 69,632 bytes, a 1 GiB file 2 MiB and 4 KiB, never more than 0.4% of a large file. The padding of a file of `L` bytes is `p(L − p(L))` for every length (Conformance).
+The padding of a file whose bytes without it number `U` is `p(U) = max(65,536, 2^⌈log₂(U / 512)⌉) + 4,096` bytes. Every first read above starts inside it. The padding of a file of `L` bytes is `p(L − p(L))`.
 
 ### Assembled bytes
 
 An assembled file's bytes are `PAR1`, then each part's body in part order, then the padding, the merged footer, its length as a 4-byte little-endian integer, and `PAR1`. Each part is built as the file of its range, bucket, spec, schema and version, from the same records. A part's body is its bytes from offset 4 up to its padding: its row groups.
 
-The first body starts at byte 4,096, and each later body at the first multiple of 4,096 at or after the end of the one before. The bytes in between are zeros. A read rounded out to multiples of 4,096 stays inside the bodies it overlaps. An assembled file assembled again moves by a multiple of 4,096, and its bodies stay aligned.
+The first body starts at byte 4,096, and each later body at the first multiple of 4,096 at or after the end of the one before. The bytes in between are zeros.
 
-The merged footer is the parts' Parquet `FileMetaData` with their row groups in part order; each row group's `file_offset` and every column chunk's `data_page_offset` and `dictionary_page_offset` moved by where the part's row groups now start (a column chunk's own `file_offset` is always 0); each row group's `ordinal` its position in the file; and `num_rows` the sum of the parts'. Its schema and `created_by` are the parts', which all parts share. The footer is serialized as the `parquet` crate serializes any footer, so its length follows from the parts' stored footers alone.
+The merged footer is the parts' Parquet `FileMetaData`, with:
+
+- their row groups in part order
+- each row group's `file_offset` and every column chunk's `data_page_offset` and `dictionary_page_offset` moved by where the part's row groups now start. A column chunk's own `file_offset` is always 0.
+- each row group's `ordinal` its position in the file
+- `num_rows` the sum of the parts'
+
+Its schema and `created_by` are the parts'. The footer is serialized as the `parquet` crate serializes any footer. Its length follows from the parts' stored footers alone.
 
 ### Slices
 
@@ -108,8 +110,6 @@ Bodies are built in extents. An extent is a run of consecutive parts:
 
 A range's slices are its overlaps with the rows above, with the bodies grouped into extents, in order. A slice of an extent is built: `[a, b)` of the file is `[a − start, b − start)` of the extent, where `start` is its first byte in the file. Every other slice needs no records.
 
-The S3 endpoint answers a data file's `GET` whose slices need no records on whichever node receives it. Any other range is read through the cache of the node that owns the file's path, which keeps each extent as an object of its own. An extent is built from one Kafka read of its parts' offsets: each part from the records of its own range, checked against its span. Concurrent reads of an extent wait for one build. A `HEAD` answers the stored length.
-
 ### Stats
 
 Writing a file also yields its `Stats`, computed from the rows, not read back from the Parquet footer:
@@ -118,12 +118,12 @@ Writing a file also yields its `Stats`, computed from the rows, not read back fr
 | --- | --- |
 | `records` | The number of rows |
 | `bytes` | The length of the file |
-| `first_timestamp_ms` | The earliest record timestamp of the file, in milliseconds; for an assembled file, the earliest of its parts |
-| `lower`, `upper` | For `_kafka_partition` (1), `_kafka_offset` (2), `_kafka_timestamp` (3), and every primitive column of a typed schema that is not inside a list or a map, other than `binary` and `fixed`: the smallest and largest non-null value, in Iceberg's single-value binary encoding. A `string` bound longer than 16 characters is truncated to its first 16, and the upper bound's last character is then raised by one; a column with no non-null value has no bound. `float` and `double` bounds leave out NaN |
+| `first_timestamp_ms` | The earliest record timestamp of the file, in milliseconds. For an assembled file, the earliest of its parts |
+| `lower`, `upper` | For `_kafka_partition` (1), `_kafka_offset` (2), `_kafka_timestamp` (3), and every primitive column of a typed schema that is not inside a list or a map, other than `binary` and `fixed`: the smallest and largest non-null value, in Iceberg's single-value binary encoding. A `string` bound longer than 16 characters is truncated to its first 16, and the upper bound's last character is then raised by one. A column with no non-null value has no bound. `float` and `double` bounds leave out NaN |
 | `nulls` | For every leaf field: the number of null values |
 | `nans` | For every `float` and `double` leaf field: the number of NaN values |
 
-Stats have one JSON form, used by the store and the fixtures: an object with `records`, `bytes` and `first_timestamp_ms` as numbers; `lower` and `upper` as objects from field id to the hex of the value's Iceberg single-value encoding; `nulls` and `nans` as objects from field id to a count. Anything else is a corrupt row.
+Stats have one JSON form, used by the store and the fixtures: an object with `records`, `bytes` and `first_timestamp_ms` as numbers, `lower` and `upper` as objects from field id to the hex of the value's Iceberg single-value encoding, and `nulls` and `nans` as objects from field id to a count. Anything else is a corrupt row.
 
 ### Errors
 
@@ -142,22 +142,18 @@ Stats have one JSON form, used by the store and the fixtures: an object with `re
 4. Building the same file twice gives the same bytes and the same stats, whether or not the registry is reachable.
 5. A file is never empty.
 6. For every file and every range of its bytes, the range's slices joined, each built slice read from its extent, equal that range of the file built whole.
-7. A range that overlaps no part's body is served without reading Kafka.
-8. A file's extents hold its parts in order, each part in exactly one, and an extent spans more than 1 MiB only when it holds a single part.
+7. A file's extents hold its parts in order, each part in exactly one, and an extent spans more than 1 MiB only when it holds a single part.
 
 ## Conformance
 
 - `mink-iceberg` `framing::tests::padding_covers_every_first_read_and_comes_back_off`: the padding rule, over file lengths up to 1 TiB: every first read in the readers table starts inside the padding, and `p(L − p(L))` gives the padding back.
 - `mink-core` `file::tests::built_files_name_their_parts_by_their_spans`: a file the indexer wrote has its own range as its one span, and an assembled file's spans match its assembly hash.
-- `mink-iceberg` `slice::tests::slices_join_to_the_built_bytes`: invariants 6 and 8, over generated runs of parts and generated ranges, for files the indexer wrote and assembled ones.
+- `mink-iceberg` `slice::tests::slices_join_to_the_built_bytes`: invariants 6 and 7, over generated runs of parts and generated ranges, for files the indexer wrote and assembled ones.
 - `mink-iceberg` `slice::tests::a_part_built_to_another_length_is_refused`: the span check of an extent's parts.
 - `mink-store` `files::tests::built_files_survive_their_encoding`: a built file encoded for the cache decodes to the same built file.
-- `mink-server` `s3::tests::stored_files_answer_footer_reads_anywhere_and_build_on_their_owner`: the S3 rules for a stored file across nodes: a footer read answered where it arrives, a row read forwarded to the file's owner, and with the owner unreachable, a build where the read arrived that is not cached.
-- `mink-conformance` `a_footer_read_needs_no_build`: invariant 7 end to end. A file's records are deleted from Kafka. A 65,536-byte suffix read of it still answers with the padding and the footer, and a read of its row groups fails.
-- `mink-conformance` `assembled_files_build_only_the_parts_a_query_reads`: an assembled file's first part is deleted from Kafka, and DuckDB, PyIceberg and Trino each count the rows of its other parts. The file is large enough that no engine reads it whole.
 - `mink-iceberg` `file::tests::typed_files_carry_bounds_for_their_primitive_columns`: Stats for a typed schema: string bounds truncated to 16 characters, NaN counts, and nulls of optional and raw columns.
 - `conformance/fixtures/path/cases.json`: `files` lists identities with the path each must render to. `rejected` lists paths that must not parse, each named for the reason it is rejected, including file versions that do not exist.
-- `conformance/fixtures/data/cases.json`: for each record fixture with committed records, the file's path in warehouse `s3://warehouse` (topic `conformance`, partition 0, from the first committed offset to one past the last, spec 0 with no time field, schema 0, version 1), the expected stats, and `<case>.parquet`, the version 1 bytes. `cargo run -p mink-conformance -- generate data --bless` writes them from the record fixtures. They pin the bytes; Mink's own output is not proof of correctness, so independent readers check them (below).
+- `conformance/fixtures/data/cases.json`: for each record fixture with committed records, the file's path in warehouse `s3://warehouse` (topic `conformance`, partition 0, from the first committed offset to one past the last, spec 0 with no time field, schema 0, version 1), the expected stats, and `<case>.parquet`, the version 1 bytes. `cargo run -p mink-conformance -- generate data --bless` writes them from the record fixtures. They pin the bytes. Independent readers check them (below).
 - `mink-core` `location::tests::files_render_and_parse_as_the_fixtures_say` covers invariant 1 against the fixtures.
 - `mink-core` `location::tests::rejected_paths_in_the_fixtures_do_not_parse` covers invariant 2.
 - `mink-core` `location::tests::any_valid_file_round_trips_through_its_path` covers invariant 1 as a property over all valid identities.
@@ -166,7 +162,7 @@ Stats have one JSON form, used by the store and the fixtures: an object with `re
 - `mink-iceberg` `file::tests::files_match_the_data_fixtures`: invariant 4 and the version 1 settings, byte for byte.
 - `mink-iceberg` `file::tests::stats_follow_the_rows`: the Stats table.
 - `mink-iceberg` `file::tests::files_read_back_to_their_rows`: the Parquet reader of the `parquet` crate returns the rows that were written, and the footer shows the version 1 settings: field ids, ZSTD, row groups of at most 131,072 rows, writer version 1, `created_by` and no key-value metadata.
-- `mink-iceberg` `file::tests::records_must_lie_inside_their_file_in_offset_order`: the Rows setting; records outside the file's range or out of offset order are rejected.
+- `mink-iceberg` `file::tests::records_must_lie_inside_their_file_in_offset_order`: the Rows setting: records outside the file's range or out of offset order are rejected.
 - `mink-iceberg` `file::tests::a_file_needs_at_least_one_record`: invariant 5.
 - `mink-store` `stats::tests::stats_round_trip_through_their_json_form`: the stats JSON form.
 - `mink-core` `offsets::tests::offset_ranges_are_non_negative_and_ordered`: the offset range of every file and snapshot.

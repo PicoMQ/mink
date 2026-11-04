@@ -27,11 +27,8 @@ impl Membership {
         self.id
     }
 
-    pub(crate) fn indexers(&self) -> Vec<Uuid> {
-        self.with_role(Role::Indexer)
-            .iter()
-            .map(Member::id)
-            .collect()
+    pub(crate) fn ids(&self, role: Role) -> Vec<Uuid> {
+        self.with_role(role).iter().map(Member::id).collect()
     }
 
     pub(crate) fn remote_owner(&self, path: &str) -> Option<Member> {

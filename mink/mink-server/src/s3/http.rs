@@ -7,13 +7,13 @@ use axum::http::{self, HeaderMap, HeaderValue, StatusCode, Uri, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use bytes::Bytes;
-use mink_metrics::{Method, Object};
+use mink_metrics::Method;
 use nestor::ReadRange;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::cache::Cache;
-use super::key::Key;
+use super::key::{Key, Object};
 use super::reader::{Found, Ranged, Reader, Request};
 use crate::Error;
 use crate::forward::FORWARDED_BY;
@@ -120,9 +120,10 @@ fn counted(
     relayed: bool,
 ) -> Response {
     let metrics = reader.metrics();
-    let object = match key.and_then(Key::file) {
-        Some(_) => Object::Data,
-        None => Object::Metadata,
+    let object = match key.map(Key::object) {
+        Some(Object::Data(_)) => mink_metrics::Object::Data,
+        Some(Object::External) => mink_metrics::Object::External,
+        Some(Object::Metadata { .. }) | None => mink_metrics::Object::Metadata,
     };
 
     metrics.s3_request(method, object, response.status().as_u16());

@@ -19,10 +19,10 @@ use parquet::file::properties::{EnabledStatistics, WriterProperties, WriterVersi
 
 use crate::Error;
 use crate::framing::{footer, padded};
-use crate::rows::rows;
+use crate::rows::record_batch;
 use crate::schema::FileSchema;
 
-const STRING_BOUND: usize = 16;
+pub(crate) const STRING_BOUND: usize = 16;
 
 #[derive(Clone, Copy)]
 enum Bounds {
@@ -145,7 +145,7 @@ fn parquet_file(
         });
     }
 
-    let rows = rows(file.partition(), &records, schema)?;
+    let rows = record_batch(file.partition(), &records, schema)?;
 
     let options = ArrowWriterOptions::new()
         .with_properties(properties(file.version())?)
@@ -356,10 +356,16 @@ impl StatsBuilder<'_> {
                 let values = self.values(field_id, strings.iter(), encode)?;
 
                 let lower = values.iter().min();
-                let upper = values.iter().max().and_then(|upper| raised(upper));
-                lower
-                    .zip(upper)
-                    .map(|(lower, upper)| (truncated(lower).into_bytes(), upper.into_bytes()))
+                let upper = values
+                    .iter()
+                    .max()
+                    .and_then(|upper| raised(upper, STRING_BOUND));
+                lower.zip(upper).map(|(lower, upper)| {
+                    (
+                        truncated(lower, STRING_BOUND).into_bytes(),
+                        upper.into_bytes(),
+                    )
+                })
             }
             PrimitiveType::Binary => {
                 let encode = |value: &&[u8]| value.to_vec();
@@ -455,16 +461,16 @@ fn minimal_bytes(value: i128) -> Vec<u8> {
     bytes[start..].to_vec()
 }
 
-fn truncated(value: &str) -> String {
-    value.chars().take(STRING_BOUND).collect()
+pub(crate) fn truncated(value: &str, length: usize) -> String {
+    value.chars().take(length).collect()
 }
 
-fn raised(value: &str) -> Option<String> {
-    if value.chars().count() <= STRING_BOUND {
+pub(crate) fn raised(value: &str, length: usize) -> Option<String> {
+    if value.chars().count() <= length {
         return Some(value.to_owned());
     }
 
-    let mut chars: Vec<char> = value.chars().take(STRING_BOUND).collect();
+    let mut chars: Vec<char> = value.chars().take(length).collect();
     while let Some(last) = chars.pop() {
         let next = (u32::from(last) + 1..=u32::from(char::MAX)).find_map(char::from_u32);
 
@@ -650,7 +656,7 @@ mod tests {
             .map(|group| group.num_rows())
             .collect();
 
-        let expected = rows(file.partition(), &records, &FileSchema::Binary).unwrap();
+        let expected = record_batch(file.partition(), &records, &FileSchema::Binary).unwrap();
         let mut read = 0;
         for batch in reader.build().unwrap() {
             let batch = batch.unwrap();

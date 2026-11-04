@@ -4,12 +4,11 @@ use bytes::Bytes;
 use futures::{StreamExt, TryStreamExt};
 use mink_core::{Object, Snapshot, Topic};
 use mink_iceberg::{Change, ObjectReader, Table};
-use object_store::aws::AmazonS3Builder;
 use object_store::path::Path;
 use object_store::{ObjectStore, ObjectStoreExt, PutPayload};
 
 use crate::Error;
-use crate::config::Storage;
+use crate::buckets::{Buckets, bucket_and_key};
 
 #[derive(Clone)]
 pub(crate) struct Warehouse {
@@ -24,29 +23,14 @@ pub(crate) struct ListedObject {
 }
 
 impl Warehouse {
-    pub(crate) fn connect(root: &str, storage: &Storage) -> Result<Warehouse, Error> {
+    pub(crate) fn connect(root: &str, buckets: &Buckets) -> Result<Warehouse, Error> {
         let bucket = bucket(root)?;
-        let builder = match &storage.credentials {
-            Some(credentials) => AmazonS3Builder::new()
-                .with_access_key_id(&credentials.access_key_id)
-                .with_secret_access_key(&credentials.secret_access_key),
-            None => AmazonS3Builder::from_env(),
-        };
-
-        let builder = match &storage.endpoint {
-            Some(endpoint) => builder.with_endpoint(endpoint).with_allow_http(true),
-            None => builder.with_virtual_hosted_style_request(true),
-        };
-
-        let store = builder
-            .with_bucket_name(&bucket)
-            .with_region(&storage.region)
-            .build()?;
+        let store = buckets.client(&bucket)?;
 
         Ok(Warehouse {
             root: root.trim_end_matches('/').to_owned(),
             bucket,
-            store: Arc::new(store),
+            store,
         })
     }
 
@@ -138,13 +122,10 @@ impl Warehouse {
     }
 
     pub(crate) fn key(&self, path: &str) -> Result<Path, Error> {
-        let key = path
-            .strip_prefix("s3://")
-            .and_then(|rest| rest.strip_prefix(&self.bucket))
-            .and_then(|rest| rest.strip_prefix('/'))
-            .ok_or_else(|| Error::OutsideBucket(path.to_owned()))?;
-
-        Ok(Path::from(key))
+        match bucket_and_key(path) {
+            Some((bucket, key)) if bucket == self.bucket => Ok(key),
+            _ => Err(Error::OutsideBucket(path.to_owned())),
+        }
     }
 }
 
@@ -170,10 +151,8 @@ impl ObjectReader for Warehouse {
 }
 
 fn bucket(root: &str) -> Result<String, Error> {
-    root.strip_prefix("s3://")
-        .and_then(|rest| rest.split('/').next())
-        .filter(|bucket| !bucket.is_empty())
-        .map(str::to_owned)
+    bucket_and_key(root)
+        .map(|(bucket, _)| bucket.to_owned())
         .ok_or_else(|| Error::InvalidWarehouse(root.to_owned()))
 }
 

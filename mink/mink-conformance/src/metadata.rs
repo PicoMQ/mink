@@ -224,6 +224,7 @@ fn parse_snapshot(topic: &str, value: &Value) -> Snapshot {
 
     Snapshot::new(
         value["id"].as_i64().unwrap(),
+        value["id"].as_i64().unwrap(),
         value["timestamp_ms"].as_i64().unwrap(),
         value["epoch"].as_i64().unwrap(),
         offsets,

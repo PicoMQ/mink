@@ -3226,9 +3226,11 @@ version = "0.1.0"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
+ "arrow-ord",
  "arrow-schema",
  "arrow-select",
  "bytes",
+ "futures",
  "hex",
  "iceberg",
  "mink-conformance",
@@ -3299,9 +3301,12 @@ dependencies = [
 name = "mink-server"
 version = "0.1.0"
 dependencies = [
+ "arrow-array",
  "async-trait",
  "aws-config",
+ "aws-credential-types",
  "aws-sdk-glue",
+ "aws-sigv4",
  "axum",
  "base64 0.23.1",
  "bytes",
@@ -3321,6 +3326,7 @@ dependencies = [
  "nestor",
  "nestor-store",
  "object_store",
+ "parquet",
  "rdkafka",
  "reqwest 0.13.5",
  "rust-embed",
@@ -3331,6 +3337,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+ "typetag",
  "uuid",
 ]
 
@@ -4345,6 +4352,7 @@ dependencies = [
  "rustls-platform-verifier",
  "serde",
  "serde_json",
+ "serde_urlencoded",
  "sync_wrapper",
  "tokio",
  "tokio-rustls",

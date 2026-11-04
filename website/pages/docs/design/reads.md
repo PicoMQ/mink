@@ -58,6 +58,7 @@ The catalog returns the table metadata, see [Snapshots](/docs/design/snapshots).
 | Data file, everything but its row groups | Postgres, through the cache. No build. |
 | Data file, its row groups | Built from Kafka on the file's owner node, only the extents the read overlaps, through the owner's cache |
 | A tail's data file ([Snapshots](/docs/design/snapshots)) | Built whole from Kafka on its owner node, through the owner's cache. Postgres has no row for it. |
+| A file under an external table's location | The external table's bucket, on the path's owner node, through its cache. Only paths under a registered location are served. |
 
 The endpoint answers `GET` with an optional `Range` header, and `HEAD`. A data file's `HEAD` comes from its stored statistics, without a build. Writes are refused with `403 AccessDenied`.
 

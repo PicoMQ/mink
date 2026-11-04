@@ -1,9 +1,9 @@
-use iceberg::spec::{Schema, Snapshot as IcebergSnapshot, SortOrder};
+use iceberg::spec::{PartitionSpec, Schema, Snapshot as IcebergSnapshot, SortOrder};
 use mink_schema::binary_schema;
 use serde_json::{Map, Value, json};
 
 use super::commit::Commit;
-use super::specs::{last_partition_id, partition_specs};
+use super::specs::partition_specs;
 use super::{FormatVersion, Table};
 use crate::Error;
 
@@ -17,6 +17,25 @@ impl Table {
             .into_iter()
             .chain(commit.schemas)
             .collect();
+        let external = self.external_snapshot.as_ref();
+        let mut specs = partition_specs(commit.specs)?;
+        specs.extend(
+            external
+                .into_iter()
+                .flat_map(|external| external.specs())
+                .cloned(),
+        );
+        let last_partition_id = specs
+            .iter()
+            .filter_map(PartitionSpec::highest_field_id)
+            .max();
+        let mut sort_orders = vec![SortOrder::unsorted_order()];
+        sort_orders.extend(
+            external
+                .into_iter()
+                .flat_map(|external| external.sort_orders())
+                .cloned(),
+        );
 
         let metadata = match self.version {
             FormatVersion::V2 => json!({
@@ -29,10 +48,10 @@ impl Table {
                 "current-schema-id": commit.current_schema().schema_id(),
                 "schemas": schemas,
                 "default-spec-id": commit.specs.current().id(),
-                "partition-specs": partition_specs(commit.specs)?,
-                "last-partition-id": last_partition_id(commit.specs),
+                "partition-specs": specs,
+                "last-partition-id": last_partition_id,
                 "default-sort-order-id": SortOrder::unsorted_order().order_id,
-                "sort-orders": [SortOrder::unsorted_order()],
+                "sort-orders": sort_orders,
                 "current-snapshot-id": latest.snapshot_id(),
                 "refs": { "main": { "snapshot-id": latest.snapshot_id(), "type": "branch" } },
                 "snapshots": self.snapshots.iter().map(render_snapshot).collect::<Vec<_>>(),

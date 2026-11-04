@@ -4,7 +4,7 @@ use mink_schema::{PARTITION, PARTITION_ID, TIMESTAMP, TIMESTAMP_ID, binary_schem
 
 use crate::Error;
 
-const PARTITION_FIELD: i32 = 1000;
+pub(super) const PARTITION_FIELD: i32 = 1000;
 
 pub(super) fn partition_specs(specs: &TimeSpecs) -> Result<Vec<PartitionSpec>, Error> {
     specs
@@ -37,12 +37,13 @@ pub(super) fn partition_specs(specs: &TimeSpecs) -> Result<Vec<PartitionSpec>, E
         .collect()
 }
 
-pub(super) fn last_partition_id(specs: &TimeSpecs) -> i32 {
-    time_field_ids(specs)
-        .into_iter()
-        .flatten()
-        .max()
-        .unwrap_or(PARTITION_FIELD)
+pub fn last_time_field_id() -> i32 {
+    let time_fields = Granularity::ALL
+        .iter()
+        .filter(|granularity| transform(**granularity).is_some())
+        .count();
+
+    PARTITION_FIELD + i32::try_from(time_fields).expect("few granularities")
 }
 
 fn time_field_ids(specs: &TimeSpecs) -> Vec<Option<i32>> {

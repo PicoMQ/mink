@@ -70,12 +70,15 @@ rustls-platform-verifier = "0.7.1"
 hmac = "0.13.0"
 getrandom = "0.3.4"
 aws-config = { version = "1.13.0", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }
+aws-credential-types = "1.3.1"
 aws-sdk-glue = { version = "1.181.0", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }
+aws-sigv4 = { version = "1.6.4", default-features = false, features = ["sign-http", "http1"] }
 
 arrow-array = "58.4.1"
 arrow-schema = "58.4.1"
 arrow-buffer = "58.4.1"
 arrow-select = "58.4.1"
+arrow-ord = "58.4.1"
 parquet = { version = "58.4.1", default-features = false, features = ["arrow", "zstd"] }
 
 sqlx = { version = "0.9.0", default-features = false, features = [
@@ -104,6 +107,7 @@ object_store = { version = "0.14.2", features = ["aws"] }
 futures = "0.3.34"
 async-trait = "0.1.92"
 tempfile = "3.27.0"
+typetag = "0.2.23"
 sha2 = "0.11.1"
 
 [workspace.lints.rust]

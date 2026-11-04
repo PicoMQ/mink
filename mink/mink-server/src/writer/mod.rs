@@ -1,8 +1,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use mink_core::{FieldSketches, File, IndexedFile, Snapshot, Topic, now_ms};
-use mink_iceberg::{FormatVersion, Table};
+use mink_core::{FieldSketches, File, IndexedFile, Offsets, Snapshot, Topic, now_ms};
+use mink_iceberg::{ExternalSnapshot, FormatVersion, Table};
 use mink_metrics::Outcome;
 use mink_store::Lease;
 use tokio::time::Instant;
@@ -13,14 +13,17 @@ use crate::services::Services;
 mod assembly;
 mod collection;
 mod expiry;
+mod tiering;
 
 pub(crate) struct Writer {
     services: Arc<Services>,
     lease: Lease,
     topic: Topic,
     table: Table,
+    unlisted_external_snapshot: Option<ExternalSnapshot>,
     last_collection: Instant,
     last_statistics: Option<Instant>,
+    last_tiering: Option<Instant>,
 }
 
 impl Writer {
@@ -46,8 +49,10 @@ impl Writer {
             lease,
             topic,
             table,
+            unlisted_external_snapshot: None,
             last_collection: Instant::now(),
             last_statistics: None,
+            last_tiering: None,
         })
     }
 
@@ -70,6 +75,13 @@ impl Writer {
             self.collect().await?;
             self.last_collection = Instant::now();
         }
+
+        if let Err(error) = self.commit_tiered().await {
+            tracing::warn!(topic = self.topic.name(), %error, "the tier commit failed");
+            self.services
+                .metrics
+                .worker_failed(mink_metrics::Worker::Tier);
+        }
         Ok(())
     }
 
@@ -83,8 +95,21 @@ impl Writer {
         }
 
         let latest = store.snapshots().latest(name).await?;
+        let external = self
+            .unlisted_external_snapshot
+            .as_ref()
+            .or(self.table.external_snapshot());
+        let offsets = offsets
+            .into_iter()
+            .map(|offsets| own_offsets(offsets, external))
+            .collect::<Result<_, _>>()?;
+        let sequence_number = latest
+            .as_ref()
+            .map(Snapshot::sequence_number)
+            .max(external.and_then(ExternalSnapshot::sequence_number));
         let snapshot = Snapshot::new(
-            Snapshot::next_id(latest.as_ref().map(Snapshot::id)),
+            Snapshot::next(latest.as_ref().map(Snapshot::id)),
+            Snapshot::next(sequence_number),
             now_ms(),
             self.lease.epoch(),
             offsets,
@@ -105,15 +130,22 @@ impl Writer {
         let unchanged = latest
             .as_ref()
             .is_some_and(|latest| latest.offsets() == snapshot.offsets());
-        if unchanged && assemblies.is_empty() && sketches.is_none() {
+        if unchanged
+            && assemblies.is_empty()
+            && sketches.is_none()
+            && self.unlisted_external_snapshot.is_none()
+        {
             return Ok(None);
         }
 
         let expire_through_id = self.expire_through_id().await?;
-        let table = match expire_through_id {
+        let mut table = match expire_through_id {
             Some(through_id) => self.table.expire(through_id)?,
             None => self.table.clone(),
         };
+        if let Some(unlisted) = &self.unlisted_external_snapshot {
+            table = table.with_external_snapshot(unlisted.clone());
+        }
 
         let mut added = self.new_files(&snapshot, latest.as_ref()).await?;
         added.extend(
@@ -160,6 +192,7 @@ impl Writer {
             self.last_statistics = Some(Instant::now());
         }
         self.table = change.into_table();
+        self.unlisted_external_snapshot = None;
         Ok(Some(snapshot))
     }
 
@@ -197,11 +230,24 @@ impl Writer {
     }
 }
 
+fn own_offsets(offsets: Offsets, external: Option<&ExternalSnapshot>) -> Result<Offsets, Error> {
+    let end = external.and_then(|external| external.end_offset(offsets.partition().index()));
+
+    match end {
+        Some(end) if end > offsets.start_offset() => Ok(Offsets::new(
+            offsets.partition().clone(),
+            end,
+            offsets.end_offset(),
+        )?),
+        _ => Ok(offsets),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
 
-    use mink_core::{DaySketches, Offsets, Partition, Record, Scope, TableLocation};
+    use mink_core::{DaySketches, Partition, Record, Scope, TableLocation};
     use mink_iceberg::{FileSchema, NewFiles};
     use uuid::Uuid;
 

@@ -79,7 +79,7 @@ pub(crate) fn snapshot(lease: &Lease, topic: &Topic, id: i64, ranges: &[(i64, i6
         })
         .collect();
 
-    Snapshot::new(id, id * 1000, lease.epoch(), offsets).unwrap()
+    Snapshot::new(id, id, id * 1000, lease.epoch(), offsets).unwrap()
 }
 
 pub(crate) fn file(topic: &Topic, partition: i32, start: i64, end: i64) -> IndexedFile {

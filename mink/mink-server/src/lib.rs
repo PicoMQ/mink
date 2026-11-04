@@ -1,8 +1,10 @@
 mod admin;
+mod buckets;
 mod catalog;
 mod commands;
 mod config;
 mod error;
+mod external;
 mod forward;
 mod indexer;
 mod membership;
@@ -16,6 +18,7 @@ mod services;
 mod supervisor;
 #[cfg(test)]
 mod testing;
+mod tier;
 mod warehouse;
 mod writer;
 
@@ -127,8 +130,7 @@ impl Node {
 
         let membership = tokio::spawn(membership::run(services.clone(), member, stop.subscribe()));
 
-        let supervisor = config
-            .has(Role::Indexer)
+        let supervisor = (config.has(Role::Indexer) || config.has(Role::Tier))
             .then(|| tokio::spawn(supervisor::supervise(services.clone(), stop.subscribe())));
 
         Ok(Node {

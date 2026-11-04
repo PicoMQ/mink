@@ -2,8 +2,6 @@
 
 How Mink turns the record bytes of a Fetch response into the committed records of a partition, and those records into rows. Conformance fixtures in `../conformance/fixtures/records/` pin the behaviour against bytes captured from Apache Kafka 3.9.1.
 
-Mink parses record batches itself. The parser in the `kafka-protocol` crate keeps headers in a map, so a key repeated within one record keeps only one of its values. Kafka allows repeated keys, so that parser would lose data. Mink still uses that crate's codecs to decompress.
-
 ## Record batch
 
 Only message format v2 (magic `2`) is supported. Integers are big-endian unless marked as a varint.
@@ -15,7 +13,7 @@ Only message format v2 (magic `2`) is supported. Integers are big-endian unless 
 | 12 | 4 | `partition_leader_epoch` | |
 | 16 | 1 | `magic` | Must be `2` |
 | 17 | 4 | `crc` | CRC-32C (Castagnoli) of every byte from `attributes` to the end of the batch |
-| 21 | 2 | `attributes` | Bits 0–2 compression, bit 3 timestamp type, bit 4 transactional, bit 5 control |
+| 21 | 2 | `attributes` | Bits 0 to 2 compression, bit 3 timestamp type, bit 4 transactional, bit 5 control |
 | 23 | 4 | `last_offset_delta` | |
 | 27 | 8 | `base_timestamp` | |
 | 35 | 8 | `max_timestamp` | |
@@ -48,12 +46,12 @@ Varints are zigzag-encoded, as in the Kafka protocol.
 
 ### Control batches
 
-A control batch (attribute bit 5) holds exactly one record. Its key is `version: int16` (must be `0`) followed by `type: int16`: `0` is an abort marker, `1` a commit marker. A control batch of any other type is kept as an other control batch, so its offset still moves a read forward. No control batch ever produces a row, and only abort markers change which records are kept.
+A control batch (attribute bit 5) holds exactly one record. Its key is `version: int16` (must be `0`) followed by `type: int16`: `0` is an abort marker, `1` a commit marker. A control batch of any other type is kept as an other control batch. No control batch ever produces a row, and only abort markers change which records are kept.
 
 ## Parsing a fetch
 
 1. Read batches one after another from the start of the `records` bytes.
-2. If fewer than 12 bytes, or fewer than `12 + batch_length` bytes, remain, the last batch is incomplete. The broker is allowed to truncate it, so Mink drops it without an error.
+2. If fewer than 12 bytes, or fewer than `12 + batch_length` bytes, remain, the last batch is incomplete. Mink drops it without an error.
 3. A batch whose magic is not `2`, whose CRC does not match, whose record count disagrees with its records, or whose bytes fail to decompress is an error: `corrupt_batch` with the batch's base offset. Mink never skips a corrupt batch.
 
 ## Committed records
@@ -83,10 +81,6 @@ A header key that is not valid UTF-8 is an error, `invalid_header_key`, with the
 
 A create-time timestamp is `base_timestamp + timestamp_delta`. If that overflows, the batch is corrupt. If `timestamp_ms * 1000` overflows, building the rows fails with `timestamp_overflow` and the record's offset.
 
-Rows are built from records by `mink-iceberg`. The Kafka client returns records and knows nothing about the table schema.
-
-A read of an offset range asks for at most 65,536 bytes in its first fetch, and four times as many in each fetch after, up to the client's `max_bytes` of 8 MiB.
-
 ## Invariants
 
 1. A record is kept if and only if a `READ_COMMITTED` Kafka consumer returns it.
@@ -109,7 +103,7 @@ A read of an offset range asks for at most 65,536 bytes in its first fetch, and 
 
 2 cases are derived from the captured `codec_none` bytes: `truncated_last_batch`, with its last 7 bytes removed, and `corrupt_crc`, with the last byte of its first batch flipped.
 
-`cargo run -p mink-conformance -- generate records --kafka-image apache/kafka:3.9.1 --bless` regenerates the fixtures against a broker of that image at `localhost:29092`. librdkafka produces the records, including aborted transactions, and a separate librdkafka consumer in `read_committed` mode supplies the expected records, so the expected values never come from Mink's own code.
+`cargo run -p mink-conformance -- generate records --kafka-image apache/kafka:3.9.1 --bless` regenerates the fixtures against a broker of that image at `localhost:29092`. librdkafka produces the records, including aborted transactions, and a separate librdkafka consumer in `read_committed` mode supplies the expected records. The expected values never come from Mink's own code.
 
 Tests:
 
@@ -123,6 +117,5 @@ Tests:
 - `mink-kafka` `transaction::tests::fixtures_keep_exactly_the_committed_records`: invariants 1 and 3.
 - `mink-kafka` `transaction::tests::aborted_records_are_dropped_and_committed_ones_kept` and `transaction::tests::markers_never_become_records`: the committed records rule.
 - `mink-kafka` `transaction::tests::committed_records_do_not_depend_on_the_fetch_start`: invariant 2, a property over start offsets and response splits.
-- `mink-kafka` `cluster::tests::range_reads_start_with_small_fetches_and_grow`: the fetch sizes of a range read.
 - `mink-iceberg` `rows::tests::rows_follow_the_records` and `rows::tests::a_timestamp_that_overflows_microseconds_is_an_error`: the row mapping.
 - `mink-conformance` `kafka_reads_match_a_read_committed_consumer`: invariant 1 against a real consumer.

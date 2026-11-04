@@ -14,7 +14,7 @@ use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 use super::key::{Key, Object};
-use super::origin::{BuiltOrigin, FileOrigin, object_name};
+use super::origin::{BucketOrigin, BuiltOrigin, FileOrigin, object_name};
 use crate::Error;
 use crate::services::Services;
 
@@ -27,6 +27,7 @@ pub(crate) struct Cache {
     files: NamespaceId,
     built: NamespaceId,
     metadata: NamespaceId,
+    external: NamespaceId,
     origin: Arc<FileOrigin>,
     services: Arc<Services>,
     upkeep: JoinHandle<()>,
@@ -68,13 +69,19 @@ impl Cache {
             Arc::new(ObjectStoreOrigin::new(services.warehouse.store())),
         )
         .consistency(Consistency::Etag { ttl: METADATA_TTL });
+        let external = Namespace::new(
+            "external",
+            Arc::new(BucketOrigin::new(services.buckets.clone())),
+        )
+        .consistency(Consistency::Immutable);
 
         let nestor = Nestor::builder(cache).build().await.map_err(Error::Cache)?;
-        let (files, built, metadata) = services.metrics.with_recorder(|| {
+        let (files, built, metadata, external) = services.metrics.with_recorder(|| {
             (
                 nestor.register(files),
                 nestor.register(built),
                 nestor.register(metadata),
+                nestor.register(external),
             )
         });
 
@@ -91,6 +98,7 @@ impl Cache {
             files,
             built,
             metadata,
+            external,
             origin,
             services,
             upkeep,
@@ -212,6 +220,7 @@ impl Cache {
     fn object(&self, key: &Key, table: Uuid) -> Result<(NamespaceId, String), Error> {
         match key.object() {
             Object::Data(_) => Ok((self.files, object_name(table, key.path(), None))),
+            Object::External => Ok((self.external, key.path().to_owned())),
             Object::Metadata { .. } => {
                 let object = self.services.warehouse.key(key.path())?;
 

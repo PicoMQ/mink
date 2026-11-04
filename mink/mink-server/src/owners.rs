@@ -23,6 +23,7 @@ pub(crate) fn scope_key(scope: &Scope) -> String {
     match scope {
         Scope::Partition(partition) => format!("{}/{}", partition.topic(), partition.index()),
         Scope::Topic(topic) => topic.clone(),
+        Scope::Tier(partition) => format!("{}/{}/tier", partition.topic(), partition.index()),
     }
 }
 

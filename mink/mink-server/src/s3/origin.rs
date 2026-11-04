@@ -6,11 +6,13 @@ use bytes::Bytes;
 use futures::StreamExt;
 use mink_core::{BuiltFile, File, TableLocation};
 use nestor::{GetOptions, GetResponse, ObjectMeta, Origin, OriginError};
+use nestor_store::ObjectStoreOrigin;
 use tokio::sync::Semaphore;
 use uuid::Uuid;
 
 use super::build::{build, extent, path};
 use crate::Error;
+use crate::buckets::{Buckets, bucket_and_key};
 use crate::runs::SharedRuns;
 use crate::services::Services;
 
@@ -22,6 +24,10 @@ pub(super) struct FileOrigin {
 
 pub(super) struct BuiltOrigin {
     services: Arc<Services>,
+}
+
+pub(super) struct BucketOrigin {
+    buckets: Buckets,
 }
 
 impl FileOrigin {
@@ -103,6 +109,19 @@ impl BuiltOrigin {
     }
 }
 
+impl BucketOrigin {
+    pub(super) fn new(buckets: Buckets) -> BucketOrigin {
+        BucketOrigin { buckets }
+    }
+
+    fn locate(&self, path: &str) -> Result<(ObjectStoreOrigin, String), OriginError> {
+        let (bucket, key) = bucket_and_key(path).ok_or(OriginError::NotFound)?;
+        let store = self.buckets.client(bucket).map_err(origin_error)?;
+
+        Ok((ObjectStoreOrigin::new(store), key.to_string()))
+    }
+}
+
 #[async_trait]
 impl Origin for FileOrigin {
     async fn get(&self, object: &str, _: GetOptions) -> Result<GetResponse, OriginError> {
@@ -146,6 +165,21 @@ impl Origin for BuiltOrigin {
             self.encoded(object).await?.len() as u64,
             None,
         ))
+    }
+}
+
+#[async_trait]
+impl Origin for BucketOrigin {
+    async fn get(&self, object: &str, options: GetOptions) -> Result<GetResponse, OriginError> {
+        let (origin, key) = self.locate(object)?;
+
+        origin.get(&key, options).await
+    }
+
+    async fn head(&self, object: &str) -> Result<ObjectMeta, OriginError> {
+        let (origin, key) = self.locate(object)?;
+
+        origin.head(&key).await
     }
 }
 

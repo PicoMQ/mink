@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
-use mink_core::{Scope, Topic};
+use mink_core::{Role, Scope, Topic, now_ms};
 use mink_metrics::Metrics;
 use mink_store::Lease;
 use tokio::sync::watch;
@@ -14,6 +14,7 @@ use crate::indexer::Indexer;
 use crate::owners::{owner, preference, scope_key, share};
 use crate::registration::{delete_removed, register};
 use crate::services::Services;
+use crate::tier::Tier;
 use crate::writer::Writer;
 
 struct Supervisor {
@@ -31,7 +32,8 @@ struct Assignment {
 
 enum Worker {
     Indexer(Indexer),
-    Writer(Writer),
+    Writer(Box<Writer>),
+    Tier(Tier),
 }
 
 pub(crate) async fn supervise(services: Arc<Services>, mut stop: watch::Receiver<bool>) {
@@ -51,6 +53,8 @@ pub(crate) async fn supervise(services: Arc<Services>, mut stop: watch::Receiver
                 }
 
                 supervisor.count_leases();
+                let lag = supervisor.services.tier_lags.lag(now_ms());
+                supervisor.services.metrics.tier_lag(lag);
             }
             _ = stop.changed() => break,
         }
@@ -76,12 +80,20 @@ impl Supervisor {
         let topics = register(&self.services).await?;
         self.stop_unlisted(&topics);
 
-        let mut indexing = self.services.membership.indexers();
-        if !indexing.contains(&self.holder) {
-            indexing.push(self.holder);
+        if self.services.config.has(Role::Indexer) {
+            self.balance_indexing(&topics).await?;
         }
 
-        for topic in &topics {
+        if self.services.config.has(Role::Tier) {
+            self.balance_tiering(&topics).await?;
+        }
+        Ok(())
+    }
+
+    async fn balance_indexing(&mut self, topics: &[Topic]) -> Result<(), Error> {
+        let indexing = self.members(Role::Indexer);
+
+        for topic in topics {
             self.balance_writer(topic, &indexing).await?;
 
             let partitions: Vec<Scope> = topic.partitions().map(Scope::Partition).collect();
@@ -93,6 +105,51 @@ impl Supervisor {
             tracing::warn!(%error, "removed tables were not deleted");
         }
         Ok(())
+    }
+
+    async fn balance_tiering(&mut self, topics: &[Topic]) -> Result<(), Error> {
+        let catalogs = &self.services.external_catalogs;
+        let tiered: HashSet<String> = match catalogs.is_empty() {
+            true => HashSet::new(),
+            false => self
+                .services
+                .store
+                .external_tables()
+                .list()
+                .await?
+                .into_iter()
+                .filter(|table| catalogs.contains_key(table.catalog()))
+                .map(|table| table.topic().to_owned())
+                .collect(),
+        };
+
+        let untiered: Vec<Scope> = self
+            .running
+            .keys()
+            .filter(|scope| matches!(scope, Scope::Tier(partition) if !tiered.contains(partition.topic())))
+            .cloned()
+            .collect();
+        for scope in untiered {
+            self.stop(&scope);
+        }
+
+        let tiering = self.members(Role::Tier);
+        for topic in topics.iter().filter(|topic| tiered.contains(topic.name())) {
+            let partitions: Vec<Scope> = topic.partitions().map(Scope::Tier).collect();
+            let share = share(partitions.len(), tiering.len());
+            self.balance(&partitions, share).await?;
+        }
+
+        Ok(())
+    }
+
+    fn members(&self, role: Role) -> Vec<Uuid> {
+        let mut members = self.services.membership.ids(role);
+        if !members.contains(&self.holder) {
+            members.push(self.holder);
+        }
+
+        members
     }
 
     async fn balance_writer(&mut self, topic: &Topic, indexing: &[Uuid]) -> Result<(), Error> {
@@ -133,7 +190,9 @@ impl Supervisor {
         let mut holding = held.len();
 
         for scope in free {
-            if holding >= share || !self.room_for_partition() {
+            let at_max_partitions =
+                matches!(scope, Scope::Partition(_)) && !self.room_for_partition();
+            if holding >= share || at_max_partitions {
                 break;
             }
 
@@ -159,12 +218,19 @@ impl Supervisor {
     }
 
     fn count_leases(&self) {
-        let held = self.running.len() + self.stopping.len();
-        let partitions = self.held_partitions();
+        let (mut partitions, mut topics, mut tiers) = (0, 0, 0);
+        for scope in self.running.keys().chain(self.stopping.keys()) {
+            match scope {
+                Scope::Partition(_) => partitions += 1,
+                Scope::Topic(_) => topics += 1,
+                Scope::Tier(_) => tiers += 1,
+            }
+        }
 
         let metrics = &self.services.metrics;
-        metrics.leases(mink_metrics::Scope::Partition, partitions as u64);
-        metrics.leases(mink_metrics::Scope::Topic, (held - partitions) as u64);
+        metrics.leases(mink_metrics::Scope::Partition, partitions);
+        metrics.leases(mink_metrics::Scope::Topic, topics);
+        metrics.leases(mink_metrics::Scope::Tier, tiers);
     }
 
     fn held_partitions(&self) -> usize {
@@ -302,7 +368,12 @@ impl Worker {
             Scope::Partition(partition) => Ok(Worker::Indexer(
                 Indexer::start(services, lease, partition).await?,
             )),
-            Scope::Topic(name) => Ok(Worker::Writer(Writer::start(services, lease, name).await?)),
+            Scope::Topic(name) => Ok(Worker::Writer(Box::new(
+                Writer::start(services, lease, name).await?,
+            ))),
+            Scope::Tier(partition) => {
+                Ok(Worker::Tier(Tier::start(services, lease, partition).await?))
+            }
         }
     }
 
@@ -310,6 +381,7 @@ impl Worker {
         match self {
             Worker::Indexer(indexer) => indexer.interval(),
             Worker::Writer(writer) => writer.interval(),
+            Worker::Tier(tier) => tier.interval(),
         }
     }
 
@@ -317,6 +389,7 @@ impl Worker {
         match self {
             Worker::Indexer(indexer) => indexer.tick().await,
             Worker::Writer(writer) => writer.tick().await,
+            Worker::Tier(tier) => tier.tick().await,
         }
     }
 }
@@ -353,6 +426,7 @@ fn record_end(
     let worker = match scope {
         Scope::Partition(_) => mink_metrics::Worker::Indexer,
         Scope::Topic(_) => mink_metrics::Worker::Writer,
+        Scope::Tier(_) => mink_metrics::Worker::Tier,
     };
 
     if !matches!(ended, Ok(Ok(()))) {
@@ -368,15 +442,17 @@ fn record_end(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
     use std::time::Duration;
 
     use tokio::time::Instant;
 
-    use mink_core::Scope;
+    use mink_core::{ExternalTable, Scope, TierSchedule};
     use mink_store::LeaseHolder;
     use uuid::Uuid;
 
     use crate::Role;
+    use crate::config::ExternalCatalog;
     use crate::testing::{self, kafka};
 
     #[tokio::test]
@@ -415,6 +491,67 @@ mod tests {
         node.shutdown().await.unwrap();
 
         assert_eq!(covered, 5);
+    }
+
+    #[tokio::test]
+    async fn tier_nodes_hold_tier_leases_only_for_topics_with_an_external_table() {
+        let Some(bootstrap) = kafka() else {
+            return;
+        };
+        let Some(uri) = mink_conformance::service("TEST_ICEBERG_REST") else {
+            return;
+        };
+        let Some(mut config) = testing::config(&[Role::Tier]).await else {
+            return;
+        };
+        config.lease_ttl = Duration::from_secs(3);
+        config.external_catalogs = BTreeMap::from([(
+            "fixture".to_owned(),
+            ExternalCatalog {
+                uri,
+                warehouse: None,
+                auth: None,
+            },
+        )]);
+        let tiered = format!("s{}", Uuid::new_v4().simple());
+        let plain = format!("s{}", Uuid::new_v4().simple());
+        for name in [&tiered, &plain] {
+            mink_conformance::create_topic(&bootstrap, name, 2).await;
+            crate::add_table(&config, name, None).await.unwrap();
+        }
+
+        let node = testing::node_with(config).await;
+        let external = ExternalTable::new(
+            &tiered,
+            "fixture",
+            "mink",
+            &tiered,
+            Uuid::new_v4(),
+            "s3://mink/tiered",
+            TierSchedule::default(),
+        )
+        .unwrap();
+        node.services
+            .store
+            .external_tables()
+            .add(&external)
+            .await
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while holders(&node, &tiered).await.len() < 2 && Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        let tiered_leases = holders(&node, &tiered).await;
+        let plain_leases = holders(&node, &plain).await;
+        node.shutdown().await.unwrap();
+
+        assert_eq!(tiered_leases.len(), 2);
+        assert!(
+            tiered_leases
+                .iter()
+                .all(|lease| matches!(lease.scope(), Scope::Tier(_)))
+        );
+        assert!(plain_leases.is_empty());
     }
 
     #[tokio::test]

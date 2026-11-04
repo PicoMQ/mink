@@ -146,6 +146,17 @@ pub(crate) fn render(instruments: &Instruments) -> String {
     }
 
     gauge(&mut out, "mink_cache_bytes", &instruments.cache_bytes);
+    counter(&mut out, "mink_tier_gaps_total", &instruments.tier_gaps);
+    counter(
+        &mut out,
+        "mink_tier_skipped_offsets_total",
+        &instruments.tier_skipped_offsets,
+    );
+    gauge(
+        &mut out,
+        "mink_tier_lag_seconds",
+        &instruments.tier_lag_seconds,
+    );
 
     out
 }

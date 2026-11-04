@@ -213,7 +213,16 @@ impl Table {
             }
         };
 
-        list.add_manifests(manifests.iter().map(|manifest| manifest.file.clone()))?;
+        let external = self
+            .external_snapshot
+            .iter()
+            .flat_map(|external| external.manifests());
+        list.add_manifests(
+            manifests
+                .iter()
+                .map(|manifest| manifest.file.clone())
+                .chain(external.cloned()),
+        )?;
         list.close().await?;
 
         let bytes = io.new_input(location)?.read().await?;

@@ -30,6 +30,38 @@ CREATE TABLE time_spec (
     PRIMARY KEY (topic, id)
 );
 
+CREATE TABLE external_table (
+    topic TEXT PRIMARY KEY REFERENCES topic (name) ON DELETE CASCADE,
+    catalog TEXT NOT NULL,
+    namespace TEXT NOT NULL,
+    name TEXT NOT NULL,
+    uuid UUID NOT NULL,
+    location TEXT NOT NULL,
+    tier_after_ms BIGINT NOT NULL CHECK (tier_after_ms > 0),
+    tier_interval_ms BIGINT NOT NULL CHECK (tier_interval_ms > 0),
+    UNIQUE (catalog, namespace, name),
+    UNIQUE (uuid),
+    UNIQUE (location)
+);
+
+CREATE TABLE tiered_range (
+    topic TEXT NOT NULL REFERENCES topic (name) ON DELETE CASCADE,
+    partition INTEGER NOT NULL CHECK (partition >= 0),
+    start_offset BIGINT NOT NULL,
+    end_offset BIGINT NOT NULL,
+    spec_id INTEGER NOT NULL,
+    encoded_data_files TEXT[] NOT NULL,
+    PRIMARY KEY (topic, partition, start_offset),
+    CHECK (0 <= start_offset AND start_offset < end_offset)
+);
+
+CREATE TABLE tiered_offsets (
+    topic TEXT NOT NULL REFERENCES topic (name) ON DELETE CASCADE,
+    partition INTEGER NOT NULL CHECK (partition >= 0),
+    end_offset BIGINT NOT NULL CHECK (end_offset >= 0),
+    PRIMARY KEY (topic, partition)
+);
+
 CREATE TABLE file (
     topic TEXT NOT NULL REFERENCES topic (name) ON DELETE CASCADE,
     partition INTEGER NOT NULL CHECK (partition >= 0),
@@ -62,6 +94,7 @@ CREATE TABLE sketch (
 CREATE TABLE snapshot (
     topic TEXT NOT NULL REFERENCES topic (name) ON DELETE CASCADE,
     id BIGINT NOT NULL CHECK (id > 0),
+    sequence_number BIGINT NOT NULL CHECK (sequence_number > 0),
     timestamp_ms BIGINT NOT NULL,
     epoch BIGINT NOT NULL CHECK (epoch > 0),
     PRIMARY KEY (topic, id)
@@ -89,10 +122,12 @@ CREATE TABLE member (
 CREATE TABLE lease (
     topic TEXT NOT NULL REFERENCES topic (name) ON DELETE CASCADE,
     partition INTEGER CHECK (partition >= 0),
+    scope TEXT NOT NULL CHECK (scope IN ('partition', 'topic', 'tier')),
     holder UUID NOT NULL,
     epoch BIGINT NOT NULL,
     expires_at_ms BIGINT NOT NULL,
-    UNIQUE NULLS NOT DISTINCT (topic, partition)
+    UNIQUE NULLS NOT DISTINCT (topic, partition, scope),
+    CHECK ((scope = 'topic') = (partition IS NULL))
 );
 
 CREATE TABLE object (

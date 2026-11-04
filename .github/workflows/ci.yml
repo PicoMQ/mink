@@ -44,6 +44,7 @@ jobs:
       TEST_KAFKA_BOOTSTRAP: localhost:29092
       TEST_S3_ENDPOINT: http://localhost:9000
       TEST_SCHEMA_REGISTRY: http://localhost:8081
+      TEST_ICEBERG_REST: http://localhost:18181
     steps:
       - uses: actions/checkout@v4
       - name: free runner disk
@@ -54,7 +55,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake pkg-config libcurl4-openssl-dev
       - name: start the compose stack the tests run against
         run: |
-          docker compose -f harness/compose.yml up -d --wait kafka postgres rustfs schema-registry
+          docker compose -f harness/compose.yml up -d --wait kafka postgres rustfs schema-registry iceberg-rest
           docker compose -f harness/compose.yml run --rm createbucket
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets --locked

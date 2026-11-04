@@ -27,6 +27,7 @@ pub enum Method {
 pub enum Object {
     Data,
     Metadata,
+    External,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,12 +63,14 @@ pub enum Answer {
 pub enum Worker {
     Indexer,
     Writer,
+    Tier,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scope {
     Partition,
     Topic,
+    Tier,
 }
 
 impl Source {
@@ -123,12 +126,13 @@ impl Method {
 }
 
 impl Object {
-    pub(crate) const ALL: [Object; 2] = [Object::Data, Object::Metadata];
+    pub(crate) const ALL: [Object; 3] = [Object::Data, Object::Metadata, Object::External];
 
     pub(crate) fn label(self) -> &'static str {
         match self {
             Object::Data => "data",
             Object::Metadata => "metadata",
+            Object::External => "external",
         }
     }
 }
@@ -197,23 +201,25 @@ impl Answer {
 }
 
 impl Worker {
-    pub(crate) const ALL: [Worker; 2] = [Worker::Indexer, Worker::Writer];
+    pub(crate) const ALL: [Worker; 3] = [Worker::Indexer, Worker::Writer, Worker::Tier];
 
     pub(crate) fn label(self) -> &'static str {
         match self {
             Worker::Indexer => "indexer",
             Worker::Writer => "writer",
+            Worker::Tier => "tier",
         }
     }
 }
 
 impl Scope {
-    pub(crate) const ALL: [Scope; 2] = [Scope::Partition, Scope::Topic];
+    pub(crate) const ALL: [Scope; 3] = [Scope::Partition, Scope::Topic, Scope::Tier];
 
     pub(crate) fn label(self) -> &'static str {
         match self {
             Scope::Partition => "partition",
             Scope::Topic => "topic",
+            Scope::Tier => "tier",
         }
     }
 }
