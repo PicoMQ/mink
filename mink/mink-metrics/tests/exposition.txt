@@ -14,6 +14,8 @@ mink_kafka_requests_total{request="offsets",result="ok"} 0
 mink_kafka_requests_total{request="offsets",result="error"} 0
 mink_kafka_requests_total{request="fetch",result="ok"} 0
 mink_kafka_requests_total{request="fetch",result="error"} 0
+mink_kafka_requests_total{request="configs",result="ok"} 0
+mink_kafka_requests_total{request="configs",result="error"} 0
 # TYPE mink_kafka_fetched_bytes_total counter
 mink_kafka_fetched_bytes_total 0
 # TYPE mink_commits_total counter

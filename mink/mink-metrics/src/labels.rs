@@ -9,6 +9,7 @@ pub enum Request {
     Metadata,
     Offsets,
     Fetch,
+    Configs,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,13 +86,19 @@ impl Source {
 }
 
 impl Request {
-    pub(crate) const ALL: [Request; 3] = [Request::Metadata, Request::Offsets, Request::Fetch];
+    pub(crate) const ALL: [Request; 4] = [
+        Request::Metadata,
+        Request::Offsets,
+        Request::Fetch,
+        Request::Configs,
+    ];
 
     pub(crate) fn label(self) -> &'static str {
         match self {
             Request::Metadata => "metadata",
             Request::Offsets => "offsets",
             Request::Fetch => "fetch",
+            Request::Configs => "configs",
         }
     }
 }

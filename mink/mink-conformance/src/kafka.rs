@@ -1,6 +1,8 @@
 use std::time::Duration;
 
-use rdkafka::admin::{AdminClient, AdminOptions, NewTopic, TopicReplication};
+use rdkafka::admin::{
+    AdminClient, AdminOptions, AlterConfig, NewTopic, ResourceSpecifier, TopicReplication,
+};
 use rdkafka::client::DefaultClientContext;
 use rdkafka::config::ClientConfig;
 use rdkafka::message::{Header, OwnedHeaders};
@@ -118,6 +120,23 @@ pub async fn delete_records(bootstrap: &str, topic: &str, partition: i32, before
         .delete_records(&offsets, &AdminOptions::new())
         .await
         .unwrap();
+}
+
+pub async fn set_retention(bootstrap: &str, topic: &str, retention_ms: i64) {
+    let admin: AdminClient<DefaultClientContext> = ClientConfig::new()
+        .set("bootstrap.servers", bootstrap)
+        .create()
+        .unwrap();
+    let retention = retention_ms.to_string();
+    let config = AlterConfig::new(ResourceSpecifier::Topic(topic)).set("retention.ms", &retention);
+
+    for result in admin
+        .alter_configs([&config], &AdminOptions::new())
+        .await
+        .unwrap()
+    {
+        result.unwrap();
+    }
 }
 
 fn client(bootstrap: &str) -> ClientConfig {

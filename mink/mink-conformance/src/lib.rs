@@ -15,7 +15,7 @@ use mink_core::{BuiltFile, File, IndexedFile, OffsetRange, Partition, Span, Stat
 pub use data::{DataFixture, bless_data, data_fixtures};
 pub use kafka::{
     create_topic, delete_records, produce_aborted, produce_at, produce_bytes, produce_values,
-    produce_with_header, producer, transactional_producer,
+    produce_with_header, producer, set_retention, transactional_producer,
 };
 pub use metadata::{MetadataFixture, MetadataStep, bless_metadata, metadata_fixture};
 pub use payload::{

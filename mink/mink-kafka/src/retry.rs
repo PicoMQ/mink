@@ -57,6 +57,8 @@ pub(crate) fn retriable(error: &Error) -> bool {
         | Error::RequestTooLarge { .. }
         | Error::UnsupportedVersion { .. }
         | Error::MissingPartition(_)
+        | Error::MissingConfig { .. }
+        | Error::InvalidConfig { .. }
         | Error::UnknownPartition(_)
         | Error::InvalidTimestamp(_)
         | Error::BeyondStableOffset { .. }
