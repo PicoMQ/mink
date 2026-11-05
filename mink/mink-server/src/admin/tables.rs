@@ -10,6 +10,7 @@ use mink_store::TableSummary;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use super::external::external_json;
 use super::leases::lease;
 use super::paging::{PageQuery, Paging};
 use super::reply::{Body, Failure, Params, Segments};
@@ -109,6 +110,7 @@ async fn table(
     let specs = store.time_specs().list(&name).await?;
     let leases = store.leases().holders(&name).await?;
     let statistics_at_ms = statistics_at_ms(services, &name, &location).await?;
+    let external = store.external_tables().get(&name).await?;
     let lag = match state {
         TableState::Indexing => Some(lag(services, &name).await?),
         _ => None,
@@ -130,6 +132,7 @@ async fn table(
         .map_or(Value::Null, lease);
     detail["statisticsAtMs"] = json!(statistics_at_ms);
     detail["lag"] = json!(lag);
+    detail["external"] = external.as_ref().map_or(Value::Null, external_json);
     Ok(Json(detail))
 }
 

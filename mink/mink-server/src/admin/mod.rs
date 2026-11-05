@@ -1,5 +1,6 @@
 mod cluster;
 mod console;
+mod external;
 mod files;
 mod leases;
 mod nodes;
@@ -76,6 +77,7 @@ pub(crate) fn router(
         .merge(nodes::routes())
         .merge(leases::routes())
         .merge(tables::routes())
+        .merge(external::routes())
         .merge(partitions::routes())
         .merge(files::routes())
         .merge(snapshots::routes())

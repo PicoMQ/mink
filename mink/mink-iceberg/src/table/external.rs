@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::str::FromStr;
 
 use iceberg::spec::{
     DataContentType, ManifestContentType, ManifestFile, PartitionField, PartitionSpec, Schema,
@@ -9,102 +10,109 @@ use mink_core::TimeSpecs;
 
 use super::FormatVersion;
 use super::keys::{
-    EXTERNAL_SNAPSHOT_ID, end_offsets, external_end_offset_key, external_end_offsets,
+    EXTERNAL_GENERATION, EXTERNAL_SNAPSHOT_ID, end_offsets, external_end_offset_key,
+    external_end_offsets,
 };
 use super::specs::{PARTITION_FIELD, last_time_field_id, partition_specs};
 use crate::Error;
 
 const EXTERNAL_SPEC_ID_BASE: i32 = 1 << 30;
+const SPECS_PER_GENERATION: i32 = 1 << 16;
+const MAX_GENERATION: i32 =
+    (i32::MAX - EXTERNAL_SPEC_ID_BASE - (SPECS_PER_GENERATION - 1)) / SPECS_PER_GENERATION;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExternalSnapshot {
+    generation: i32,
     snapshot_id: i64,
     manifests: Vec<ManifestFile>,
-    specs: Vec<PartitionSpec>,
-    sort_orders: Vec<SortOrder>,
+    specs: ExternalSpecs,
     end_offsets: BTreeMap<i32, i64>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct ExternalSpecs {
+    partition_specs: Vec<PartitionSpec>,
+    sort_orders: Vec<SortOrder>,
+}
+
 impl ExternalSnapshot {
-    pub async fn read(
+    pub async fn check(
         table: &ExternalTable,
         schema: &Schema,
         specs: &TimeSpecs,
-    ) -> Result<Option<ExternalSnapshot>, Error> {
-        let metadata = table.metadata();
-        FormatVersion::from_iceberg(metadata.format_version())?;
-        check_schema(schema, metadata.current_schema())?;
-        check_partition_fields(metadata, specs)?;
+    ) -> Result<(), Error> {
+        checked_manifests(table, schema, specs).await.map(|_| ())
+    }
 
-        let Some(current) = metadata.current_snapshot() else {
+    pub async fn read(
+        table: &ExternalTable,
+        generation: i32,
+        schema: &Schema,
+        specs: &TimeSpecs,
+    ) -> Result<Option<ExternalSnapshot>, Error> {
+        if !(1..=MAX_GENERATION).contains(&generation) {
+            return Err(Error::ExternalGeneration(generation));
+        }
+        let Some((snapshot_id, checked)) = checked_manifests(table, schema, specs).await? else {
             return Ok(None);
         };
-        let listed: Vec<ManifestFile> = table
-            .manifest_list_reader(current)
-            .load()
-            .await?
-            .consume_entries()
-            .into_iter()
-            .collect();
 
-        let mut manifests = Vec::new();
-        for mut manifest in listed {
-            if manifest.content == ManifestContentType::Deletes {
-                let deletes = manifest.load_manifest(table.file_io()).await?;
-                let equality = deletes
-                    .entries()
-                    .iter()
-                    .any(|entry| entry.content_type() == DataContentType::EqualityDeletes);
-                if equality {
-                    return Err(Error::EqualityDeletes);
-                }
-            }
-
-            manifest.partition_spec_id = listed_spec_id(manifest.partition_spec_id);
+        let mut manifests = Vec::with_capacity(checked.len());
+        for mut manifest in checked {
+            manifest.partition_spec_id = listed_spec_id(generation, manifest.partition_spec_id)?;
             manifests.push(manifest);
         }
 
+        let metadata = table.metadata();
+        let mut partition_specs = Vec::new();
+        for spec in specs_by_id(metadata) {
+            let id = listed_spec_id(generation, spec.spec_id())?;
+            partition_specs.push(spec.with_spec_id(id));
+        }
+
         Ok(Some(ExternalSnapshot {
-            snapshot_id: current.snapshot_id(),
+            generation,
+            snapshot_id,
             manifests,
-            specs: specs_by_id(metadata)
-                .into_iter()
-                .map(|spec| {
-                    let id = listed_spec_id(spec.spec_id());
-                    spec.with_spec_id(id)
-                })
-                .collect(),
-            sort_orders: sort_orders_by_id(metadata),
+            specs: ExternalSpecs {
+                partition_specs,
+                sort_orders: sort_orders_by_id(metadata),
+            },
             end_offsets: end_offsets(metadata.properties())?,
         }))
     }
 
     pub(super) fn listed_in(
-        metadata: &TableMetadata,
+        declared: &BTreeMap<i32, ExternalSpecs>,
         manifests: Vec<ManifestFile>,
         summary: &Summary,
     ) -> Result<Option<ExternalSnapshot>, Error> {
-        let specs: Vec<PartitionSpec> = specs_by_id(metadata)
-            .into_iter()
-            .filter(|spec| is_listed_spec_id(spec.spec_id()))
-            .collect();
-        if specs.is_empty() {
-            return Ok(None);
-        }
-
         let properties = &summary.additional_properties;
-        let snapshot_id = properties
-            .get(EXTERNAL_SNAPSHOT_ID)
-            .and_then(|id| id.parse().ok())
-            .ok_or_else(|| Error::Corrupt(format!("summary {EXTERNAL_SNAPSHOT_ID} is missing")))?;
+        let Some(generation) = listed_generation(summary)? else {
+            return Ok(None);
+        };
+        let snapshot_id = summary_value(properties, EXTERNAL_SNAPSHOT_ID)?;
+        let specs = declared
+            .get(&generation)
+            .cloned()
+            .ok_or_else(|| {
+                Error::Corrupt(format!(
+                    "a snapshot lists external generation {generation}, which the metadata declares no specs of"
+                ))
+            })?;
 
         Ok(Some(ExternalSnapshot {
+            generation,
             snapshot_id,
             manifests,
             specs,
-            sort_orders: sort_orders_by_id(metadata),
             end_offsets: external_end_offsets(properties)?,
         }))
+    }
+
+    pub fn generation(&self) -> i32 {
+        self.generation
     }
 
     pub fn snapshot_id(&self) -> i64 {
@@ -126,25 +134,24 @@ impl ExternalSnapshot {
         &self.manifests
     }
 
-    pub(super) fn specs(&self) -> &[PartitionSpec] {
+    pub(super) fn specs(&self) -> &ExternalSpecs {
         &self.specs
     }
 
-    pub(super) fn sort_orders(&self) -> &[SortOrder] {
-        &self.sort_orders
-    }
-
     pub(super) fn summary_properties(&self) -> impl Iterator<Item = (String, String)> {
-        let snapshot_id = (
-            EXTERNAL_SNAPSHOT_ID.to_owned(),
-            self.snapshot_id.to_string(),
-        );
+        let identity = [
+            (EXTERNAL_GENERATION.to_owned(), self.generation.to_string()),
+            (
+                EXTERNAL_SNAPSHOT_ID.to_owned(),
+                self.snapshot_id.to_string(),
+            ),
+        ];
         let end_offsets = self
             .end_offsets
             .iter()
             .map(|(partition, end)| (external_end_offset_key(*partition), end.to_string()));
 
-        std::iter::once(snapshot_id).chain(end_offsets)
+        identity.into_iter().chain(end_offsets)
     }
 
     pub(super) fn data_files(&self) -> Option<u64> {
@@ -176,6 +183,74 @@ impl ExternalSnapshot {
     }
 }
 
+impl ExternalSpecs {
+    pub(super) fn declared_in(metadata: &TableMetadata) -> BTreeMap<i32, ExternalSpecs> {
+        let mut declared: BTreeMap<i32, ExternalSpecs> = BTreeMap::new();
+        for spec in specs_by_id(metadata) {
+            if let Some(generation) = generation_of(spec.spec_id()) {
+                declared
+                    .entry(generation)
+                    .or_insert_with(|| ExternalSpecs {
+                        partition_specs: Vec::new(),
+                        sort_orders: Vec::new(),
+                    })
+                    .partition_specs
+                    .push(spec);
+            }
+        }
+
+        if let Some(newest) = declared.values_mut().next_back() {
+            newest.sort_orders = sort_orders_by_id(metadata);
+        }
+        declared
+    }
+
+    pub(super) fn merge(&mut self, newer: &ExternalSpecs) {
+        for spec in &newer.partition_specs {
+            match self
+                .partition_specs
+                .iter_mut()
+                .find(|known| known.spec_id() == spec.spec_id())
+            {
+                Some(known) => *known = spec.clone(),
+                None => self.partition_specs.push(spec.clone()),
+            }
+        }
+        self.partition_specs.sort_by_key(PartitionSpec::spec_id);
+        self.sort_orders = newer.sort_orders.clone();
+    }
+
+    pub(super) fn partition_specs(&self) -> &[PartitionSpec] {
+        &self.partition_specs
+    }
+
+    pub(super) fn sort_orders(&self) -> &[SortOrder] {
+        &self.sort_orders
+    }
+}
+
+pub(super) fn listed_generation(summary: &Summary) -> Result<Option<i32>, Error> {
+    let properties = &summary.additional_properties;
+
+    match properties.contains_key(EXTERNAL_GENERATION) {
+        true => Ok(Some(summary_value(properties, EXTERNAL_GENERATION)?)),
+        false => Ok(None),
+    }
+}
+
+fn summary_value<T: FromStr>(
+    properties: &std::collections::HashMap<String, String>,
+    key: &str,
+) -> Result<T, Error> {
+    let value = properties
+        .get(key)
+        .ok_or_else(|| Error::Corrupt(format!("summary {key} is missing")))?;
+
+    value
+        .parse()
+        .map_err(|_| Error::Corrupt(format!("summary {key} is {value:?}")))
+}
+
 pub fn check_schema(schema: &Schema, external: &Schema) -> Result<(), Error> {
     if schema.as_struct() != external.as_struct() {
         return Err(Error::ExternalSchema);
@@ -188,8 +263,16 @@ pub(super) fn is_listed_spec_id(spec_id: i32) -> bool {
     spec_id >= EXTERNAL_SPEC_ID_BASE
 }
 
-fn listed_spec_id(external_spec_id: i32) -> i32 {
-    EXTERNAL_SPEC_ID_BASE + external_spec_id
+fn listed_spec_id(generation: i32, external_spec_id: i32) -> Result<i32, Error> {
+    if !(0..SPECS_PER_GENERATION).contains(&external_spec_id) {
+        return Err(Error::ExternalSpecId(external_spec_id));
+    }
+
+    Ok(EXTERNAL_SPEC_ID_BASE + generation * SPECS_PER_GENERATION + external_spec_id)
+}
+
+fn generation_of(spec_id: i32) -> Option<i32> {
+    is_listed_spec_id(spec_id).then(|| (spec_id - EXTERNAL_SPEC_ID_BASE) / SPECS_PER_GENERATION)
 }
 
 fn files(manifest: &ManifestFile) -> Option<u64> {
@@ -219,6 +302,43 @@ fn sort_orders_by_id(metadata: &TableMetadata) -> Vec<SortOrder> {
     orders.sort_by_key(|order| order.order_id);
 
     orders
+}
+
+async fn checked_manifests(
+    table: &ExternalTable,
+    schema: &Schema,
+    specs: &TimeSpecs,
+) -> Result<Option<(i64, Vec<ManifestFile>)>, Error> {
+    let metadata = table.metadata();
+    FormatVersion::from_iceberg(metadata.format_version())?;
+    check_schema(schema, metadata.current_schema())?;
+    check_partition_fields(metadata, specs)?;
+
+    let Some(current) = metadata.current_snapshot() else {
+        return Ok(None);
+    };
+    let manifests: Vec<ManifestFile> = table
+        .manifest_list_reader(current)
+        .load()
+        .await?
+        .consume_entries()
+        .into_iter()
+        .collect();
+
+    for manifest in &manifests {
+        if manifest.content == ManifestContentType::Deletes {
+            let deletes = manifest.load_manifest(table.file_io()).await?;
+            let equality = deletes
+                .entries()
+                .iter()
+                .any(|entry| entry.content_type() == DataContentType::EqualityDeletes);
+            if equality {
+                return Err(Error::EqualityDeletes);
+            }
+        }
+    }
+
+    Ok(Some((current.snapshot_id(), manifests)))
 }
 
 fn check_partition_fields(metadata: &TableMetadata, specs: &TimeSpecs) -> Result<(), Error> {
@@ -258,7 +378,7 @@ mod tests {
         table: &ExternalTable,
         specs: &TimeSpecs,
     ) -> Result<Option<ExternalSnapshot>, Error> {
-        ExternalSnapshot::read(table, binary_schema(), specs).await
+        ExternalSnapshot::read(table, 1, binary_schema(), specs).await
     }
 
     fn deletes(content: DataContentType) -> DataFile {
@@ -295,7 +415,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let read = ExternalSnapshot::read(&table, &other, &specs()).await;
+        let read = ExternalSnapshot::read(&table, 1, &other, &specs()).await;
 
         assert!(matches!(read, Err(Error::ExternalSchema)), "{read:?}");
     }
@@ -379,5 +499,41 @@ mod tests {
             matches!(rejected, Err(Error::EqualityDeletes)),
             "{rejected:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn generations_run_from_one_to_the_last_that_fits_a_spec_id() {
+        let table = tiered().await;
+        let read = async |generation: i32| {
+            ExternalSnapshot::read(&table, generation, binary_schema(), &specs()).await
+        };
+
+        let last = read(MAX_GENERATION).await.unwrap().unwrap();
+
+        assert!(matches!(read(0).await, Err(Error::ExternalGeneration(0))));
+        assert!(matches!(
+            read(MAX_GENERATION + 1).await,
+            Err(Error::ExternalGeneration(_))
+        ));
+        assert_eq!(last.generation(), 16383);
+    }
+
+    #[tokio::test]
+    async fn a_relisted_generation_keeps_the_specs_it_listed_before() {
+        let table = tiered().await;
+        let read = ExternalSnapshot::read(&table, 1, binary_schema(), &specs())
+            .await
+            .unwrap()
+            .unwrap();
+        let mut declared = read.specs().clone();
+        let fewer = ExternalSpecs {
+            partition_specs: read.specs().partition_specs()[1..].to_vec(),
+            sort_orders: Vec::new(),
+        };
+
+        declared.merge(&fewer);
+
+        assert_eq!(declared.partition_specs(), read.specs().partition_specs());
+        assert!(declared.sort_orders().is_empty());
     }
 }

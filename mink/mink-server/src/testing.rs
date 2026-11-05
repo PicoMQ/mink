@@ -4,19 +4,14 @@ use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
 use iceberg::TableIdent;
-use iceberg::spec::{
-    NullOrder, SortDirection, SortField, SortOrder, Transform, UnboundPartitionField,
-    UnboundPartitionSpec,
-};
-use iceberg::table::Table;
-use mink_core::{ExternalTable, Granularity, Partition, Scope, TierSchedule, Topic};
+use mink_core::{CatalogTable, ExternalTable, Granularity, Partition, Scope, TierSchedule, Topic};
 use mink_store::Lease;
 use serde_json::json;
 use uuid::Uuid;
 
 use crate::buckets::Buckets;
 use crate::config::{Credentials, ExternalCatalog, History, Kafka, Storage};
-use crate::external;
+use crate::external::{self, Attachment, Source};
 use crate::indexer::Indexer;
 use crate::services::Services;
 use crate::tier::Tier;
@@ -134,7 +129,7 @@ pub(crate) struct Tiering {
     pub(crate) identifier: TableIdent,
 }
 
-pub(crate) async fn tiering(interval: Duration) -> Option<Tiering> {
+pub(crate) async fn unattached() -> Option<Tiering> {
     let bootstrap = kafka()?;
     let endpoint = mink_conformance::service("TEST_S3_ENDPOINT")?;
     let uri = mink_conformance::service("TEST_ICEBERG_REST")?;
@@ -156,28 +151,15 @@ pub(crate) async fn tiering(interval: Duration) -> Option<Tiering> {
     .await?;
     let topic = registered(&services, 1).await;
     mink_conformance::create_topic(&bootstrap, topic.name(), 1).await;
-
-    let catalog = services.external_catalogs["fixture"].clone();
-    let identifier = TableIdent::from_strs(["mink", topic.name()]).unwrap();
-    let table = created(&catalog, &uri, &identifier).await;
-    let schedule = TierSchedule::new(Duration::from_millis(1), interval).unwrap();
-    let external = ExternalTable::new(
-        topic.name(),
-        "fixture",
-        "mink",
-        topic.name(),
-        table.metadata().uuid(),
-        table.metadata().location(),
-        schedule,
-    )
-    .unwrap();
-    services
-        .store
-        .external_tables()
-        .add(&external)
+    reqwest::Client::new()
+        .post(format!("{uri}/v1/namespaces"))
+        .json(&json!({ "namespace": ["mink"] }))
+        .send()
         .await
         .unwrap();
 
+    let catalog = services.external_catalogs["fixture"].clone();
+    let identifier = TableIdent::from_strs(["mink", topic.name()]).unwrap();
     Some(Tiering {
         services,
         topic,
@@ -187,48 +169,49 @@ pub(crate) async fn tiering(interval: Duration) -> Option<Tiering> {
     })
 }
 
-async fn created(catalog: &external::Catalog, uri: &str, identifier: &TableIdent) -> Table {
-    let spec = UnboundPartitionSpec::builder()
-        .add_partition_fields([UnboundPartitionField {
-            source_id: mink_schema::TIMESTAMP_ID,
-            field_id: Some(mink_iceberg::last_time_field_id() + 1),
-            name: "day".to_owned(),
-            transform: Transform::Day,
-        }])
-        .unwrap()
-        .build();
-    let order = SortOrder::builder()
-        .with_order_id(1)
-        .with_sort_field(
-            SortField::builder()
-                .source_id(2)
-                .transform(Transform::Identity)
-                .direction(SortDirection::Descending)
-                .null_order(NullOrder::Last)
-                .build(),
-        )
-        .build_unbound()
-        .unwrap();
+pub(crate) async fn tiering(interval: Duration) -> Option<Tiering> {
+    let tiering = unattached().await?;
+    let source = Source::new(
+        false,
+        Some(vec!["day(_kafka_timestamp)".parse().unwrap()]),
+        vec!["_kafka_offset desc".parse().unwrap()],
+        HashMap::new(),
+        None,
+        BTreeMap::new(),
+    )
+    .unwrap();
 
-    reqwest::Client::new()
-        .post(format!("{uri}/v1/namespaces"))
-        .json(&json!({ "namespace": ["mink"] }))
-        .send()
+    tiering
+        .attach(tiering.attachment(interval, source))
         .await
         .unwrap();
-    catalog
-        .create_table_with_ids(
-            identifier,
-            mink_schema::binary_schema().clone(),
-            spec,
-            order,
-            HashMap::new(),
-        )
-        .await
-        .unwrap()
+    Some(tiering)
 }
 
 impl Tiering {
+    pub(crate) fn attachment(&self, interval: Duration, source: Source) -> Attachment {
+        Attachment {
+            topic: self.topic.name().to_owned(),
+            table: CatalogTable::new("fixture", "mink", self.topic.name()),
+            schedule: TierSchedule::new(Duration::from_millis(1), interval).unwrap(),
+            source,
+        }
+    }
+
+    pub(crate) async fn attach(
+        &self,
+        attachment: Attachment,
+    ) -> Result<ExternalTable, crate::Error> {
+        external::attach(
+            &self.services.store,
+            &self.services.kafka,
+            &self.catalog,
+            self.services.warehouse.root(),
+            attachment,
+        )
+        .await
+    }
+
     pub(crate) async fn index_and_commit(&self, days_ago: &[i64]) {
         let partition = Partition::new(self.topic.name(), 0).unwrap();
         let lease = partition_lease(&self.services, &self.topic, 0).await;

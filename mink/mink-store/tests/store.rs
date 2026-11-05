@@ -81,6 +81,7 @@ async fn connect_creates_every_table() {
             "file",
             "indexed_range",
             "lease",
+            "listed_location",
             "member",
             "object",
             "registry_schema",
@@ -214,12 +215,14 @@ async fn deleting_a_topic_deletes_what_references_it() {
         "INSERT INTO object (topic, path, kind) VALUES ($1, 'x', 'manifest')",
         "INSERT INTO sketch (topic, day, field_id, sketch) VALUES ($1, 0, 2, '\\x00')",
         "INSERT INTO external_table \
-         (topic, catalog, namespace, name, uuid, location, tier_after_ms, tier_interval_ms) \
-         VALUES ($1, 'rest', 'kafka', 't', gen_random_uuid(), 's3://b/t', 1, 1)",
+         (topic, catalog, namespace, name, uuid, location, tier_after_ms, tier_interval_ms, \
+         generation) VALUES ($1, 'rest', 'kafka', 't', gen_random_uuid(), 's3://b/t', 1, 1, 1)",
         "INSERT INTO tiered_range \
-         (topic, partition, start_offset, end_offset, spec_id, encoded_data_files) \
-         VALUES ($1, 0, 0, 10, 0, '{}')",
-        "INSERT INTO tiered_offsets (topic, partition, end_offset) VALUES ($1, 0, 10)",
+         (topic, generation, partition, start_offset, end_offset, spec_id, encoded_data_files) \
+         VALUES ($1, 1, 0, 0, 10, 0, '{}')",
+        "INSERT INTO tiered_offsets (topic, generation, partition, end_offset) VALUES ($1, 1, 0, 10)",
+        "INSERT INTO listed_location (topic, generation, uuid, location) \
+         VALUES ($1, 1, gen_random_uuid(), 's3://b/t')",
     ] {
         sqlx::query(statement)
             .bind(&topic)
@@ -245,13 +248,14 @@ async fn deleting_a_topic_deletes_what_references_it() {
          UNION ALL SELECT count(*) FROM sketch WHERE topic = $1 \
          UNION ALL SELECT count(*) FROM external_table WHERE topic = $1 \
          UNION ALL SELECT count(*) FROM tiered_range WHERE topic = $1 \
-         UNION ALL SELECT count(*) FROM tiered_offsets WHERE topic = $1",
+         UNION ALL SELECT count(*) FROM tiered_offsets WHERE topic = $1 \
+         UNION ALL SELECT count(*) FROM listed_location WHERE topic = $1",
     )
     .bind(&topic)
     .fetch_all(&pool)
     .await
     .unwrap();
-    assert_eq!(remaining, [0; 11]);
+    assert_eq!(remaining, [0; 12]);
 }
 
 #[tokio::test]

@@ -3,6 +3,7 @@ use mink_schema::binary_schema;
 use serde_json::{Map, Value, json};
 
 use super::commit::Commit;
+use super::external::ExternalSpecs;
 use super::specs::partition_specs;
 use super::{FormatVersion, Table};
 use crate::Error;
@@ -17,12 +18,16 @@ impl Table {
             .into_iter()
             .chain(commit.schemas)
             .collect();
-        let external = self.external_snapshot.as_ref();
+        let declared: Vec<&ExternalSpecs> = self
+            .listed_generations()?
+            .iter()
+            .filter_map(|generation| self.external_specs.get(generation))
+            .collect();
         let mut specs = partition_specs(commit.specs)?;
         specs.extend(
-            external
-                .into_iter()
-                .flat_map(|external| external.specs())
+            declared
+                .iter()
+                .flat_map(|declared| declared.partition_specs())
                 .cloned(),
         );
         let last_partition_id = specs
@@ -31,9 +36,10 @@ impl Table {
             .max();
         let mut sort_orders = vec![SortOrder::unsorted_order()];
         sort_orders.extend(
-            external
+            declared
+                .last()
                 .into_iter()
-                .flat_map(|external| external.sort_orders())
+                .flat_map(|declared| declared.sort_orders())
                 .cloned(),
         );
 

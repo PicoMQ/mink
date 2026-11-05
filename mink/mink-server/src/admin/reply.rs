@@ -7,6 +7,7 @@ use axum::extract::{FromRequest, FromRequestParts, Path, Query, Request};
 use axum::http::StatusCode;
 use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
+use iceberg::ErrorKind;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, de};
 use serde_json::json;
@@ -53,14 +54,45 @@ impl From<Error> for Failure {
     fn from(error: Error) -> Failure {
         let status = match &error {
             _ if error.store_unavailable() => StatusCode::SERVICE_UNAVAILABLE,
-            Error::Store(mink_store::Error::NoTable { .. })
+            Error::Store(
+                mink_store::Error::NoTable { .. } | mink_store::Error::NoExternalTable { .. },
+            )
             | Error::NoSuchTable(_)
             | Error::NoSuchTopic(_)
             | Error::NoSuchKey(_) => StatusCode::NOT_FOUND,
             Error::Store(
-                mink_store::Error::AlreadyTable { .. } | mink_store::Error::TableRemoving { .. },
+                mink_store::Error::AlreadyTable { .. }
+                | mink_store::Error::TableRemoving { .. }
+                | mink_store::Error::AlreadyExternalTable { .. }
+                | mink_store::Error::ExternalTableTaken { .. }
+                | mink_store::Error::OverlappingLocation { .. },
             )
-            | Error::NotIndexing(_) => StatusCode::CONFLICT,
+            | Error::NotIndexing(_)
+            | Error::ConflictingEndOffsets(_) => StatusCode::CONFLICT,
+            Error::Store(
+                mink_store::Error::NotABoundary { .. }
+                | mink_store::Error::RangeNotStarted(_)
+                | mink_store::Error::EndOffsetBeyondIndex { .. },
+            )
+            | Error::Core(_)
+            | Error::Iceberg(
+                mink_iceberg::Error::ExternalSchema
+                | mink_iceberg::Error::ExternalPartitionField(_)
+                | mink_iceberg::Error::EqualityDeletes
+                | mink_iceberg::Error::FormatVersion(_)
+                | mink_iceberg::Error::TableProperty { .. },
+            )
+            | Error::UnreadableTerm(_)
+            | Error::UnknownColumn(_)
+            | Error::ShortRetention { .. }
+            | Error::UnsupportedLocation(_)
+            | Error::LocationInWarehouse(_)
+            | Error::MissingEndOffsets(_)
+            | Error::InvalidEndOffset { .. }
+            | Error::ExistingTableKeeps(_)
+            | Error::EndOffsetsOfNewTable
+            | Error::PartitioningRequired => StatusCode::BAD_REQUEST,
+            Error::Iceberg(mink_iceberg::Error::Iceberg(error)) => catalog_status(error),
             Error::Kafka(_)
             | Error::TopicUnavailable(_)
             | Error::RegistryUnavailable(_)
@@ -73,6 +105,17 @@ impl From<Error> for Failure {
             status,
             message: error.to_string(),
         }
+    }
+}
+
+fn catalog_status(error: &iceberg::Error) -> StatusCode {
+    match error.kind() {
+        ErrorKind::TableAlreadyExists
+        | ErrorKind::NamespaceAlreadyExists
+        | ErrorKind::CatalogCommitConflicts => StatusCode::CONFLICT,
+        ErrorKind::TableNotFound | ErrorKind::NamespaceNotFound => StatusCode::NOT_FOUND,
+        ErrorKind::DataInvalid => StatusCode::BAD_REQUEST,
+        _ => StatusCode::BAD_GATEWAY,
     }
 }
 

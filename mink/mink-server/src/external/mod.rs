@@ -1,3 +1,4 @@
+mod attach;
 mod auth;
 mod storage;
 
@@ -17,13 +18,15 @@ use iceberg::{
 use iceberg_catalog_rest::{
     CommitTableRequest, CommitTableResponse, CreateTableRequest, ErrorResponse, LoadTableResult,
 };
-use mink_core::ExternalTable;
+use mink_core::{CatalogTable, ExternalTable};
 use reqwest::header::CONTENT_TYPE;
 use reqwest::{Method, Response, StatusCode, Url};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tokio::sync::OnceCell;
 
+pub use attach::{Attachment, Partitioning, SortTerm, Source, Term};
+pub(crate) use attach::{attach, detach};
 use auth::Authorizer;
 use storage::S3StorageFactory;
 
@@ -85,9 +88,11 @@ impl Catalog {
         spec: UnboundPartitionSpec,
         order: SortOrder,
         properties: HashMap<String, String>,
+        location: Option<String>,
     ) -> Result<Table> {
         let creation = TableCreation::builder()
             .name(identifier.name().to_owned())
+            .location_opt(location)
             .schema(schema.clone())
             .properties(properties)
             .build();
@@ -226,6 +231,19 @@ impl Catalog {
         body: Option<Vec<u8>>,
         missing: ErrorKind,
     ) -> Result<T> {
+        let (status, bytes) = self.request(method, url, body, missing).await?;
+
+        serde_json::from_slice(&bytes)
+            .map_err(|error| self.rejected(ErrorKind::DataInvalid, status, error))
+    }
+
+    async fn request(
+        &self,
+        method: Method,
+        url: Url,
+        body: Option<Vec<u8>>,
+        missing: ErrorKind,
+    ) -> Result<(StatusCode, bytes::Bytes)> {
         let mut response = self.attempt(&method, &url, body.clone()).await?;
         if response.status() == StatusCode::UNAUTHORIZED && self.authorizer.renew().await {
             response = self.attempt(&method, &url, body).await?;
@@ -238,8 +256,7 @@ impl Catalog {
             .map_err(|error| self.unavailable(error))?;
 
         if status.is_success() {
-            return serde_json::from_slice(&bytes)
-                .map_err(|error| self.rejected(ErrorKind::DataInvalid, status, error));
+            return Ok((status, bytes));
         }
 
         let message = serde_json::from_slice::<ErrorResponse>(&bytes)
@@ -420,8 +437,12 @@ impl iceberg::Catalog for Catalog {
         )
     }
 
-    async fn drop_table(&self, _: &TableIdent) -> Result<()> {
-        Err(unsupported("dropping tables"))
+    async fn drop_table(&self, identifier: &TableIdent) -> Result<()> {
+        let url = self.table_url(identifier).await?;
+
+        self.request(Method::DELETE, url, None, ErrorKind::TableNotFound)
+            .await
+            .map(|_| ())
     }
 
     async fn purge_table(&self, _: &TableIdent) -> Result<()> {
@@ -449,6 +470,13 @@ impl iceberg::Catalog for Catalog {
     }
 }
 
+pub(crate) fn identifier(table: &CatalogTable) -> TableIdent {
+    TableIdent::new(
+        NamespaceIdent::new(table.namespace().to_owned()),
+        table.name().to_owned(),
+    )
+}
+
 pub(crate) async fn delete_data_files(table: &Table, files: &[DataFile]) {
     for file in files {
         if let Err(error) = table.file_io().delete(file.file_path()).await {
@@ -467,11 +495,7 @@ impl Catalog {
         &self,
         external: &ExternalTable,
     ) -> std::result::Result<Table, crate::Error> {
-        let identifier = TableIdent::new(
-            NamespaceIdent::new(external.namespace().to_owned()),
-            external.name().to_owned(),
-        );
-        let table = iceberg::Catalog::load_table(self, &identifier).await?;
+        let table = iceberg::Catalog::load_table(self, &identifier(external.table())).await?;
         if table.metadata().uuid() != external.uuid() {
             return Err(crate::Error::ReplacedExternalTable(
                 external.topic().to_owned(),

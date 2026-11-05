@@ -19,7 +19,7 @@ use mink_core::{File, Partition, Scope};
 use sqlx::PgPool;
 use sqlx::migrate::MigrateError;
 
-pub use external::ExternalTables;
+pub use external::{ExternalTables, ServedLocation};
 pub use files::{Files, StoredFile, built_bytes, parse_built};
 pub use leases::{Lease, LeaseHolder, Leases};
 pub use members::Members;
@@ -79,6 +79,16 @@ pub enum Error {
     },
     #[error("topic {topic} already has an external table")]
     AlreadyExternalTable { topic: String },
+    #[error("table {topic} has no external table")]
+    NoExternalTable { topic: String },
+    #[error("location {location} is inside or around another external table's location")]
+    OverlappingLocation { location: String },
+    #[error("end offset {offset} of {partition:?} is past its indexed end {indexed}")]
+    EndOffsetBeyondIndex {
+        partition: Partition,
+        offset: i64,
+        indexed: i64,
+    },
     #[error("the Iceberg table or location given for {topic} is registered for another topic")]
     ExternalTableTaken { topic: String },
     #[error("a tiered range of {partition:?} must start at {expected}, not {given}")]

@@ -16,12 +16,19 @@ macro_rules! tiered_ends {
     };
 }
 
+macro_rules! range_columns {
+    () => {
+        "SELECT generation, partition, start_offset, end_offset, spec_id, encoded_data_files"
+    };
+}
+
 pub struct TieredRanges<'a> {
     pool: &'a PgPool,
 }
 
 #[derive(FromRow)]
 struct RangeRow {
+    generation: i32,
     partition: i32,
     start_offset: i64,
     end_offset: i64,
@@ -35,6 +42,7 @@ impl RangeRow {
         let offsets = Offsets::new(partition, self.start_offset, self.end_offset)?;
         Ok(TieredRange::new(
             offsets,
+            self.generation,
             self.spec_id,
             self.encoded_data_files,
         ))
@@ -70,10 +78,11 @@ impl<'a> TieredRanges<'a> {
 
         sqlx::query(
             "INSERT INTO tiered_range \
-             (topic, partition, start_offset, end_offset, spec_id, encoded_data_files) \
-             VALUES ($1, $2, $3, $4, $5, $6)",
+             (topic, generation, partition, start_offset, end_offset, spec_id, encoded_data_files) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7)",
         )
         .bind(partition.topic())
+        .bind(range.generation())
         .bind(partition.index())
         .bind(offsets.start_offset())
         .bind(offsets.end_offset())
@@ -87,10 +96,10 @@ impl<'a> TieredRanges<'a> {
     }
 
     pub async fn list(&self, topic: &str) -> Result<Vec<TieredRange>, Error> {
-        let rows: Vec<RangeRow> = sqlx::query_as(
-            "SELECT partition, start_offset, end_offset, spec_id, encoded_data_files FROM tiered_range \
-             WHERE topic = $1 ORDER BY partition, start_offset",
-        )
+        let rows: Vec<RangeRow> = sqlx::query_as(concat!(
+            range_columns!(),
+            " FROM tiered_range WHERE topic = $1 ORDER BY partition, start_offset"
+        ))
         .bind(topic)
         .fetch_all(self.pool)
         .await?;
@@ -124,7 +133,12 @@ impl<'a> TieredRanges<'a> {
         Ok(rows.into_iter().collect())
     }
 
-    pub async fn commit(&self, lease: &Lease, ends: &BTreeMap<i32, i64>) -> Result<(), Error> {
+    pub async fn commit(
+        &self,
+        lease: &Lease,
+        generation: i32,
+        ends: &BTreeMap<i32, i64>,
+    ) -> Result<(), Error> {
         let topic = lease.require_topic()?;
 
         let mut transaction = self.pool.begin().await?;
@@ -150,15 +164,7 @@ impl<'a> TieredRanges<'a> {
                 });
             }
 
-            sqlx::query(
-                "INSERT INTO tiered_offsets (topic, partition, end_offset) VALUES ($1, $2, $3) \
-                 ON CONFLICT (topic, partition) DO UPDATE SET end_offset = EXCLUDED.end_offset",
-            )
-            .bind(topic)
-            .bind(index)
-            .bind(end_offset)
-            .execute(&mut *transaction)
-            .await?;
+            set_committed(&mut transaction, &partition, generation, *end_offset).await?;
         }
 
         transaction.commit().await?;
@@ -181,7 +187,7 @@ impl<'a> TieredRanges<'a> {
 
         let rows: Vec<RangeRow> = sqlx::query_as(
             "DELETE FROM tiered_range WHERE topic = $1 AND partition = $2 \
-             RETURNING partition, start_offset, end_offset, spec_id, encoded_data_files",
+             RETURNING generation, partition, start_offset, end_offset, spec_id, encoded_data_files",
         )
         .bind(topic)
         .bind(partition.index())
@@ -201,6 +207,27 @@ async fn end(connection: &mut PgConnection, partition: &Partition) -> Result<Opt
         .await?;
 
     Ok(row.map(|(_, end)| end))
+}
+
+pub(crate) async fn set_committed(
+    connection: &mut PgConnection,
+    partition: &Partition,
+    generation: i32,
+    end_offset: i64,
+) -> Result<(), Error> {
+    sqlx::query(
+        "INSERT INTO tiered_offsets (topic, generation, partition, end_offset) \
+         VALUES ($1, $2, $3, $4) ON CONFLICT (topic, partition) \
+         DO UPDATE SET generation = EXCLUDED.generation, end_offset = EXCLUDED.end_offset",
+    )
+    .bind(partition.topic())
+    .bind(generation)
+    .bind(partition.index())
+    .bind(end_offset)
+    .execute(&mut *connection)
+    .await?;
+
+    Ok(())
 }
 
 pub(crate) async fn end_inside(
@@ -229,8 +256,8 @@ mod tests {
 
     use bytes::Bytes;
     use mink_core::{
-        Assembly, BuiltFile, DaySketches, File, FileVersion, IndexedFile, Offsets, Partition,
-        Scope, Span, Stats, TieredRange, Topic,
+        Assembly, BuiltFile, CatalogTable, DaySketches, ExternalTable, File, FileVersion,
+        IndexedFile, Offsets, Partition, Scope, Span, Stats, TierSchedule, TieredRange, Topic,
     };
     use uuid::Uuid;
 
@@ -240,11 +267,25 @@ mod tests {
     fn range(partition: &Partition, start: i64, end: i64) -> TieredRange {
         let offsets = Offsets::new(partition.clone(), start, end).unwrap();
 
-        TieredRange::new(offsets, 0, vec![format!("{{\"file\":{start}}}")])
+        TieredRange::new(offsets, 1, 0, vec![format!("{{\"file\":{start}}}")])
     }
 
     async fn indexed(store: &Store, topic: &Topic, bounds: &[i64]) -> (Lease, Vec<IndexedFile>) {
         let indexer = testing::started(store, topic).await.remove(0);
+        let external = ExternalTable::new(
+            topic.name(),
+            CatalogTable::new("rest", "kafka", topic.name()),
+            Uuid::new_v4(),
+            &format!("s3://b/{}", topic.name()),
+            TierSchedule::default(),
+            1,
+        )
+        .unwrap();
+        store
+            .external_tables()
+            .add(&external, &BTreeMap::new())
+            .await
+            .unwrap();
         let files: Vec<IndexedFile> = bounds
             .windows(2)
             .map(|pair| testing::file(topic, 0, pair[0], pair[1]))
@@ -303,10 +344,10 @@ mod tests {
         );
 
         ranges
-            .commit(&writer, &BTreeMap::from([(0, 10)]))
+            .commit(&writer, 1, &BTreeMap::from([(0, 10)]))
             .await
             .unwrap();
-        let inside = ranges.commit(&writer, &BTreeMap::from([(0, 15)])).await;
+        let inside = ranges.commit(&writer, 1, &BTreeMap::from([(0, 15)])).await;
         let left = ranges.list(topic.name()).await.unwrap();
         assert_eq!(left, [range(&partition, 10, 20)]);
         assert_eq!(
@@ -337,7 +378,7 @@ mod tests {
         let ranges = store.tiered_ranges();
         ranges.add(&tier, &range(&partition, 0, 10)).await.unwrap();
         ranges
-            .commit(&writer, &BTreeMap::from([(0, 10)]))
+            .commit(&writer, 1, &BTreeMap::from([(0, 10)]))
             .await
             .unwrap();
         store.indexed_ranges().trim(&indexer, 20).await.unwrap();
@@ -381,7 +422,7 @@ mod tests {
 
         ranges.add(&tier, &range(&partition, 0, 10)).await.unwrap();
         ranges
-            .commit(&writer, &BTreeMap::from([(0, 10)]))
+            .commit(&writer, 1, &BTreeMap::from([(0, 10)]))
             .await
             .unwrap();
         let gap = ranges.add(&tier, &range(&partition, 15, 20)).await;

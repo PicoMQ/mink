@@ -7,12 +7,18 @@ use crate::Error;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExternalTable {
     topic: String,
-    catalog: String,
-    namespace: String,
-    name: String,
+    table: CatalogTable,
     uuid: Uuid,
     location: String,
     schedule: TierSchedule,
+    generation: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CatalogTable {
+    catalog: String,
+    namespace: String,
+    name: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,6 +43,18 @@ impl TierSchedule {
     pub fn interval(&self) -> Duration {
         self.interval
     }
+
+    pub fn given(
+        after: Option<Duration>,
+        interval: Option<Duration>,
+    ) -> Result<TierSchedule, Error> {
+        let defaults = TierSchedule::default();
+
+        TierSchedule::new(
+            after.unwrap_or(defaults.after),
+            interval.unwrap_or(defaults.interval),
+        )
+    }
 }
 
 impl Default for TierSchedule {
@@ -48,36 +66,13 @@ impl Default for TierSchedule {
     }
 }
 
-impl ExternalTable {
-    pub fn new(
-        topic: &str,
-        catalog: &str,
-        namespace: &str,
-        name: &str,
-        uuid: Uuid,
-        location: &str,
-        schedule: TierSchedule,
-    ) -> Result<ExternalTable, Error> {
-        let named = [topic, catalog, namespace, name]
-            .iter()
-            .all(|part| !part.is_empty());
-        if !named || !location.starts_with("s3://") {
-            return Err(Error::ExternalTable(topic.to_owned()));
-        }
-
-        Ok(ExternalTable {
-            topic: topic.to_owned(),
+impl CatalogTable {
+    pub fn new(catalog: &str, namespace: &str, name: &str) -> CatalogTable {
+        CatalogTable {
             catalog: catalog.to_owned(),
             namespace: namespace.to_owned(),
             name: name.to_owned(),
-            uuid,
-            location: location.trim_end_matches('/').to_owned(),
-            schedule,
-        })
-    }
-
-    pub fn topic(&self) -> &str {
-        &self.topic
+        }
     }
 
     pub fn catalog(&self) -> &str {
@@ -91,6 +86,41 @@ impl ExternalTable {
     pub fn name(&self) -> &str {
         &self.name
     }
+}
+
+impl ExternalTable {
+    pub fn new(
+        topic: &str,
+        table: CatalogTable,
+        uuid: Uuid,
+        location: &str,
+        schedule: TierSchedule,
+        generation: i32,
+    ) -> Result<ExternalTable, Error> {
+        let named = [topic, &table.catalog, &table.namespace, &table.name]
+            .iter()
+            .all(|part| !part.is_empty());
+        if !named || !location.starts_with("s3://") {
+            return Err(Error::ExternalTable(topic.to_owned()));
+        }
+
+        Ok(ExternalTable {
+            topic: topic.to_owned(),
+            table,
+            uuid,
+            location: location.trim_end_matches('/').to_owned(),
+            schedule,
+            generation,
+        })
+    }
+
+    pub fn topic(&self) -> &str {
+        &self.topic
+    }
+
+    pub fn table(&self) -> &CatalogTable {
+        &self.table
+    }
 
     pub fn uuid(&self) -> Uuid {
         self.uuid
@@ -103,6 +133,21 @@ impl ExternalTable {
     pub fn schedule(&self) -> TierSchedule {
         self.schedule
     }
+
+    pub fn generation(&self) -> i32 {
+        self.generation
+    }
+}
+
+pub fn locations_overlap(first: &str, second: &str) -> bool {
+    let (first, second) = (first.trim_end_matches('/'), second.trim_end_matches('/'));
+    let under = |outer: &str, inner: &str| {
+        inner
+            .strip_prefix(outer)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+    };
+
+    under(first, second) || under(second, first)
 }
 
 pub fn locations_holding(path: &str) -> Vec<&str> {
@@ -129,13 +174,22 @@ mod tests {
         let schedule = TierSchedule::default();
         let table = |catalog, location| {
             ExternalTable::new(
-                "orders", catalog, "kafka", "orders", uuid, location, schedule,
+                "orders",
+                CatalogTable::new(catalog, "kafka", "orders"),
+                uuid,
+                location,
+                schedule,
+                1,
             )
         };
 
         assert_eq!(
             table("s3tables", "s3://b/t/").unwrap().location(),
             "s3://b/t"
+        );
+        assert_eq!(
+            TierSchedule::given(None, Some(Duration::from_secs(60))),
+            TierSchedule::new(Duration::from_secs(3600), Duration::from_secs(60))
         );
         assert_eq!(
             table("", "s3://b/t"),
@@ -154,6 +208,10 @@ mod tests {
             ["s3://b", "s3://b/t", "s3://b/t/data"]
         );
         assert!(locations_holding("s3://b").is_empty());
+        assert!(locations_overlap("s3://b/wh/", "s3://b/wh/t"));
+        assert!(locations_overlap("s3://b/wh/t", "s3://b/wh"));
+        assert!(locations_overlap("s3://b/t", "s3://b/t/"));
+        assert!(!locations_overlap("s3://b/t", "s3://b/tx"));
         assert!(locations_holding("/tmp/t/0.parquet").is_empty());
     }
 

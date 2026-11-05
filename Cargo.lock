@@ -3174,6 +3174,7 @@ dependencies = [
  "anyhow",
  "clap",
  "mink-server",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",

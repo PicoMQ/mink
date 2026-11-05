@@ -53,9 +53,11 @@ impl Services {
         let schemas = Schemas::new(store.clone(), registry);
 
         let tier_flushes = Semaphore::new(config.max_tier_flushes);
-        let tiers = config.has(Role::Indexer) || config.has(Role::Tier);
+        let reaches_catalogs = [Role::Indexer, Role::Tier, Role::Admin]
+            .into_iter()
+            .any(|role| config.has(role));
         let mut external_catalogs = BTreeMap::new();
-        for (name, catalog) in config.external_catalogs.iter().filter(|_| tiers) {
+        for (name, catalog) in config.external_catalogs.iter().filter(|_| reaches_catalogs) {
             external_catalogs.insert(
                 name.clone(),
                 Arc::new(external::Catalog::new(name, catalog, &buckets).await?),

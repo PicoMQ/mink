@@ -1,11 +1,13 @@
-use mink_core::{Granularity, TableState, Topic};
+use iceberg::spec::Schema;
+use mink_core::{ExternalTable, Granularity, TableState, Topic};
 use mink_kafka::Pool;
 use mink_metrics::Metrics;
 use mink_store::Store;
 
-use crate::Error;
+use crate::buckets::Buckets;
 use crate::config::Config;
-use crate::registration;
+use crate::external::{self, Attachment};
+use crate::{Error, registration};
 
 pub async fn add_table(
     config: &Config,
@@ -42,6 +44,44 @@ pub async fn set_granularity(
         Ok(store.time_specs().record(topic, granularity).await?)
     })
     .await
+}
+
+pub async fn attach_external_table(
+    config: &Config,
+    attachment: Attachment,
+) -> Result<ExternalTable, Error> {
+    let kafka = Pool::new(config.kafka.client_config()?, Metrics::new());
+    let catalog = catalog(config, attachment.table.catalog()).await?;
+
+    with_store(config, async |store| {
+        external::attach(store, &kafka, &catalog, config.warehouse_root(), attachment).await
+    })
+    .await
+}
+
+pub async fn detach_external_table(config: &Config, topic: &str) -> Result<(), Error> {
+    with_store(config, async |store| external::detach(store, topic).await).await
+}
+
+pub async fn table_schema(config: &Config, topic: &str) -> Result<Schema, Error> {
+    with_store(config, async |store| {
+        store
+            .topics()
+            .get(topic)
+            .await?
+            .ok_or_else(|| Error::NoSuchTable(topic.to_owned()))?;
+        Ok(store.schemas().latest(topic).await?)
+    })
+    .await
+}
+
+async fn catalog(config: &Config, name: &str) -> Result<external::Catalog, Error> {
+    let settings = config
+        .external_catalogs
+        .get(name)
+        .ok_or_else(|| Error::NoSuchExternalCatalog(name.to_owned()))?;
+
+    external::Catalog::new(name, settings, &Buckets::new(config.storage.clone())).await
 }
 
 async fn with_store<T>(

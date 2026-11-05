@@ -268,9 +268,10 @@ impl Reader {
                 (vec![topic], topic_table(store, topic).await)
             }
             Object::External => {
-                let holding = store.external_tables().holding(key.path()).await;
-                let found = holding
-                    .map(|table| table.map(|table| (table.location().to_owned(), table.uuid())));
+                let serving = store.external_tables().serving(key.path()).await;
+                let found = serving.map(|served| {
+                    served.map(|served| (served.location().to_owned(), served.uuid()))
+                });
                 (locations_holding(key.path()), found)
             }
         };

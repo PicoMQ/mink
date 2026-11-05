@@ -53,6 +53,10 @@ pub enum Error {
     TableProperty { key: String, value: String },
     #[error("partition spec {0} is not a spec of the external table")]
     UnknownPartitionSpec(i32),
+    #[error("external generation {0} is outside the generations spec ids can hold")]
+    ExternalGeneration(i32),
+    #[error("external spec id {0} is outside the ids one generation can list")]
+    ExternalSpecId(i32),
     #[error("Iceberg format version {0} is not supported")]
     FormatVersion(u8),
     #[error("a snapshot of topic {snapshot} cannot be committed to the table of topic {table}")]

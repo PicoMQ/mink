@@ -4,10 +4,9 @@ use iceberg::table::Table;
 use iceberg::transaction::{ApplyTransactionAction, Transaction};
 use mink_core::{Offsets, Partition, TieredRange};
 use mink_iceberg::{ExternalSnapshot, end_offset_key, end_offsets, start_offset_key};
-use mink_schema::binary_schema;
 use tokio::time::Instant;
 
-use super::Writer;
+use super::{ExternalUpdate, Writer};
 use crate::Error;
 use crate::external;
 
@@ -17,6 +16,9 @@ impl Writer {
         let topic = self.topic.name();
 
         let Some(external) = store.external_tables().get(topic).await? else {
+            if self.next_external_snapshot().is_some() {
+                self.external_update = Some(ExternalUpdate::Unlist);
+            }
             return Ok(());
         };
         let due = self
@@ -26,10 +28,10 @@ impl Writer {
             return Ok(());
         }
 
-        let catalog = self.services.external_catalog(external.catalog())?;
+        let catalog = self.services.external_catalog(external.table().catalog())?;
         let table = catalog.load(&external).await?;
 
-        self.reconcile(&table).await?;
+        self.reconcile(&table, external.generation()).await?;
         let ranges = self.ranges_of_current_spec(&table).await?;
         let table = match spans(&ranges)? {
             spans if spans.is_empty() => table,
@@ -39,38 +41,52 @@ impl Writer {
                     .iter()
                     .map(|span| (span.partition().index(), span.end_offset()))
                     .collect();
-                store.tiered_ranges().commit(&self.lease, &ends).await?;
+                store
+                    .tiered_ranges()
+                    .commit(&self.lease, external.generation(), &ends)
+                    .await?;
                 committed
             }
         };
         self.last_tiering = Some(Instant::now());
 
-        self.read_external_snapshot(&table).await
+        self.read_external_snapshot(&table, external.generation())
+            .await
     }
 
-    async fn read_external_snapshot(&mut self, table: &Table) -> Result<(), Error> {
+    async fn read_external_snapshot(
+        &mut self,
+        table: &Table,
+        generation: i32,
+    ) -> Result<(), Error> {
         let listed = self
-            .unlisted_external_snapshot
-            .as_ref()
-            .or(self.table.external_snapshot())
-            .map(ExternalSnapshot::snapshot_id);
-        if table.metadata().current_snapshot_id() == listed {
+            .next_external_snapshot()
+            .map(|listed| (listed.generation(), listed.snapshot_id()));
+        let current = table
+            .metadata()
+            .current_snapshot_id()
+            .map(|snapshot_id| (generation, snapshot_id));
+        if current == listed {
             return Ok(());
         }
 
         let store = &self.services.store;
         let topic = self.topic.name();
         let specs = store.time_specs().list(topic).await?;
-        let schemas = store.schemas().table_schemas(topic).await?;
-        let schema = schemas.last().unwrap_or(binary_schema());
+        let schema = store.schemas().latest(topic).await?;
 
-        let read = ExternalSnapshot::read(table, schema, &specs).await?;
-        self.unlisted_external_snapshot =
-            read.filter(|read| Some(read) != self.table.external_snapshot());
+        let read = ExternalSnapshot::read(table, generation, &schema, &specs).await?;
+        let listed = self.table.external_snapshot();
+        self.external_update = match read {
+            Some(read) if Some(&read) == listed => None,
+            Some(read) => Some(ExternalUpdate::List(read)),
+            None if listed.is_some() => Some(ExternalUpdate::Unlist),
+            None => None,
+        };
         Ok(())
     }
 
-    async fn reconcile(&self, table: &Table) -> Result<(), Error> {
+    async fn reconcile(&self, table: &Table, generation: i32) -> Result<(), Error> {
         let topic = self.topic.name();
         let ranges = self.services.store.tiered_ranges();
 
@@ -87,7 +103,7 @@ impl Writer {
             .filter(|(partition, end)| committed.get(partition) != Some(end))
             .collect();
         if !landed.is_empty() {
-            ranges.commit(&self.lease, &landed).await?;
+            ranges.commit(&self.lease, generation, &landed).await?;
         }
 
         Ok(())
@@ -206,7 +222,8 @@ mod tests {
     use iceberg::transaction::{ApplyTransactionAction, Transaction};
     use iceberg::{Catalog as _, ErrorKind, Runtime, TableIdent, TableUpdate};
     use mink_core::{
-        ExternalTable, Partition, Record, Scope, Snapshot, TableLocation, TierSchedule, TieredRange,
+        CatalogTable, ExternalTable, Partition, Record, Scope, Snapshot, TableLocation,
+        TierSchedule, TieredRange,
     };
     use mink_iceberg::{FileSchema, end_offset_key, last_time_field_id};
     use uuid::Uuid;
@@ -483,24 +500,24 @@ mod tests {
                 UnboundPartitionSpec::builder().build(),
                 SortOrder::unsorted_order(),
                 HashMap::new(),
+                None,
             )
             .await
             .unwrap();
         let external = ExternalTable::new(
             other.name(),
-            "fixture",
-            "mink",
-            other.name(),
+            CatalogTable::new("fixture", "mink", other.name()),
             Uuid::new_v4(),
             created.metadata().location(),
             TierSchedule::default(),
+            1,
         )
         .unwrap();
         tiering
             .services
             .store
             .external_tables()
-            .add(&external)
+            .add(&external, &BTreeMap::new())
             .await
             .unwrap();
         let scope = Scope::Topic(other.name().to_owned());
@@ -669,7 +686,7 @@ mod tests {
             ),
             "{rejected:?}"
         );
-        assert!(writer.unlisted_external_snapshot.is_none());
+        assert!(writer.external_update.is_none());
         assert_eq!(start(&after), start(&before));
         assert_eq!(planned(&tiering, &after).await.0, 6);
     }

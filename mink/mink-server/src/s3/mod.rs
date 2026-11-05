@@ -12,8 +12,8 @@ pub(crate) use http::router;
 mod tests {
     use bytes::Bytes;
     use mink_core::{
-        BuiltFile, DaySketches, ExternalTable, File, Granularity, IndexedFile, Member, Offsets,
-        Partition, Span, Stats, TableLocation, TierSchedule, TimePartition, Topic,
+        BuiltFile, CatalogTable, DaySketches, ExternalTable, File, Granularity, IndexedFile,
+        Member, Offsets, Partition, Span, Stats, TableLocation, TierSchedule, TimePartition, Topic,
     };
     use mink_iceberg::FileSchema;
     use object_store::{ObjectStoreExt, PutPayload};
@@ -712,18 +712,17 @@ mod tests {
         let location = format!("s3://mink/external/{}", topic.name());
         let table = ExternalTable::new(
             topic.name(),
-            "rest",
-            "kafka",
-            topic.name(),
+            CatalogTable::new("rest", "kafka", topic.name()),
             Uuid::new_v4(),
             &location,
             TierSchedule::default(),
+            1,
         )
         .unwrap();
         node.services
             .store
             .external_tables()
-            .add(&table)
+            .add(&table, &std::collections::BTreeMap::new())
             .await
             .unwrap();
 
@@ -764,6 +763,16 @@ mod tests {
         let missing = get(node, &format!("{location}/data/1.parquet"), None).await;
         let beside = get(node, &format!("{location}x/data/0.parquet"), None).await;
         let write = client.put(url(node, &path)).body("x").send().await.unwrap();
+        let detached_path = format!("{location}/data/1-detached.parquet");
+        put(node, &detached_path, b"detached").await;
+        let topic = location.rsplit('/').next().unwrap();
+        node.services
+            .store
+            .external_tables()
+            .remove(topic)
+            .await
+            .unwrap();
+        let detached = get(node, &detached_path, None).await;
         delete(node, &path).await;
         node.services.store.close().await;
         let cached = get(node, &path, None).await;
@@ -775,6 +784,7 @@ mod tests {
         assert_eq!(head.headers()["content-length"], "14");
         assert_eq!(missing.status(), StatusCode::NOT_FOUND);
         assert_eq!(beside.status(), StatusCode::NOT_FOUND);
+        assert_eq!(detached.status(), StatusCode::OK);
         assert_eq!(write.status(), StatusCode::FORBIDDEN);
         assert_eq!(cached.status(), StatusCode::OK);
         assert_eq!(cached.bytes().await.unwrap(), "external bytes");

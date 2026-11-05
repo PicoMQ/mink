@@ -118,7 +118,7 @@ impl Supervisor {
                 .list()
                 .await?
                 .into_iter()
-                .filter(|table| catalogs.contains_key(table.catalog()))
+                .filter(|table| catalogs.contains_key(table.table().catalog()))
                 .map(|table| table.topic().to_owned())
                 .collect(),
         };
@@ -447,7 +447,7 @@ mod tests {
 
     use tokio::time::Instant;
 
-    use mink_core::{ExternalTable, Scope, TierSchedule};
+    use mink_core::{CatalogTable, ExternalTable, Scope, TierSchedule};
     use mink_store::LeaseHolder;
     use uuid::Uuid;
 
@@ -523,18 +523,17 @@ mod tests {
         let node = testing::node_with(config).await;
         let external = ExternalTable::new(
             &tiered,
-            "fixture",
-            "mink",
-            &tiered,
+            CatalogTable::new("fixture", "mink", &tiered),
             Uuid::new_v4(),
             "s3://mink/tiered",
             TierSchedule::default(),
+            1,
         )
         .unwrap();
         node.services
             .store
             .external_tables()
-            .add(&external)
+            .add(&external, &BTreeMap::new())
             .await
             .unwrap();
         let deadline = Instant::now() + Duration::from_secs(30);

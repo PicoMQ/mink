@@ -15,12 +15,17 @@ mod collection;
 mod expiry;
 mod tiering;
 
+enum ExternalUpdate {
+    List(ExternalSnapshot),
+    Unlist,
+}
+
 pub(crate) struct Writer {
     services: Arc<Services>,
     lease: Lease,
     topic: Topic,
     table: Table,
-    unlisted_external_snapshot: Option<ExternalSnapshot>,
+    external_update: Option<ExternalUpdate>,
     last_collection: Instant,
     last_statistics: Option<Instant>,
     last_tiering: Option<Instant>,
@@ -49,7 +54,7 @@ impl Writer {
             lease,
             topic,
             table,
-            unlisted_external_snapshot: None,
+            external_update: None,
             last_collection: Instant::now(),
             last_statistics: None,
             last_tiering: None,
@@ -95,10 +100,7 @@ impl Writer {
         }
 
         let latest = store.snapshots().latest(name).await?;
-        let external = self
-            .unlisted_external_snapshot
-            .as_ref()
-            .or(self.table.external_snapshot());
+        let external = self.next_external_snapshot();
         let offsets = offsets
             .into_iter()
             .map(|offsets| own_offsets(offsets, external))
@@ -133,7 +135,7 @@ impl Writer {
         if unchanged
             && assemblies.is_empty()
             && sketches.is_none()
-            && self.unlisted_external_snapshot.is_none()
+            && self.external_update.is_none()
         {
             return Ok(None);
         }
@@ -143,9 +145,11 @@ impl Writer {
             Some(through_id) => self.table.expire(through_id)?,
             None => self.table.clone(),
         };
-        if let Some(unlisted) = &self.unlisted_external_snapshot {
-            table = table.with_external_snapshot(unlisted.clone());
-        }
+        table = match &self.external_update {
+            Some(ExternalUpdate::List(external)) => table.with_external_snapshot(external.clone()),
+            Some(ExternalUpdate::Unlist) => table.without_external_snapshot(),
+            None => table,
+        };
 
         let mut added = self.new_files(&snapshot, latest.as_ref()).await?;
         added.extend(
@@ -192,8 +196,23 @@ impl Writer {
             self.last_statistics = Some(Instant::now());
         }
         self.table = change.into_table();
-        self.unlisted_external_snapshot = None;
+        self.external_update = None;
+        if expire_through_id.is_some() {
+            let listed = self.table.listed_generations()?;
+            store
+                .external_tables()
+                .forget_unlisted(&self.lease, &listed)
+                .await?;
+        }
         Ok(Some(snapshot))
+    }
+
+    fn next_external_snapshot(&self) -> Option<&ExternalSnapshot> {
+        match &self.external_update {
+            Some(ExternalUpdate::List(external)) => Some(external),
+            Some(ExternalUpdate::Unlist) => None,
+            None => self.table.external_snapshot(),
+        }
     }
 
     async fn sketches(&self) -> Result<Option<FieldSketches>, Error> {

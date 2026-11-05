@@ -181,6 +181,8 @@ pub enum ConfigError {
     Granularity(String),
     #[error("{0:?} is not a role: catalog, s3, indexer, tier or admin")]
     Role(String),
+    #[error("{0:?} is not a duration: a number followed by ms, s, m or h")]
+    Duration(String),
     #[error("statistics_interval must be shorter than snapshot_retention")]
     StatisticsInterval,
     #[error("admin_address {0} is not a loopback address; set admin_remote to allow it")]
@@ -243,6 +245,10 @@ impl Default for Config {
 }
 
 impl Config {
+    pub(crate) fn warehouse_root(&self) -> &str {
+        self.warehouse.trim_end_matches('/')
+    }
+
     pub fn load(file: Option<&Path>) -> Result<Config, ConfigError> {
         let mut figment = Figment::from(Serialized::defaults(Config::default()));
         if let Some(file) = file {
@@ -442,6 +448,10 @@ pub fn parse_granularity(text: &str) -> Result<Granularity, ConfigError> {
     Granularity::from_name(text).ok_or_else(|| ConfigError::Granularity(text.to_owned()))
 }
 
+pub fn parse_duration(text: &str) -> Result<Duration, ConfigError> {
+    duration::parse(text).ok_or_else(|| ConfigError::Duration(text.to_owned()))
+}
+
 mod roles {
     use mink_core::Role;
     use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
@@ -513,11 +523,7 @@ mod duration {
     ) -> Result<Duration, D::Error> {
         let text = String::deserialize(deserializer)?;
 
-        parse(&text).ok_or_else(|| {
-            de::Error::custom(format!(
-                "{text:?} is not a number followed by ms, s, m or h"
-            ))
-        })
+        super::parse_duration(&text).map_err(de::Error::custom)
     }
 
     pub(super) fn parse(text: &str) -> Option<Duration> {

@@ -8,6 +8,7 @@ const START_OFFSET_SUFFIX: &str = ".start-offset";
 const END_OFFSET_SUFFIX: &str = ".end-offset";
 
 pub(super) const EXTERNAL_SNAPSHOT_ID: &str = "mink.external.snapshot-id";
+pub(super) const EXTERNAL_GENERATION: &str = "mink.external.generation";
 
 pub fn start_offset_key(partition: i32) -> String {
     format!("{PARTITION_PREFIX}{partition}{START_OFFSET_SUFFIX}")

@@ -8,6 +8,7 @@ mod statistics;
 #[cfg(test)]
 mod testing;
 
+use std::collections::BTreeMap;
 use std::future::Future;
 
 use bytes::Bytes;
@@ -27,6 +28,8 @@ use commit::{Commit, CommitOutput, Counts, summary};
 use manifests::Manifest;
 
 pub use commit::FIRST_TAIL_SNAPSHOT_ID;
+use external::ExternalSpecs;
+
 pub use external::{ExternalSnapshot, check_schema};
 pub use keys::{end_offset_key, end_offsets, start_offset_key};
 pub use specs::last_time_field_id;
@@ -47,6 +50,7 @@ pub struct Table {
     metadata_log: Vec<MetadataLog>,
     manifests: Vec<Manifest>,
     external_snapshot: Option<ExternalSnapshot>,
+    external_specs: BTreeMap<i32, ExternalSpecs>,
 }
 
 #[derive(Debug)]
@@ -112,6 +116,7 @@ impl Table {
             metadata_log: Vec::new(),
             manifests: Vec::new(),
             external_snapshot: None,
+            external_specs: BTreeMap::new(),
         }
     }
 
@@ -166,8 +171,9 @@ impl Table {
             table.manifests.push(Manifest { file, live });
         }
 
+        table.external_specs = ExternalSpecs::declared_in(&metadata);
         table.external_snapshot =
-            ExternalSnapshot::listed_in(&metadata, external, current.summary())?;
+            ExternalSnapshot::listed_in(&table.external_specs, external, current.summary())?;
         table.statistics = metadata
             .statistics_iter()
             .max_by_key(|statistics| statistics.snapshot_id)
@@ -198,13 +204,36 @@ impl Table {
         self.snapshots.last().map(IcebergSnapshot::snapshot_id)
     }
 
+    pub fn listed_generations(&self) -> Result<Vec<i32>, Error> {
+        let mut generations = Vec::new();
+        for snapshot in &self.snapshots {
+            generations.extend(external::listed_generation(snapshot.summary())?);
+        }
+        generations.sort_unstable();
+        generations.dedup();
+
+        Ok(generations)
+    }
+
     pub fn external_snapshot(&self) -> Option<&ExternalSnapshot> {
         self.external_snapshot.as_ref()
     }
 
-    pub fn with_external_snapshot(self, external_snapshot: ExternalSnapshot) -> Table {
+    pub fn with_external_snapshot(mut self, external_snapshot: ExternalSnapshot) -> Table {
+        self.external_specs
+            .entry(external_snapshot.generation())
+            .and_modify(|declared| declared.merge(external_snapshot.specs()))
+            .or_insert_with(|| external_snapshot.specs().clone());
+
         Table {
             external_snapshot: Some(external_snapshot),
+            ..self
+        }
+    }
+
+    pub fn without_external_snapshot(self) -> Table {
+        Table {
+            external_snapshot: None,
             ..self
         }
     }
@@ -459,9 +488,11 @@ mod tests {
     use super::testing::{applied, file, listed, snapshot, specs, store, tiered, topic, written};
     use super::*;
 
+    const GENERATION_1: i32 = (1 << 30) + (1 << 16);
+
     async fn listing_external() -> (ExternalTable, Table, ExternalSnapshot, Change) {
         let external = tiered().await;
-        let read = ExternalSnapshot::read(&external, mink_schema::binary_schema(), &specs())
+        let read = ExternalSnapshot::read(&external, 1, mink_schema::binary_schema(), &specs())
             .await
             .unwrap()
             .unwrap();
@@ -979,10 +1010,10 @@ mod tests {
 
         assert_eq!(listed(&change)[..2], ["2-e1-m0.avro", "2-e1-m1.avro"]);
         assert!(listed(&change)[2].ends_with("-m0.avro"));
-        assert_eq!(spec_ids, [0, 0, (1 << 30) + 1]);
+        assert_eq!(spec_ids, [0, 0, GENERATION_1 + 1]);
         assert_eq!(
             ids("partition-specs", "spec-id"),
-            [json!(0), json!(1 << 30), json!((1 << 30) + 1)]
+            [json!(0), json!(GENERATION_1), json!(GENERATION_1 + 1)]
         );
         assert_eq!(
             metadata["last-partition-id"],
@@ -1039,6 +1070,89 @@ mod tests {
                 })
             ),
             "{behind:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unlisted_external_table_keeps_its_specs_until_its_snapshots_expire() {
+        let (_, _, _, change) = listing_external().await;
+        let spec_ids = |change: &Change| -> Vec<Value> {
+            let metadata: Value = serde_json::from_slice(&change.metadata().1).unwrap();
+            metadata["partition-specs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|spec| spec["spec-id"].clone())
+                .collect()
+        };
+        let apply = async |table: Table, id: i64| {
+            table
+                .apply(
+                    &snapshot(id, 1, [(0, 10), (0, 0)]),
+                    &[],
+                    &[],
+                    None,
+                    &specs(),
+                    &[],
+                )
+                .await
+                .unwrap()
+        };
+
+        let unlisted = apply(change.into_table().without_external_snapshot(), 3).await;
+        let declared = spec_ids(&unlisted);
+        let expired = unlisted.into_table().expire(2).unwrap();
+        let undeclared = apply(expired, 4).await;
+
+        assert_eq!(
+            declared,
+            [json!(0), json!(GENERATION_1), json!(GENERATION_1 + 1)]
+        );
+        assert_eq!(spec_ids(&undeclared), [json!(0)]);
+    }
+
+    #[tokio::test]
+    async fn a_new_generation_lists_beside_the_old_one_without_sharing_spec_ids() {
+        let (external, _, _, change) = listing_external().await;
+        let second = ExternalSnapshot::read(&external, 2, mink_schema::binary_schema(), &specs())
+            .await
+            .unwrap()
+            .unwrap();
+        let relisted = change.into_table().with_external_snapshot(second);
+
+        let next = relisted
+            .apply(
+                &snapshot(3, 1, [(6, 10), (0, 0)]),
+                &[],
+                &[],
+                None,
+                &specs(),
+                &[],
+            )
+            .await
+            .unwrap();
+
+        let metadata: Value = serde_json::from_slice(&next.metadata().1).unwrap();
+        let ids: Vec<Value> = metadata["partition-specs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|spec| spec["spec-id"].clone())
+            .collect();
+        let generation_2 = (1 << 30) + 2 * (1 << 16);
+        assert_eq!(
+            ids,
+            [
+                json!(0),
+                json!(GENERATION_1),
+                json!(GENERATION_1 + 1),
+                json!(generation_2),
+                json!(generation_2 + 1)
+            ]
+        );
+        assert_eq!(
+            metadata["snapshots"][2]["summary"]["mink.external.generation"],
+            json!("2")
         );
     }
 

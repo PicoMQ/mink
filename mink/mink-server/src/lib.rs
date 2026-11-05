@@ -32,12 +32,19 @@ use tokio::net::TcpListener;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
-pub use commands::{add_table, list_tables, remove_table, set_granularity};
+pub use commands::{
+    add_table, attach_external_table, detach_external_table, list_tables, remove_table,
+    set_granularity, table_schema,
+};
 pub use config::{
-    Config, ConfigError, History, SchemaRegistry, Storage, parse_granularity, parse_role,
+    Config, ConfigError, History, SchemaRegistry, Storage, parse_duration, parse_granularity,
+    parse_role,
 };
 pub use error::Error;
-pub use mink_core::{Granularity, Role, TableState, Topic};
+pub use external::{Attachment, Partitioning, SortTerm, Source, Term};
+pub use mink_core::{
+    CatalogTable, ExternalTable, Granularity, Role, TableState, TierSchedule, Topic,
+};
 
 use crate::s3::Cache;
 use crate::services::Services;

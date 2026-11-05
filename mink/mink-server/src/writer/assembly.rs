@@ -110,7 +110,10 @@ fn sized_runs(files: &[IndexedFile], limit: u64) -> Vec<&[IndexedFile]> {
 mod tests {
     use std::time::Duration;
 
-    use mink_core::{Granularity, Offsets, Partition, Scope, Span, Stats, TieredRange};
+    use mink_core::{
+        CatalogTable, ExternalTable, Granularity, Offsets, Partition, Scope, Span, Stats,
+        TierSchedule, TieredRange,
+    };
     use uuid::Uuid;
 
     use super::*;
@@ -207,9 +210,23 @@ mod tests {
             .unwrap()
             .unwrap();
         let offsets = Offsets::new(partition, 0, 10).unwrap();
+        let external = ExternalTable::new(
+            setup.topic.name(),
+            CatalogTable::new("rest", "kafka", setup.topic.name()),
+            Uuid::new_v4(),
+            &format!("s3://b/{}", setup.topic.name()),
+            TierSchedule::default(),
+            1,
+        )
+        .unwrap();
+        store
+            .external_tables()
+            .add(&external, &BTreeMap::new())
+            .await
+            .unwrap();
         store
             .tiered_ranges()
-            .add(&tier, &TieredRange::new(offsets, 0, Vec::new()))
+            .add(&tier, &TieredRange::new(offsets, 1, 0, Vec::new()))
             .await
             .unwrap();
 

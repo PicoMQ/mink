@@ -37,10 +37,9 @@ impl Tier {
         let external = services
             .store
             .external_tables()
-            .get(partition.topic())
-            .await?
-            .ok_or_else(|| Error::NoSuchExternalTable(partition.topic().to_owned()))?;
-        let catalog = services.external_catalog(external.catalog())?;
+            .require(partition.topic())
+            .await?;
+        let catalog = services.external_catalog(external.table().catalog())?;
 
         Ok(Tier {
             services,
@@ -154,7 +153,10 @@ impl Tier {
         self.services
             .store
             .tiered_ranges()
-            .add(&self.lease, &TieredRange::new(offsets, spec_id, encoded))
+            .add(
+                &self.lease,
+                &TieredRange::new(offsets, self.external.generation(), spec_id, encoded),
+            )
             .await?;
 
         Ok(())

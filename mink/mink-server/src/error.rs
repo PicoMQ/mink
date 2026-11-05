@@ -69,8 +69,34 @@ pub enum Error {
     ReplacedExternalTable(String),
     #[error("the external table of {0} no longer holds the offsets Mink committed to it")]
     ExternalProgressLost(String),
-    #[error("table {0} has no external table")]
-    NoSuchExternalTable(String),
+    #[error(
+        "topic {topic} keeps records for {retention:?}, not more than tier_after plus twice tier_interval ({needed:?})"
+    )]
+    ShortRetention {
+        topic: String,
+        retention: std::time::Duration,
+        needed: std::time::Duration,
+    },
+    #[error("location {0} is not an s3:// location")]
+    UnsupportedLocation(String),
+    #[error("location {0} overlaps Mink's warehouse")]
+    LocationInWarehouse(String),
+    #[error("the end offsets given for {0} differ from those its table already has")]
+    ConflictingEndOffsets(String),
+    #[error("the table attached to {0} holds data, so it needs an end offset for every partition")]
+    MissingEndOffsets(String),
+    #[error("end offset {offset} of partition {partition} is not an offset of the topic")]
+    InvalidEndOffset { partition: i32, offset: i64 },
+    #[error("an existing table keeps its own {0}")]
+    ExistingTableKeeps(&'static str),
+    #[error("a new table takes no end offsets")]
+    EndOffsetsOfNewTable,
+    #[error("a new table needs partition terms, or to be marked unpartitioned")]
+    PartitioningRequired,
+    #[error("the topic's schema has no column {0}")]
+    UnknownColumn(String),
+    #[error("cannot read {0:?} as a partition or sort term")]
+    UnreadableTerm(String),
     #[error("the range is outside the object of {0} bytes")]
     Unsatisfiable(u64),
 }
