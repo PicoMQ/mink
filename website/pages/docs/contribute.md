@@ -67,7 +67,7 @@ The `e2e` workflow runs the same script on demand from GitHub Actions.
 
 ## File formats
 
-Every file Mink serves has a specification in `specification/` and fixtures in `conformance/fixtures/`.
+Every file Mink builds or writes has a specification in `specification/` and fixtures in `conformance/fixtures/`.
 
 - A change to a format updates its specification, its version and its fixtures in the same PR.
 - Never regenerate or edit fixtures to make a failing test pass. A failing fixture test means the format changed.

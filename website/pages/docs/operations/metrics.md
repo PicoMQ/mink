@@ -18,14 +18,14 @@ Scrape every node. Each counts only its own work. Label values come from fixed s
 | `mink_indexed_records_total` | counter | `source`: `live`, `backfill` | Records written as files |
 | `mink_indexed_bytes_total` | counter | `source` | Bytes of those files |
 | `mink_files_written_total` | counter | `source` | Files written by indexers |
-| `mink_kafka_requests_total` | counter | `request`: `metadata`, `offsets`, `fetch`. `result`: `ok`, `error` | Kafka requests, retries included |
+| `mink_kafka_requests_total` | counter | `request`: `metadata`, `offsets`, `fetch`, `configs`. `result`: `ok`, `error` | Kafka requests, retries included |
 | `mink_kafka_fetched_bytes_total` | counter | | Record batch bytes fetched |
 | `mink_commits_total` | counter | `result`: `ok`, `error` | Snapshot commits |
 | `mink_commit_duration_seconds` | histogram | | Time of one commit |
 | `mink_assemblies_total` | counter | | Assembled files committed |
 | `mink_snapshots_expired_total` | counter | | Snapshots expired |
 | `mink_objects_collected_total` | counter | | Metadata objects deleted |
-| `mink_worker_failures_total` | counter | `worker`: `indexer`, `writer` | Indexers and writers that ended with an error |
+| `mink_worker_failures_total` | counter | `worker`: `indexer`, `writer`, `tier` | Workers that ended with an error. `tier` also counts failed tier commits. |
 | `mink_leases` | gauge | `scope`: `partition`, `topic`, `tier` | Leases this node holds |
 
 ## Reads
@@ -43,11 +43,18 @@ Scrape every node. Each counts only its own work. Label values come from fixed s
 | `mink_registry_requests_total` | counter | `result`: `ok`, `missing`, `error` | Schema Registry requests |
 | `mink_admin_requests_total` | counter | `status` | Admin API requests |
 | `mink_cache_bytes` | gauge | | Bytes in the cache's memory tier |
-| `mink_tier_gaps_total` | counter | | Times tiering continued past offsets Kafka deleted before they were tiered |
-| `mink_tier_skipped_offsets_total` | counter | | Offsets in those gaps |
-| `mink_tier_lag_seconds` | gauge | | Age of the oldest record this node has not tiered yet. Alert well before it reaches the topic's retention |
 
 Histograms have buckets from 0.5 ms to 10 s.
+
+## Tiering
+
+| Metric | Type | Labels | Counts |
+| --- | --- | --- | --- |
+| `mink_tier_gaps_total` | counter | | Gaps: offsets Kafka deleted before they tiered |
+| `mink_tier_skipped_offsets_total` | counter | | Offsets in those gaps |
+| `mink_tier_lag_seconds` | gauge | | Age of the oldest record that waits to tier on this node |
+
+See [Tiering](/docs/design/tiering#gaps).
 
 ## Cache
 
@@ -57,7 +64,7 @@ The cache adds its own `nestor_*` metrics, labelled by `namespace`: `files` for 
 | --- | --- |
 | `nestor_blocks_hit_total`, `nestor_blocks_miss_total` | Blocks served from the cache, and blocks fetched |
 | `nestor_bytes_served_total` | Bytes served |
-| `nestor_origin_requests_total`, `nestor_origin_bytes_total` | Fetches from the origin, Kafka builds for `files` and the bucket for `metadata` |
+| `nestor_origin_requests_total`, `nestor_origin_bytes_total` | Fetches from the origin: Kafka builds for `files`, Mink's bucket for `metadata`, the external table's bucket for `external` |
 | `nestor_origin_errors_total`, `nestor_origin_timeouts_total` | Failed and timed out fetches |
 
 The cache hit ratio for data files is `nestor_blocks_hit_total{namespace="files"}` over hits plus misses.

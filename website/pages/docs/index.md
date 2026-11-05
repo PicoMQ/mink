@@ -1,6 +1,6 @@
 # Introduction
 
-Mink is a read-only Iceberg catalog over Kafka. Iceberg engines query topics as tables, and the records stay in Kafka. A Mink node runs next to an existing Kafka cluster, with Postgres for its state and an S3-compatible bucket for the Iceberg metadata.
+Mink is a read-only Iceberg catalog over Kafka. Iceberg engines query topics as tables, and the records stay in Kafka. A [tiered](/docs/design/tiering) table also keeps its older records in an Iceberg table in another catalog. A Mink node runs next to an existing Kafka cluster, with Postgres for its state and an S3-compatible bucket for the Iceberg metadata.
 
 <div class="mink-diagram">
 <svg viewBox="0 0 660 326" width="660" role="img" aria-label="Engines load tables from the REST catalog and read data files from the S3 endpoint. The catalog reads its state from Postgres. Indexers read Kafka and record files and leases in Postgres, and writers commit Iceberg metadata to the bucket. The S3 endpoint builds data files from Kafka.">
@@ -63,7 +63,8 @@ Mink is a read-only Iceberg catalog over Kafka. Iceberg engines query topics as 
 
 - **Standard Iceberg.** Engines connect with REST catalog and S3 settings. No plugin and no client library.
 - **Schema Registry.** Avro, Protobuf and JSON Schema payloads become typed columns. New schema versions evolve the table. A record that does not decode keeps its raw bytes.
-- **No data copies.** Data files are built from Kafka on read. Kafka keeps the only copy of the records.
+- **Built on read.** Data files are built from Kafka on read. Mink writes records out only to a tiered table's external table.
+- **Tiering.** Older records tier into an Iceberg table in another REST catalog, and the table reaches past Kafka's retention.
 - **Real time.** A table load covers every record committed up to that moment.
 - **Committed records only.** Aborted transactions and control records never show up.
 - **Pruning.** Files are partitioned by time and carry min/max bounds per column. Engines skip the files a filter rules out.

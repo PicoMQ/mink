@@ -1,9 +1,9 @@
 # Reads
 
-Engines read a table in two steps: load it from the REST catalog, then read its objects from the S3 endpoint. Metadata objects come from the bucket. A data file's footer comes from Postgres. Its row groups are built from Kafka on the file's owner node, and cached there.
+Engines read a table in two steps: load it from the REST catalog, then read its objects from the S3 endpoint. Metadata objects come from the bucket. A data file's footer comes from Postgres. Its row groups are built from Kafka on the file's owner node, and cached there. A [tiered](/docs/design/tiering) table's external files come from the external table's bucket, through the owner node's cache.
 
 <div class="mink-diagram">
-<svg viewBox="0 0 660 340" width="660" role="img" aria-label="An engine loads the table from the catalog, which reads the snapshot from Postgres, then reads metadata and data files from the S3 endpoint. The S3 endpoint reads metadata objects from the bucket and forwards row group reads to the owner node, which serves them from its cache or builds them from Kafka.">
+<svg viewBox="0 0 660 340" width="660" role="img" aria-label="An engine loads the table from the catalog, which reads the snapshot from Postgres, then reads metadata and data files from the S3 endpoint. The S3 endpoint reads metadata objects from the bucket and forwards row group and external file reads to the owner node, which serves them from its cache, builds them from Kafka or fetches them from the external bucket.">
   <defs>
     <marker id="reads-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0 0.5 L7.5 4 L0 7.5 Z" class="arrow"/>
@@ -27,22 +27,27 @@ Engines read a table in two steps: load it from the REST catalog, then read its 
   <rect x="220" y="264" width="180" height="56" class="box"/>
   <text x="310" y="288" text-anchor="middle" class="label">bucket</text>
   <text x="310" y="306" text-anchor="middle" class="sub">metadata objects</text>
-  <rect x="470" y="264" width="180" height="56" class="box"/>
-  <text x="560" y="288" text-anchor="middle" class="label">Kafka</text>
-  <text x="560" y="306" text-anchor="middle" class="sub">records</text>
+  <rect x="470" y="264" width="85" height="56" class="box"/>
+  <text x="512" y="288" text-anchor="middle" class="label">Kafka</text>
+  <text x="512" y="306" text-anchor="middle" class="sub">records</text>
+  <rect x="565" y="264" width="85" height="56" class="box"/>
+  <text x="607" y="288" text-anchor="middle" class="label">external</text>
+  <text x="607" y="306" text-anchor="middle" class="sub">bucket</text>
   <path d="M150 68 L216 68" class="edge" marker-end="url(#reads-arrow)"/>
   <path d="M400 68 L466 68" class="edge" marker-end="url(#reads-arrow)"/>
   <path d="M150 174 L216 174" class="edge" marker-end="url(#reads-arrow)"/>
   <path d="M400 174 L466 174" class="edge" marker-end="url(#reads-arrow)"/>
   <path d="M310 202 L310 260" class="edge-soft" marker-end="url(#reads-arrow)"/>
-  <path d="M560 202 L560 260" class="edge" marker-end="url(#reads-arrow)"/>
+  <path d="M512 202 L512 260" class="edge" marker-end="url(#reads-arrow)"/>
+  <path d="M607 202 L607 260" class="edge" marker-end="url(#reads-arrow)"/>
   <text x="183" y="60" text-anchor="middle" class="sub">1. load</text>
   <text x="183" y="166" text-anchor="middle" class="sub">2. read</text>
   <text x="433" y="60" text-anchor="middle" class="sub">snapshot</text>
   <text x="433" y="148" text-anchor="middle" class="sub">row</text>
   <text x="433" y="166" text-anchor="middle" class="sub">groups</text>
   <text x="318" y="236" class="sub">metadata</text>
-  <text x="552" y="236" text-anchor="end" class="sub">build on a miss</text>
+  <text x="504" y="236" text-anchor="end" class="sub">build on a miss</text>
+  <text x="615" y="236" class="sub">fetch</text>
 </svg>
 </div>
 
@@ -58,7 +63,7 @@ The catalog returns the table metadata, see [Snapshots](/docs/design/snapshots).
 | Data file, everything but its row groups | Postgres, through the cache. No build. |
 | Data file, its row groups | Built from Kafka on the file's owner node, only the extents the read overlaps, through the owner's cache |
 | A tail's data file ([Snapshots](/docs/design/snapshots)) | Built whole from Kafka on its owner node, through the owner's cache. Postgres has no row for it. |
-| A file under an external table's location | The external table's bucket, on the path's owner node, through its cache. Only paths under a registered location are served. |
+| An external table's file | The external table's bucket, on the path's owner node, through its cache. Only paths under the location of an external table a retained snapshot lists are served. |
 
 The endpoint answers `GET` with an optional `Range` header, and `HEAD`. A data file's `HEAD` comes from its stored statistics, without a build. Writes are refused with `403 AccessDenied`.
 
@@ -95,7 +100,7 @@ Measured on AWS with DuckDB 2.0, two nodes, each query on a cold cache:
 
 ## Owners
 
-Each data file has one owner among the nodes with the `s3` role, chosen by hashing each node's id with the file's path. The highest hash wins. A read of row groups is forwarded to the owner, and the answer relayed. Any other read, such as a footer read, is answered by the node that receives it.
+Each data file and external file has one owner among the nodes with the `s3` role, chosen by hashing each node's id with the file's path. The highest hash wins. A read of row groups or of an external file is forwarded to the owner, and the answer relayed. Any other read, such as a footer read, is answered by the node that receives it.
 
 | Case | Result |
 | --- | --- |

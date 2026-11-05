@@ -4,21 +4,23 @@ A Mink deployment is Mink nodes next to a Kafka cluster, a Postgres database and
 
 | Component | Holds |
 | --- | --- |
-| Kafka | The records, the only copy |
+| Kafka | The records |
 | Postgres | Tables, indexed offset ranges, data files and their statistics, snapshots, leases, members |
 | Bucket | Iceberg table metadata, manifest lists, manifests and statistics files |
 | Node | Caches of built data files and metadata objects |
 | Schema Registry, optional | The schemas typed columns come from |
+| External table, optional | Older records, in another REST catalog. See [Tiering](/docs/design/tiering). |
 
 ## Anatomy of a node
 
-A node runs any of four roles, all four by default.
+A node runs any of five roles, all five by default.
 
 | Role | Runs | Listens on |
 | --- | --- | --- |
 | `catalog` | The Iceberg REST catalog | `catalog_address` |
 | `s3` | The S3 endpoint that serves metadata objects and builds data files | `s3_address` |
 | `indexer` | Indexers, writers and topic following | |
+| `tier` | Tier workers | |
 | `admin` | The [admin API](/docs/operations/admin), the [console](/docs/operations/console) and `/metrics` | `admin_address` |
 
 <div class="mink-diagram">
@@ -77,6 +79,7 @@ A node runs any of four roles, all four by default.
 | --- | --- | --- |
 | Membership | Every node | Registers the node in Postgres. See [Cluster](/docs/design/cluster). |
 | Topic following | `indexer` nodes | Follows each table's topic in Kafka: new partitions, deleted or recreated topics |
-| Lease sharing | `indexer` nodes | Spreads each table's partition leases over the indexing nodes, and gives each table one writer. See [Cluster](/docs/design/cluster). |
+| Lease sharing | `indexer` and `tier` nodes | Spreads each table's partition leases over the `indexer` nodes and its tier leases over the `tier` nodes, and gives each table one writer. See [Cluster](/docs/design/cluster). |
 | Indexer | Holder of a partition lease | Reads the partition's committed records once and records data files. See [Indexing](/docs/design/indexing). |
-| Writer | Holder of a table's writer lease | Commits snapshots, assembles small files, publishes statistics, expires snapshots and collects old objects. See [Snapshots](/docs/design/snapshots). |
+| Writer | Holder of a table's writer lease | Commits snapshots, assembles small files, publishes statistics, expires snapshots, collects old objects and commits tiered files. See [Snapshots](/docs/design/snapshots). |
+| Tier worker | Holder of a partition's tier lease | Writes the partition's older records to the external table. See [Tiering](/docs/design/tiering). |

@@ -10,7 +10,7 @@ Each committed snapshot of a topic becomes a snapshot of an Iceberg table, writt
 | --- | --- |
 | 2 | Written for every table |
 
-Format version 3 is not supported yet. Supporting it means defining row lineage for Mink tables and adding it here.
+Format version 3 is not supported. Supporting it means defining row lineage for Mink tables and adding it here.
 
 ## Table
 
@@ -22,9 +22,9 @@ Format version 3 is not supported yet. Supporting it means defining row lineage 
 | Schemas | The binary schema, id 0, and every typed schema of the topic (`schema.md`), in id order, as Postgres holds them when the snapshot is rendered |
 | `current-schema-id` | The latest of them when the snapshot was rendered |
 | `last-column-id` | The highest field id of any of them |
-| Partition specs | Every time spec the topic has had (`layout.md` Time partitioning), as Postgres holds them when the snapshot is rendered, in id order, then the external table's specs in id order, external spec `e` with id `2^30 + e`. `default-spec-id` is the current time spec, and `last-partition-id` the highest partition field id among them all |
+| Partition specs | Every time spec the topic has had (`layout.md` Time partitioning), as Postgres holds them when the snapshot is rendered, in id order, then the specs of each external table a retained snapshot lists, in id order: spec `e` of the external table listed as generation `g` has id `2^30 + g × 2^16 + e`, for `0 ≤ e < 2^16` and `1 ≤ g ≤ 16383`. Different external tables listed by one table have different generations. `default-spec-id` is the current time spec, and `last-partition-id` the highest partition field id among them all |
 | Statistics | The latest statistics file (`statistics.md`), when the writer has published one |
-| Sort orders | Unsorted, order id 0, then the external table's other sort orders in id order. `default-sort-order-id` is 0 |
+| Sort orders | Unsorted, order id 0, then the other sort orders of the newest generation a retained snapshot lists, in id order. `default-sort-order-id` is 0 |
 | Properties | None |
 | `current-snapshot-id` and the `main` branch | The latest snapshot |
 | `last-sequence-number` | The latest snapshot's sequence number |
@@ -51,6 +51,7 @@ Iceberg snapshot `N` is Mink snapshot `N`. Its sequence number `S` is one more t
 | `summary` totals, no external table | `total-data-files`, `total-records`, `total-files-size` of Mink's files, and `total-delete-files`, `total-position-deletes` as 0 |
 | `summary` totals, with an external table | `total-data-files` and `total-records` of Mink's files plus the external data entries' file and row counts. `total-delete-files` and `total-position-deletes` are the external delete entries' file and row counts. A total is left out when an entry lacks its count. `total-files-size` is left out |
 | `summary.mink.partition.{p}.start-offset`, `.end-offset` | The snapshot's offsets for partition `p` |
+| `summary.mink.external.generation` | The generation of the listed external table |
 | `summary.mink.external.snapshot-id` | The id of the external table snapshot whose entries are listed |
 | `summary.mink.external.partition.{p}.end-offset` | The external table's end offset of partition `p` that its listed entries reach |
 
@@ -105,13 +106,15 @@ A tail's paths are a function of `N`, `E` and its offsets. The same tail renders
 
 ## External table
 
-A table's external table is an Iceberg table in an external catalog. Mink appends to it with iceberg-rust's fast append:
+A table's external table is an Iceberg table in an external catalog. Each tier commit adds one snapshot to it:
 
 | Object | Value |
 | --- | --- |
-| Data files | Under `{external location}/data/`, holding the records of the tiered offsets. Partitioned by the table's default spec, sorted by its write order, sized and compressed by its `write.*` properties. |
-| Snapshot, manifests, manifest list | Written by iceberg-rust's fast append, `operation` `append` |
-| `summary.mink.partition.{p}.start-offset`, `.end-offset` | The offsets of partition `p` the commit appends. A start above the previous commit's end marks offsets Kafka deleted before they were tiered |
+| Data file path | `{data}/{partition path}/{p}-{start}-{end}-{n}-{uuid}.parquet`. `{data}` is `write.data.path`, or `{location}/data`. `{p}`, `{start}` and `{end}` are the partition and offsets of the read that wrote the file, `{n}` a five-digit counter. |
+| Data file rows | The records of the tiered offsets, partitioned by the table's default spec and sorted by its default sort order |
+| Data file Parquet | `write.target-file-size-bytes`, `write.parquet.row-group-size-bytes`, `write.parquet.page-size-bytes`, `write.parquet.dict-size-bytes`, `write.parquet.compression-codec`, `write.parquet.compression-level`, `write.parquet.bloom-filter-enabled.column.*`, `write.parquet.bloom-filter-fpp.column.*` and `write.metadata.metrics.*` apply. `write.parquet.bloom-filter-max-bytes` does not. |
+| Snapshot | `operation` `append`. A new manifest holds the commit's files as `ADDED`, and the manifest list keeps every earlier manifest. |
+| `summary.mink.partition.{p}.start-offset`, `.end-offset` | The offsets of partition `p` the commit appends |
 | `mink.partition.{p}.end-offset` | Table property set in the same commit: the first offset of partition `p` the external table does not hold |
 
 ## Expiry
@@ -120,7 +123,7 @@ When snapshots expire, they are removed from the table metadata, from `snapshot-
 
 ## Determinism
 
-The table metadata file is a function of the snapshots, their files, the topic's table schemas and the listed external table. Avro manifests and manifest lists are not byte for byte: the Avro writer picks a random sync marker. Their contents and lengths are. A snapshot's objects are written before it is committed.
+The table metadata file is a function of the snapshots, their files, the topic's table schemas, the listed external table and the specs of every generation a retained snapshot lists. Avro manifests and manifest lists are not byte for byte: the Avro writer picks a random sync marker. Their contents and lengths are. A snapshot's objects are written before it is committed.
 
 ## Errors
 
@@ -136,6 +139,8 @@ The table metadata file is a function of the snapshots, their files, the topic's
 | `external_schema` | The external table's current schema is not the topic's latest table schema |
 | `external_partition_field` | An external spec's partition field has an id from 1000 to 1003, the ids time specs take, and is not the time spec field with that id |
 | `equality_deletes` | An external delete manifest holds equality deletes |
+| `external_generation` | A generation outside 1 to 16383 |
+| `external_spec_id` | An external spec id outside 0 to 2^16 - 1 |
 | `external_offsets` | An applied snapshot starts a partition before the external table's end offset |
 | `external_sequence_number` | An applied snapshot's sequence number is not above every external entry's |
 
@@ -146,6 +151,7 @@ The table metadata file is a function of the snapshots, their files, the topic's
 3. Every manifest holds one spec and one bucket. A commit writes one manifest per bucket it adds files to, one per bucket it assembles or merges, and one per other earlier manifest it changes, and reuses every other earlier manifest unchanged.
 4. The table metadata file is the same bytes whenever it is rendered from the same snapshots and files.
 5. Only format version 2 is written.
+6. An external commit's `summary.mink.partition.{p}.start-offset` equals the previous commit's end offset, or is above it where Kafka deleted offsets before they were tiered. Its end offset equals the table property `mink.partition.{p}.end-offset`.
 
 ## Conformance
 
@@ -162,6 +168,8 @@ The table metadata file is a function of the snapshots, their files, the topic's
 - `mink-server` `writer::tiering::tests::a_tier_commit_sets_the_end_offsets_with_its_files`: the External table objects, read back through the external catalog.
 - `mink-server` `tier::tests::tiering_continues_after_offsets_kafka_deleted_and_counts_the_gap`: the start offset that marks a gap.
 - `mink-iceberg` `table::tests::a_snapshot_lists_the_external_table_after_its_own_manifests`: the external table's entries, specs, sort orders, sequence number, totals and end offsets, and the `external_offsets` and `external_sequence_number` errors.
+- `mink-iceberg` `table::tests::an_unlisted_external_table_keeps_its_specs_until_its_snapshots_expire`: the specs and sort orders of an external table that is no longer listed.
+- `mink-iceberg` `table::tests::a_new_generation_lists_beside_the_old_one_without_sharing_spec_ids`: the generation in listed spec ids.
 - `mink-iceberg` `table::tests::the_external_files_plan_in_iceberg_rust`: iceberg-rust plans Mink's files and the external table's files from one snapshot.
 - `mink-iceberg` `table::external::tests`: the `format_version`, `external_schema`, `external_partition_field` and `equality_deletes` errors.
 - `mink-server` `writer::tiering::tests::the_merged_table_lists_each_record_once_after_a_writer_restart`: invariant 2 against the REST catalog fixture, and the partition starts after a restart.

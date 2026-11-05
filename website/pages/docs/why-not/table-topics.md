@@ -26,17 +26,16 @@ Kafka platforms write topics as Iceberg tables themselves: Confluent Tableflow, 
 | --- | --- | --- |
 | Kafka | That vendor's platform, or Apache Kafka with Aiven's plugin | Any Kafka cluster, unchanged |
 | Freshness | The table lags by the commit interval or the segment roll | Every record committed when the table loads |
-| Copies | Most keep the log and Parquet. Aiven and Ursa keep one remote copy. | Kafka only. The bucket holds metadata. |
+| Copies | Most keep the log and Parquet. Aiven and Ursa keep one remote copy. | Kafka. A [tiered](/docs/design/tiering) table also writes its older records to an external table. |
 | Schemas | Required by Tableflow and Aiven | Optional. Without one, the key and value stay raw bytes. |
 | Transactions | Not supported by Aiven or by Ursa's diskless topics | Committed records only, aborted ones skipped |
 | Updates | Tableflow's upsert mode | None. One row per record. |
-| History | The table can outlive the log | As far back as Kafka's retention |
+| History | The table can outlive the log | As far back as Kafka's retention, or a tiered table's external table |
 | Engines | Any that reads the catalog and the storage | Any with an Iceberg REST catalog and a configurable S3 endpoint |
 
 ## When they fit
 
 - Topics already on that platform.
-- Tables kept longer than the log's retention.
 - Upsert tables from compacted topics, with Tableflow.
 - Engines that read only from cloud storage, such as managed warehouse services.
 

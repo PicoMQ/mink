@@ -33,7 +33,7 @@ Durations are a number and a unit: `ms`, `s`, `m` or `h`. Sizes are bytes. Every
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| `roles` | `["catalog", "s3", "indexer", "admin"]` | Roles this node runs. See [Overview](/docs/design/overview). |
+| `roles` | `["catalog", "s3", "indexer", "tier", "admin"]` | Roles this node runs. See [Overview](/docs/design/overview). |
 | `catalog_address` | `127.0.0.1:8181` | Where the REST catalog listens |
 | `s3_address` | `127.0.0.1:9100` | Where the S3 endpoint listens |
 | `admin_address` | `127.0.0.1:9180` | Where the admin API, the console and `/metrics` listen |
@@ -93,6 +93,22 @@ Durations are a number and a unit: `ms`, `s`, `m` or `h`. Sizes are bytes. Every
 | `assembly_delay` | `10m` | How long after its end a time bucket is assembled |
 | `assembled_bytes` | `1073741824` | The largest assembled file |
 | `statistics_interval` | `1h` | How often a writer publishes a statistics file. Must be shorter than `snapshot_retention`. |
+
+## Tiering
+
+Settings of [tiering](/docs/design/tiering). An external table names one of the `external_catalogs`.
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `external_catalogs.<name>.uri` | none | The REST catalog's URL |
+| `external_catalogs.<name>.warehouse` | none | The catalog's `warehouse` parameter |
+| `external_catalogs.<name>.auth.type` | none | `sigv4`, `oauth2` or `bearer`. Without it, requests carry no credentials. |
+| `external_catalogs.<name>.auth.service`, `.region` | none | For `sigv4`: the signing service, such as `s3tables` or `glue`, and its region. Credentials come from AWS's own sources, as for `storage.credentials`. |
+| `external_catalogs.<name>.auth.credential` | none | For `oauth2`: `client_id:client_secret` |
+| `external_catalogs.<name>.auth.scope`, `.token_uri` | none, `{uri}/v1/oauth/tokens` | For `oauth2`: the token's scope, and where tokens come from |
+| `external_catalogs.<name>.auth.token` | none | For `bearer`: the token |
+| `tier_bytes` | `268435456` | The most file bytes one flush reads and writes |
+| `max_tier_flushes` | `2` | Flushes a node runs at once |
 
 ## Cache
 

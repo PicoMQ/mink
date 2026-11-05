@@ -1,6 +1,6 @@
 # Layout and pruning
 
-A table's data files are partitioned by time and carry min/max bounds per column. Engines use both to skip files a filter rules out. Once a time bucket has ended, its small files are assembled into larger ones. Tables with granularity `none` are not assembled.
+A table's own data files are partitioned by time and carry min/max bounds per column. A [tiered](/docs/design/tiering) table's external files follow the external table's partition spec and sort order. Engines use both to skip files a filter rules out. Once a time bucket has ended, its small files are assembled into larger ones. Tables with granularity `none` are not assembled.
 
 ## Time partitioning
 

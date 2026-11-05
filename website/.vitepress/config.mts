@@ -30,6 +30,7 @@ const docsSidebar = [
       { text: 'Reads', link: '/docs/design/reads' },
       { text: 'Layout and pruning', link: '/docs/design/layout' },
       { text: 'Retention', link: '/docs/design/retention' },
+      { text: 'Tiering', link: '/docs/design/tiering' },
       { text: 'Cluster', link: '/docs/design/cluster' },
     ],
   },
@@ -59,7 +60,6 @@ const docsSidebar = [
     text: 'Community',
     collapsed: true,
     items: [
-      { text: 'Roadmap', link: '/docs/roadmap' },
       { text: 'Contribute', link: '/docs/contribute' },
     ],
   },
