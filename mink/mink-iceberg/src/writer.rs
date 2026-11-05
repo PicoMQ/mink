@@ -6,9 +6,9 @@ use arrow_select::concat::concat_batches;
 use arrow_select::take::take_record_batch;
 use iceberg::arrow::RecordBatchPartitionSplitter;
 use iceberg::spec::{
-    DataFile, DataFileBuilder, DataFileFormat, Datum, NullOrder, PartitionKey, PrimitiveLiteral,
-    Schema, SortDirection, SortOrder, Type, deserialize_data_file_from_json,
-    serialize_data_file_to_json,
+    DataFile, DataFileBuilder, DataFileFormat, Datum, NullOrder, PartitionKey, PartitionSpecRef,
+    PrimitiveLiteral, Schema, SchemaRef, SortDirection, SortOrder, Type,
+    deserialize_data_file_from_json, serialize_data_file_to_json,
 };
 use iceberg::table::Table;
 use iceberg::transform::create_transform_function;
@@ -20,6 +20,7 @@ use iceberg::writer::file_writer::location_generator::{
 use iceberg::writer::file_writer::rolling_writer::RollingFileWriterBuilder;
 use iceberg::writer::partitioning::PartitioningWriter;
 use iceberg::writer::partitioning::clustered_writer::ClusteredWriter;
+use iceberg::writer::partitioning::unpartitioned_writer::UnpartitionedWriter;
 use parquet::arrow::PARQUET_FIELD_ID_META_KEY;
 use parquet::basic::{BrotliLevel, Compression, GzipLevel, ZstdLevel};
 use parquet::file::properties::WriterProperties;
@@ -55,10 +56,56 @@ pub async fn write_data_files(
         return Ok(Vec::new());
     };
 
-    let splitter = RecordBatchPartitionSplitter::try_new_with_computed_values(
-        schema.clone(),
-        metadata.default_partition_spec().clone(),
-    )?;
+    let parquet =
+        ParquetWriterBuilder::new(writer_properties(properties, &schema)?, schema.clone());
+    let suffix = Uuid::new_v4().simple().to_string();
+    let names =
+        DefaultFileNameGenerator::new(prefix.to_owned(), Some(suffix), DataFileFormat::Parquet);
+    let rolling = RollingFileWriterBuilder::new(
+        parquet,
+        metadata.table_properties()?.write_target_file_size_bytes,
+        table.file_io().clone(),
+        DefaultLocationGenerator::new(metadata)?,
+        names,
+    );
+
+    let spec = metadata.default_partition_spec();
+    let written = match spec.is_unpartitioned() {
+        true => {
+            let rows = concat_batches(&arrow_schema, &batches)?;
+            drop(batches);
+
+            let mut writer = UnpartitionedWriter::new(DataFileWriterBuilder::new(rolling));
+            writer.write(sorted(&rows, order)?).await?;
+            writer.close().await?
+        }
+        false => {
+            let mut writer = ClusteredWriter::new(DataFileWriterBuilder::new(rolling));
+            for (key, batches) in partitioned(&schema, spec, batches)? {
+                let rows = concat_batches(&arrow_schema, &batches)?;
+                drop(batches);
+                writer.write(key, sorted(&rows, order)?).await?;
+            }
+            writer.close().await?
+        }
+    };
+
+    let spec_id = metadata.default_partition_spec().spec_id();
+    let sort_order_id = (!order.is_unsorted()).then_some(order.order_id as i32);
+    written
+        .into_iter()
+        .map(|file| with_metrics_modes(file, &schema, properties, spec_id, sort_order_id))
+        .collect()
+}
+
+fn partitioned(
+    schema: &SchemaRef,
+    spec: &PartitionSpecRef,
+    batches: Vec<RecordBatch>,
+) -> Result<Vec<(PartitionKey, Vec<RecordBatch>)>, Error> {
+    let splitter =
+        RecordBatchPartitionSplitter::try_new_with_computed_values(schema.clone(), spec.clone())?;
+
     let mut parts: Vec<(PartitionKey, Vec<RecordBatch>)> = Vec::new();
     for batch in batches {
         for (key, part) in splitter.split(&batch)? {
@@ -72,33 +119,7 @@ pub async fn write_data_files(
         }
     }
 
-    let parquet =
-        ParquetWriterBuilder::new(writer_properties(properties, &schema)?, schema.clone());
-    let suffix = Uuid::new_v4().simple().to_string();
-    let names =
-        DefaultFileNameGenerator::new(prefix.to_owned(), Some(suffix), DataFileFormat::Parquet);
-    let rolling = RollingFileWriterBuilder::new(
-        parquet,
-        metadata.table_properties()?.write_target_file_size_bytes,
-        table.file_io().clone(),
-        DefaultLocationGenerator::new(metadata)?,
-        names,
-    );
-    let mut writer = ClusteredWriter::new(DataFileWriterBuilder::new(rolling));
-
-    for (key, batches) in parts {
-        let rows = concat_batches(&arrow_schema, &batches)?;
-        drop(batches);
-        writer.write(key, sorted(&rows, order)?).await?;
-    }
-    let written = writer.close().await?;
-
-    let spec_id = metadata.default_partition_spec().spec_id();
-    let sort_order_id = (!order.is_unsorted()).then_some(order.order_id as i32);
-    written
-        .into_iter()
-        .map(|file| with_metrics_modes(file, &schema, properties, spec_id, sort_order_id))
-        .collect()
+    Ok(parts)
 }
 
 pub fn encoded_data_files(table: &Table, files: Vec<DataFile>) -> Result<Vec<String>, Error> {
@@ -459,6 +480,43 @@ mod tests {
                 "{offsets:?}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn an_unpartitioned_table_gets_sorted_files() {
+        let metadata = iceberg::spec::TableMetadataBuilder::new(
+            mink_schema::binary_schema().clone(),
+            iceberg::spec::UnboundPartitionSpec::builder().build(),
+            SortOrder::unsorted_order(),
+            "memory://tables/plain".to_owned(),
+            iceberg::spec::FormatVersion::V2,
+            HashMap::new(),
+        )
+        .unwrap()
+        .build()
+        .unwrap()
+        .metadata;
+        let metadata = iceberg::spec::TableMetadataBuilder::new_from_metadata(metadata, None)
+            .add_current_schema(mink_schema::binary_schema().clone())
+            .unwrap()
+            .build()
+            .unwrap()
+            .metadata;
+        let partitioned = external_table(last_time_field_id() + 1, HashMap::new());
+        let table = Table::builder()
+            .identifier(iceberg::TableIdent::from_strs(["kafka", "plain"]).unwrap())
+            .metadata(metadata)
+            .file_io(partitioned.file_io().clone())
+            .runtime(iceberg::Runtime::try_current().unwrap())
+            .build()
+            .unwrap();
+        let partition = Partition::new("orders", 0).unwrap();
+        let rows = crate::record_batch(&partition, &records(), &FileSchema::Binary).unwrap();
+
+        let files = write_data_files(&table, vec![rows], "0-0-6").await.unwrap();
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].record_count(), 6);
     }
 
     #[tokio::test]
