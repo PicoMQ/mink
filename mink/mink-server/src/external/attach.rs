@@ -274,7 +274,10 @@ async fn check_retention(kafka: &Pool, topic: &str, schedule: TierSchedule) -> R
 }
 
 fn check_location(warehouse: &str, location: &str) -> Result<(), Error> {
-    if !location.starts_with("s3://") {
+    let under_bucket = location
+        .strip_prefix("s3://")
+        .is_some_and(|path| path.trim_end_matches('/').contains('/'));
+    if !under_bucket {
         return Err(Error::UnsupportedLocation(location.to_owned()));
     }
     if locations_overlap(warehouse, location) {
@@ -819,9 +822,38 @@ mod tests {
         let ticked = stale.tick().await;
 
         let ranges = tiering.services.store.tiered_ranges();
-        assert!(ticked.is_err(), "{ticked:?}");
+        assert!(
+            matches!(
+                ticked,
+                Err(Error::Store(mink_store::Error::DetachedGeneration {
+                    generation: 1,
+                    ..
+                }))
+            ),
+            "{ticked:?}"
+        );
         assert!(ranges.list(tiering.topic.name()).await.unwrap().is_empty());
         assert_eq!(start(&tiering).await, 0);
+    }
+
+    #[test]
+    fn a_location_is_a_path_in_a_bucket_outside_the_warehouse() {
+        let warehouse = "s3://mink/warehouse";
+
+        assert!(check_location(warehouse, "s3://lake/orders").is_ok());
+        for location in ["s3://lake", "s3://lake/", "gs://lake/orders"] {
+            assert!(
+                matches!(
+                    check_location(warehouse, location),
+                    Err(Error::UnsupportedLocation(_))
+                ),
+                "{location}"
+            );
+        }
+        assert!(matches!(
+            check_location(warehouse, "s3://mink/warehouse/orders"),
+            Err(Error::LocationInWarehouse(_))
+        ));
     }
 
     #[test]

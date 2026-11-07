@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 
 use super::Admin;
 use super::reply::{Body, Failure, Segments};
+use crate::Error;
 use crate::config::parse_duration;
 use crate::external::{self, Attachment, Source};
 
@@ -61,9 +62,7 @@ async fn attach(
 ) -> Result<Response, Failure> {
     let services = &admin.services;
     let attachment = attachment(topic, request)?;
-    let catalog = services
-        .external_catalog(attachment.table.catalog())
-        .map_err(|error| Failure::bad(error.to_string()))?;
+    let catalog = services.external_catalog(attachment.table.catalog())?;
 
     let external = external::attach(
         &services.store,
@@ -90,13 +89,13 @@ fn attachment(topic: String, request: AttachRequest) -> Result<Attachment, Failu
     let duration = |text: Option<String>| {
         text.map(|text| parse_duration(&text))
             .transpose()
-            .map_err(|error| Failure::bad(error.to_string()))
+            .map_err(Error::from)
     };
     let schedule = TierSchedule::given(
         duration(request.tier_after)?,
         duration(request.tier_interval)?,
     )
-    .map_err(|error| Failure::bad(error.to_string()))?;
+    .map_err(Error::from)?;
 
     let partition = request
         .partition

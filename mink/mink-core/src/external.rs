@@ -4,6 +4,8 @@ use uuid::Uuid;
 
 use crate::Error;
 
+pub const MAX_GENERATION: i32 = 16_383;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExternalTable {
     topic: String,
@@ -103,6 +105,9 @@ impl ExternalTable {
         if !named || !location.starts_with("s3://") {
             return Err(Error::ExternalTable(topic.to_owned()));
         }
+        if !(1..=MAX_GENERATION).contains(&generation) {
+            return Err(Error::Generation(generation));
+        }
 
         Ok(ExternalTable {
             topic: topic.to_owned(),
@@ -198,6 +203,27 @@ mod tests {
         assert_eq!(
             table("s3tables", "/tmp/t"),
             Err(Error::ExternalTable("orders".to_owned()))
+        );
+    }
+
+    #[test]
+    fn a_table_allows_generations_up_to_the_last_attach() {
+        let table = |generation| {
+            ExternalTable::new(
+                "orders",
+                CatalogTable::new("s3tables", "kafka", "orders"),
+                Uuid::new_v4(),
+                "s3://b/t",
+                TierSchedule::default(),
+                generation,
+            )
+        };
+
+        assert!(table(MAX_GENERATION).is_ok());
+        assert_eq!(table(0), Err(Error::Generation(0)));
+        assert_eq!(
+            table(MAX_GENERATION + 1),
+            Err(Error::Generation(MAX_GENERATION + 1))
         );
     }
 

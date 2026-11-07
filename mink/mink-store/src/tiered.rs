@@ -62,13 +62,17 @@ impl<'a> TieredRanges<'a> {
         }
         let mut transaction = self.pool.begin().await?;
         check(&mut transaction, lease).await?;
+        check_generation(&mut transaction, partition.topic(), range.generation()).await?;
         let indexed = lock(&mut transaction, partition).await?;
         check_boundary(&mut transaction, &indexed, offsets.end_offset()).await?;
 
         let start = offsets.start_offset();
-        let last = end(&mut transaction, partition).await?;
-        let skips_a_gap = last.is_some_and(|end| end < start) && start == indexed.start_offset();
-        if let Some(expected) = last.filter(|end| *end != start && !skips_a_gap) {
+        let expected = end(&mut transaction, partition)
+            .await?
+            .map_or(indexed.start_offset(), |end| {
+                end.max(indexed.start_offset())
+            });
+        if start != expected {
             return Err(Error::RangeNotAdjacent {
                 partition: partition.clone(),
                 expected,
@@ -143,6 +147,7 @@ impl<'a> TieredRanges<'a> {
 
         let mut transaction = self.pool.begin().await?;
         check(&mut transaction, lease).await?;
+        check_generation(&mut transaction, topic, generation).await?;
 
         for (index, end_offset) in ends {
             let partition = Partition::new(topic, *index)?;
@@ -196,6 +201,26 @@ impl<'a> TieredRanges<'a> {
 
         transaction.commit().await?;
         rows.into_iter().map(|row| row.range(topic)).collect()
+    }
+}
+
+async fn check_generation(
+    connection: &mut PgConnection,
+    topic: &str,
+    generation: i32,
+) -> Result<(), Error> {
+    let attached: Option<i32> =
+        sqlx::query_scalar("SELECT generation FROM external_table WHERE topic = $1 FOR SHARE")
+            .bind(topic)
+            .fetch_optional(&mut *connection)
+            .await?;
+
+    match attached == Some(generation) {
+        true => Ok(()),
+        false => Err(Error::DetachedGeneration {
+            topic: topic.to_owned(),
+            generation,
+        }),
     }
 }
 
@@ -320,13 +345,25 @@ mod tests {
         let writer = testing::topic_lease(&store, &topic, WRITER).await;
         let ranges = store.tiered_ranges();
 
-        ranges.add(&tier, &range(&partition, 5, 10)).await.unwrap();
+        let ahead = ranges.add(&tier, &range(&partition, 5, 10)).await;
+        ranges.add(&tier, &range(&partition, 0, 10)).await.unwrap();
         ranges.add(&tier, &range(&partition, 10, 20)).await.unwrap();
         let gap = ranges.add(&tier, &range(&partition, 25, 30)).await;
         let under_writer = ranges.add(&writer, &range(&partition, 20, 30)).await;
 
         assert_eq!(ranges.end(&partition).await.unwrap(), Some(20));
         assert_eq!(ranges.list(topic.name()).await.unwrap().len(), 2);
+        assert!(
+            matches!(
+                ahead,
+                Err(Error::RangeNotAdjacent {
+                    expected: 0,
+                    given: 5,
+                    ..
+                })
+            ),
+            "{ahead:?}"
+        );
         assert!(
             matches!(
                 gap,
@@ -390,7 +427,7 @@ mod tests {
             matches!(
                 past_the_start,
                 Err(Error::RangeNotAdjacent {
-                    expected: 10,
+                    expected: 20,
                     given: 30,
                     ..
                 })

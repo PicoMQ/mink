@@ -81,6 +81,8 @@ pub enum Error {
     AlreadyExternalTable { topic: String },
     #[error("table {topic} has no external table")]
     NoExternalTable { topic: String },
+    #[error("attach generation {generation} of {topic} is no longer attached")]
+    DetachedGeneration { topic: String, generation: i32 },
     #[error("location {location} is inside or around another external table's location")]
     OverlappingLocation { location: String },
     #[error("end offset {offset} of {partition:?} is past its indexed end {indexed}")]

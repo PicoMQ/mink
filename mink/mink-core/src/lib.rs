@@ -16,7 +16,7 @@ mod topic;
 
 pub use error::Error;
 pub use external::{
-    CatalogTable, ExternalTable, TierSchedule, locations_holding, locations_overlap,
+    CatalogTable, ExternalTable, MAX_GENERATION, TierSchedule, locations_holding, locations_overlap,
 };
 pub use file::{Assembly, AssemblyHash, BuiltFile, File, FileVersion, IndexedFile, Span, Stats};
 pub use granularity::{Granularity, TimePartition, TimeSpec, TimeSpecs, utc_day};

@@ -28,6 +28,11 @@ pub enum Error {
     SnapshotSequenceNumber(i64),
     #[error("the external table of {0} needs a catalog, namespace and name, and an s3:// location")]
     ExternalTable(String),
+    #[error(
+        "attach generation {0} is outside 1..={max}, the attaches a table allows",
+        max = crate::MAX_GENERATION
+    )]
+    Generation(i32),
     #[error("{0:?} is not a lease scope with a matching partition")]
     Scope(String),
     #[error("a tier schedule needs a positive tier_after and tier_interval")]

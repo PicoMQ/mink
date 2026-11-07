@@ -27,17 +27,20 @@ impl Writer {
         if !due {
             return Ok(());
         }
+        self.last_tiering = Some(Instant::now());
 
         let catalog = self.services.external_catalog(external.table().catalog())?;
         let table = catalog.load(&external).await?;
 
         self.reconcile(&table, external.generation()).await?;
         let ranges = self.ranges_of_current_spec(&table).await?;
-        let table = match spans(&ranges)? {
-            spans if spans.is_empty() => table,
-            spans => {
-                let committed = commit(&table, &catalog, &ranges, &spans).await?;
-                let ends = spans
+        let append = Append::of(&ranges)?;
+        let table = match append.spans.is_empty() {
+            true => table,
+            false => {
+                let committed = commit(&table, &catalog, &append).await?;
+                let ends = append
+                    .spans
                     .iter()
                     .map(|span| (span.partition().index(), span.end_offset()))
                     .collect();
@@ -48,7 +51,6 @@ impl Writer {
                 committed
             }
         };
-        self.last_tiering = Some(Instant::now());
 
         self.read_external_snapshot(&table, external.generation())
             .await
@@ -144,34 +146,47 @@ impl Writer {
     }
 }
 
-fn spans(ranges: &[TieredRange]) -> Result<Vec<Offsets>, Error> {
-    let mut spans: Vec<Offsets> = Vec::new();
+struct Append<'a> {
+    ranges: Vec<&'a TieredRange>,
+    spans: Vec<Offsets>,
+}
 
-    for range in ranges {
-        let offsets = range.offsets();
-        match spans.last_mut() {
-            Some(span) if span.partition() == offsets.partition() => {
-                *span = Offsets::new(
-                    span.partition().clone(),
-                    span.start_offset(),
-                    offsets.end_offset(),
-                )?;
+impl<'a> Append<'a> {
+    fn of(ranges: &'a [TieredRange]) -> Result<Append<'a>, Error> {
+        let mut append = Append {
+            ranges: Vec::new(),
+            spans: Vec::new(),
+        };
+
+        for range in ranges {
+            let offsets = range.offsets();
+            match append.spans.last_mut() {
+                Some(span) if span.partition() == offsets.partition() => {
+                    if span.end_offset() != offsets.start_offset() {
+                        continue;
+                    }
+                    *span = Offsets::new(
+                        span.partition().clone(),
+                        span.start_offset(),
+                        offsets.end_offset(),
+                    )?;
+                }
+                _ => append.spans.push(offsets.clone()),
             }
-            _ => spans.push(offsets.clone()),
+            append.ranges.push(range);
         }
-    }
 
-    Ok(spans)
+        Ok(append)
+    }
 }
 
 async fn commit(
     table: &Table,
     catalog: &external::Catalog,
-    ranges: &[TieredRange],
-    spans: &[Offsets],
+    append: &Append<'_>,
 ) -> Result<Table, Error> {
     let mut files = Vec::new();
-    for range in ranges {
+    for range in &append.ranges {
         files.extend(mink_iceberg::data_files(
             table,
             range.spec_id(),
@@ -181,7 +196,7 @@ async fn commit(
 
     let mut summary = HashMap::new();
     let mut properties = HashMap::new();
-    for span in spans {
+    for span in &append.spans {
         let partition = span.partition().index();
         let end = (end_offset_key(partition), span.end_offset().to_string());
 
@@ -222,16 +237,36 @@ mod tests {
     use iceberg::transaction::{ApplyTransactionAction, Transaction};
     use iceberg::{Catalog as _, ErrorKind, Runtime, TableIdent, TableUpdate};
     use mink_core::{
-        CatalogTable, ExternalTable, Partition, Record, Scope, Snapshot, TableLocation,
+        CatalogTable, ExternalTable, Offsets, Partition, Record, Scope, Snapshot, TableLocation,
         TierSchedule, TieredRange,
     };
     use mink_iceberg::{FileSchema, end_offset_key, last_time_field_id};
     use uuid::Uuid;
 
-    use super::{commit, spans};
+    use super::{Append, commit};
     use crate::Error;
     use crate::testing::{TTL, Tiering, registered, tiering};
     use crate::writer::Writer;
+
+    #[test]
+    fn an_append_takes_each_partitions_ranges_up_to_a_gap() {
+        let offsets = |index, start, end| {
+            Offsets::new(Partition::new("orders", index).unwrap(), start, end).unwrap()
+        };
+        let range =
+            |index, start, end| TieredRange::new(offsets(index, start, end), 1, 0, Vec::new());
+        let ranges = [
+            range(0, 0, 5),
+            range(0, 5, 8),
+            range(0, 12, 20),
+            range(1, 3, 6),
+        ];
+
+        let append = Append::of(&ranges).unwrap();
+
+        assert_eq!(append.spans, [offsets(0, 0, 8), offsets(1, 3, 6)]);
+        assert_eq!(append.ranges, [&ranges[0], &ranges[1], &ranges[3]]);
+    }
 
     async fn table(tiering: &Tiering) -> Table {
         tiering
@@ -398,7 +433,7 @@ mod tests {
         tiered(&tiering).await;
         let loaded = table(&tiering).await;
         let ranges = pending(&tiering).await;
-        commit(&loaded, &tiering.catalog, &ranges, &spans(&ranges).unwrap())
+        commit(&loaded, &tiering.catalog, &Append::of(&ranges).unwrap())
             .await
             .unwrap();
 
@@ -427,12 +462,10 @@ mod tests {
         tiered(&tiering).await;
         let stale = table(&tiering).await;
         let ranges = pending(&tiering).await;
-        let spans = spans(&ranges).unwrap();
+        let append = Append::of(&ranges).unwrap();
 
-        commit(&stale, &tiering.catalog, &ranges, &spans)
-            .await
-            .unwrap();
-        let again = commit(&stale, &tiering.catalog, &ranges, &spans).await;
+        commit(&stale, &tiering.catalog, &append).await.unwrap();
+        let again = commit(&stale, &tiering.catalog, &append).await;
 
         assert!(
             matches!(

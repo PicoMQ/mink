@@ -13,6 +13,7 @@ use serde::{Deserialize, Deserializer, de};
 use serde_json::json;
 
 use crate::Error;
+use crate::config::ConfigError;
 
 #[derive(Debug)]
 pub(super) struct Failure {
@@ -82,6 +83,8 @@ impl From<Error> for Failure {
                 | mink_iceberg::Error::FormatVersion(_)
                 | mink_iceberg::Error::TableProperty { .. },
             )
+            | Error::Config(ConfigError::Duration(_))
+            | Error::NoSuchExternalCatalog(_)
             | Error::UnreadableTerm(_)
             | Error::UnknownColumn(_)
             | Error::ShortRetention { .. }

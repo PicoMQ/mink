@@ -6,7 +6,7 @@ use iceberg::spec::{
     SortOrder, Summary, TableMetadata,
 };
 use iceberg::table::Table as ExternalTable;
-use mink_core::TimeSpecs;
+use mink_core::{MAX_GENERATION, TimeSpecs};
 
 use super::FormatVersion;
 use super::keys::{
@@ -18,8 +18,10 @@ use crate::Error;
 
 const EXTERNAL_SPEC_ID_BASE: i32 = 1 << 30;
 const SPECS_PER_GENERATION: i32 = 1 << 16;
-const MAX_GENERATION: i32 =
-    (i32::MAX - EXTERNAL_SPEC_ID_BASE - (SPECS_PER_GENERATION - 1)) / SPECS_PER_GENERATION;
+const _: () = assert!(
+    EXTERNAL_SPEC_ID_BASE as i64 + (MAX_GENERATION as i64 + 1) * SPECS_PER_GENERATION as i64 - 1
+        <= i32::MAX as i64
+);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExternalSnapshot {

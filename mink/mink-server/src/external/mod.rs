@@ -136,7 +136,13 @@ impl Catalog {
             updates.push(TableUpdate::SetDefaultSortOrder { sort_order_id: -1 });
         }
 
-        self.commit(identifier, requirements, updates).await
+        let assigned = self.commit(identifier, requirements, updates).await;
+        if assigned.is_err()
+            && let Err(error) = iceberg::Catalog::drop_table(self, identifier).await
+        {
+            tracing::warn!(catalog = %self.name, %error, "a created table whose ids were not assigned was not dropped");
+        }
+        assigned
     }
 
     pub(crate) async fn commit(
@@ -209,7 +215,7 @@ impl Catalog {
                 }
 
                 let config: ConfigResponse = self
-                    .send(Method::GET, url, None, ErrorKind::DataInvalid)
+                    .send(Method::GET, url, None, ErrorKind::Unexpected)
                     .await?;
                 let prefix = config
                     .overrides
@@ -234,7 +240,7 @@ impl Catalog {
         let (status, bytes) = self.request(method, url, body, missing).await?;
 
         serde_json::from_slice(&bytes)
-            .map_err(|error| self.rejected(ErrorKind::DataInvalid, status, error))
+            .map_err(|error| self.rejected(ErrorKind::Unexpected, status, error))
     }
 
     async fn request(
@@ -270,7 +276,8 @@ impl Catalog {
             status if status.is_server_error() => {
                 Err(self.unavailable(format!("{status}: {message}")))
             }
-            status => Err(self.rejected(ErrorKind::DataInvalid, status, message)),
+            StatusCode::BAD_REQUEST => Err(self.rejected(ErrorKind::DataInvalid, status, message)),
+            status => Err(self.rejected(ErrorKind::Unexpected, status, message)),
         }
     }
 
@@ -306,7 +313,7 @@ impl Catalog {
 
     fn invalid_uri(&self, url: &str) -> iceberg::Error {
         iceberg::Error::new(
-            ErrorKind::DataInvalid,
+            ErrorKind::Unexpected,
             format!("external catalog {} has an invalid URI: {url}", self.name),
         )
     }
