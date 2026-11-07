@@ -34,6 +34,7 @@ const BLOOM_ENABLED: &str = "write.parquet.bloom-filter-enabled.column.";
 const BLOOM_FPP: &str = "write.parquet.bloom-filter-fpp.column.";
 const METRICS_DEFAULT: &str = "write.metadata.metrics.default";
 const METRICS_COLUMN: &str = "write.metadata.metrics.column.";
+const SLICES_PER_FILE: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MetricsMode {
@@ -61,9 +62,10 @@ pub async fn write_data_files(
     let suffix = Uuid::new_v4().simple().to_string();
     let names =
         DefaultFileNameGenerator::new(prefix.to_owned(), Some(suffix), DataFileFormat::Parquet);
+    let target = metadata.table_properties()?.write_target_file_size_bytes;
     let rolling = RollingFileWriterBuilder::new(
         parquet,
-        metadata.table_properties()?.write_target_file_size_bytes,
+        target,
         table.file_io().clone(),
         DefaultLocationGenerator::new(metadata)?,
         names,
@@ -76,7 +78,9 @@ pub async fn write_data_files(
             drop(batches);
 
             let mut writer = UnpartitionedWriter::new(DataFileWriterBuilder::new(rolling));
-            writer.write(sorted(&rows, order)?).await?;
+            for slice in slices(&sorted(&rows, order)?, target) {
+                writer.write(slice).await?;
+            }
             writer.close().await?
         }
         false => {
@@ -84,7 +88,9 @@ pub async fn write_data_files(
             for (key, batches) in partitioned(&schema, spec, batches)? {
                 let rows = concat_batches(&arrow_schema, &batches)?;
                 drop(batches);
-                writer.write(key, sorted(&rows, order)?).await?;
+                for slice in slices(&sorted(&rows, order)?, target) {
+                    writer.write(key.clone(), slice).await?;
+                }
             }
             writer.close().await?
         }
@@ -95,6 +101,17 @@ pub async fn write_data_files(
     written
         .into_iter()
         .map(|file| with_metrics_modes(file, &schema, properties, spec_id, sort_order_id))
+        .collect()
+}
+
+fn slices(rows: &RecordBatch, target: usize) -> Vec<RecordBatch> {
+    let total = rows.num_rows();
+    let slice_bytes = (target / SLICES_PER_FILE).max(1);
+    let length = (total * slice_bytes / rows.get_array_memory_size().max(1)).clamp(1, total.max(1));
+
+    (0..total)
+        .step_by(length)
+        .map(|offset| rows.slice(offset, length.min(total - offset)))
         .collect()
 }
 
@@ -517,6 +534,41 @@ mod tests {
 
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].record_count(), 6);
+    }
+
+    #[tokio::test]
+    async fn files_roll_at_the_target_size() {
+        let target = 65_536;
+        let properties = HashMap::from([(
+            "write.target-file-size-bytes".to_owned(),
+            target.to_string(),
+        )]);
+        let table = external_table(last_time_field_id() + 1, properties);
+        let partition = Partition::new("orders", 0).unwrap();
+        let records: Vec<Record> = (0..400)
+            .map(|offset| {
+                let value: String = (0..32)
+                    .map(|_| Uuid::new_v4().simple().to_string())
+                    .collect();
+
+                Record::new(offset, offset, None, Some(Bytes::from(value)), Vec::new()).unwrap()
+            })
+            .collect();
+        let rows = crate::record_batch(&partition, &records, &FileSchema::Binary).unwrap();
+
+        let files = write_data_files(&table, vec![rows], "0-0-400")
+            .await
+            .unwrap();
+
+        assert!(files.len() > 1, "{}", files.len());
+        assert_eq!(files.iter().map(DataFile::record_count).sum::<u64>(), 400);
+        for file in &files {
+            assert!(
+                file.file_size_in_bytes() <= 2 * target as u64,
+                "{}",
+                file.file_size_in_bytes()
+            );
+        }
     }
 
     #[tokio::test]
