@@ -81,7 +81,7 @@ It returns `201` with `{catalog, namespace, name, uuid, location, generation, ti
 
 | Status | When |
 | --- | --- |
-| `400` | An unreadable body or term, an unknown catalog or column, a retention too short to tier, a location that is not a path in an S3 bucket or is inside the warehouse, missing end offsets, or a table Mink cannot list |
+| `400` | An unreadable body or term, an unknown catalog or column, a retention too short to tier, a location outside S3 or inside the warehouse, missing end offsets, or a table Mink cannot list |
 | `404` | For `existing`, no such namespace or Iceberg table |
 | `409` | The table has an external table, the Iceberg table exists or belongs to another table, its location overlaps another's, or the given end offsets differ from the table's |
 | `502` | The catalog did not answer or refused Mink's request |

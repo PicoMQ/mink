@@ -28,7 +28,7 @@ pub enum Error {
     SnapshotSequenceNumber(i64),
     #[error("the external table of {0} needs a catalog, namespace and name")]
     ExternalTable(String),
-    #[error("location {0} is not a path inside an s3:// bucket")]
+    #[error("location {0} is not an s3:// location")]
     ExternalLocation(String),
     #[error(
         "attach generation {0} is outside 1..={max}, the attaches a table allows",

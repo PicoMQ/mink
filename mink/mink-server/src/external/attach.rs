@@ -765,12 +765,13 @@ mod tests {
     }
 
     #[test]
-    fn a_location_is_a_path_in_a_bucket_outside_the_warehouse() {
+    fn a_location_is_in_s3_outside_the_warehouse() {
         let warehouse = "s3://mink/warehouse";
 
         assert!(external_location(warehouse, "s3://lake/orders").is_ok());
+        assert!(external_location(warehouse, "s3://orders--table-s3").is_ok());
         assert!(matches!(
-            external_location(warehouse, "s3://lake"),
+            external_location(warehouse, "gs://lake"),
             Err(Error::Core(mink_core::Error::ExternalLocation(_)))
         ));
         assert!(matches!(

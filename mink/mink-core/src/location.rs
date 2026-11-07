@@ -140,11 +140,11 @@ impl TableLocation {
 impl ExternalLocation {
     pub fn parse(location: &str) -> Result<ExternalLocation, Error> {
         let path = root(location);
-        let in_bucket = path
+        let bucket = path
             .strip_prefix(S3)
-            .is_some_and(|bucket_path| bucket_path.contains('/'));
+            .and_then(|bucket_path| bucket_path.split('/').next());
 
-        match in_bucket {
+        match bucket.is_some_and(|bucket| !bucket.is_empty()) {
             true => Ok(ExternalLocation {
                 path: path.to_owned(),
             }),
@@ -203,12 +203,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn an_external_location_is_a_path_inside_a_bucket() {
+    fn an_external_location_is_an_s3_bucket_or_a_path_in_one() {
         assert_eq!(
             ExternalLocation::parse("s3://b/t/").unwrap().path(),
             "s3://b/t"
         );
-        for location in ["s3://b", "s3://b/", "/tmp/t", "gs://b/t"] {
+        assert_eq!(
+            ExternalLocation::parse("s3://b--table-s3/").unwrap().path(),
+            "s3://b--table-s3"
+        );
+        for location in ["s3://", "s3:///t", "/tmp/t", "gs://b/t"] {
             assert_eq!(
                 ExternalLocation::parse(location),
                 Err(Error::ExternalLocation(location.to_owned()))
