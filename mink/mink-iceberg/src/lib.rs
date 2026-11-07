@@ -11,6 +11,7 @@ mod slice;
 mod table;
 #[cfg(test)]
 mod testing;
+mod tiered;
 mod writer;
 
 use arrow_schema::ArrowError;
@@ -25,9 +26,13 @@ pub use schema::{FileSchema, TypedSchema};
 pub use slice::{Extent, Slice, extent, extents, slices};
 pub use table::{
     Change, ExternalSnapshot, FIRST_TAIL_SNAPSHOT_ID, FormatVersion, ObjectReader, Table,
-    check_schema, end_offset_key, end_offsets, last_time_field_id, start_offset_key,
+    check_schema,
 };
-pub use writer::{data_files, encoded_data_files, write_data_files};
+pub use tiered::{
+    append, decode_data_files, encode_data_files, end_offsets, end_offsets_update,
+    external_partition_spec,
+};
+pub use writer::write_data_files;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

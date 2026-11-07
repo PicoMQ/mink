@@ -10,7 +10,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use iceberg::io::{FileIO, FileIOBuilder};
 use iceberg::spec::{DataFile, Schema, SortOrder, TableMetadata, UnboundPartitionSpec};
-use iceberg::table::Table;
+use iceberg::table::Table as IcebergTable;
 use iceberg::{
     ErrorKind, Namespace, NamespaceIdent, Result, Runtime, TableCommit, TableCreation, TableIdent,
     TableRequirement, TableUpdate,
@@ -89,7 +89,7 @@ impl Catalog {
         order: SortOrder,
         properties: HashMap<String, String>,
         location: Option<String>,
-    ) -> Result<Table> {
+    ) -> Result<IcebergTable> {
         let creation = TableCreation::builder()
             .name(identifier.name().to_owned())
             .location_opt(location)
@@ -150,7 +150,7 @@ impl Catalog {
         identifier: &TableIdent,
         requirements: Vec<TableRequirement>,
         updates: Vec<TableUpdate>,
-    ) -> Result<Table> {
+    ) -> Result<IcebergTable> {
         let request = CommitTableRequest {
             identifier: Some(identifier.clone()),
             requirements,
@@ -174,8 +174,8 @@ impl Catalog {
         identifier: TableIdent,
         metadata: TableMetadata,
         location: Option<String>,
-    ) -> Result<Table> {
-        let builder = Table::builder()
+    ) -> Result<IcebergTable> {
+        let builder = IcebergTable::builder()
             .identifier(identifier)
             .metadata(metadata)
             .file_io(self.file_io.clone())
@@ -400,7 +400,7 @@ impl iceberg::Catalog for Catalog {
         &self,
         namespace: &NamespaceIdent,
         creation: TableCreation,
-    ) -> Result<Table> {
+    ) -> Result<IcebergTable> {
         let mut properties = creation.properties;
         properties.insert(
             "format-version".to_owned(),
@@ -431,7 +431,7 @@ impl iceberg::Catalog for Catalog {
         self.table(identifier, created.metadata, created.metadata_location)
     }
 
-    async fn load_table(&self, identifier: &TableIdent) -> Result<Table> {
+    async fn load_table(&self, identifier: &TableIdent) -> Result<IcebergTable> {
         let url = self.table_url(identifier).await?;
 
         let loaded: LoadTableResult = self
@@ -464,11 +464,11 @@ impl iceberg::Catalog for Catalog {
         Err(unsupported("renaming tables"))
     }
 
-    async fn register_table(&self, _: &TableIdent, _: String) -> Result<Table> {
+    async fn register_table(&self, _: &TableIdent, _: String) -> Result<IcebergTable> {
         Err(unsupported("registering tables"))
     }
 
-    async fn update_table(&self, mut commit: TableCommit) -> Result<Table> {
+    async fn update_table(&self, mut commit: TableCommit) -> Result<IcebergTable> {
         let identifier = commit.identifier().clone();
         let requirements = commit.take_requirements();
 
@@ -484,7 +484,7 @@ pub(crate) fn identifier(table: &CatalogTable) -> TableIdent {
     )
 }
 
-pub(crate) async fn delete_data_files(table: &Table, files: &[DataFile]) {
+pub(crate) async fn delete_data_files(table: &IcebergTable, files: &[DataFile]) {
     for file in files {
         if let Err(error) = table.file_io().delete(file.file_path()).await {
             tracing::warn!(path = file.file_path(), %error, "a tiered data file was not deleted");
@@ -494,14 +494,14 @@ pub(crate) async fn delete_data_files(table: &Table, files: &[DataFile]) {
 
 pub(crate) struct Pinned<'a> {
     catalog: &'a Catalog,
-    table: Table,
+    table: IcebergTable,
 }
 
 impl Catalog {
     pub(crate) async fn load(
         &self,
         external: &ExternalTable,
-    ) -> std::result::Result<Table, crate::Error> {
+    ) -> std::result::Result<IcebergTable, crate::Error> {
         let table = iceberg::Catalog::load_table(self, &identifier(external.table())).await?;
         if table.metadata().uuid() != external.uuid() {
             return Err(crate::Error::ReplacedExternalTable(
@@ -512,7 +512,7 @@ impl Catalog {
         Ok(table)
     }
 
-    pub(crate) fn pinned(&self, table: Table) -> Pinned<'_> {
+    pub(crate) fn pinned(&self, table: IcebergTable) -> Pinned<'_> {
         Pinned {
             catalog: self,
             table,
@@ -574,11 +574,11 @@ impl iceberg::Catalog for Pinned<'_> {
         &self,
         namespace: &NamespaceIdent,
         creation: TableCreation,
-    ) -> Result<Table> {
+    ) -> Result<IcebergTable> {
         self.catalog.create_table(namespace, creation).await
     }
 
-    async fn load_table(&self, identifier: &TableIdent) -> Result<Table> {
+    async fn load_table(&self, identifier: &TableIdent) -> Result<IcebergTable> {
         match identifier == self.table.identifier() {
             true => Ok(self.table.clone()),
             false => self.catalog.load_table(identifier).await,
@@ -601,11 +601,15 @@ impl iceberg::Catalog for Pinned<'_> {
         self.catalog.rename_table(from, to).await
     }
 
-    async fn register_table(&self, identifier: &TableIdent, location: String) -> Result<Table> {
+    async fn register_table(
+        &self,
+        identifier: &TableIdent,
+        location: String,
+    ) -> Result<IcebergTable> {
         self.catalog.register_table(identifier, location).await
     }
 
-    async fn update_table(&self, commit: TableCommit) -> Result<Table> {
+    async fn update_table(&self, commit: TableCommit) -> Result<IcebergTable> {
         self.catalog.update_table(commit).await
     }
 }

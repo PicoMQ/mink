@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use mink_core::{FieldSketches, File, IndexedFile, Offsets, Snapshot, Topic, now_ms};
+use mink_core::{FieldSketches, File, IndexedFile, Snapshot, Topic, now_ms};
 use mink_iceberg::{ExternalSnapshot, FormatVersion, Table};
 use mink_metrics::Outcome;
 use mink_store::Lease;
@@ -85,7 +85,7 @@ impl Writer {
             tracing::warn!(topic = self.topic.name(), %error, "the tier commit failed");
             self.services
                 .metrics
-                .worker_failed(mink_metrics::Worker::Tier);
+                .worker_failed(mink_metrics::Worker::Writer);
         }
         Ok(())
     }
@@ -103,7 +103,10 @@ impl Writer {
         let external = self.next_external_snapshot();
         let offsets = offsets
             .into_iter()
-            .map(|offsets| own_offsets(offsets, external))
+            .map(|offsets| match external {
+                Some(external) => external.own(offsets),
+                None => Ok(offsets),
+            })
             .collect::<Result<_, _>>()?;
         let sequence_number = latest
             .as_ref()
@@ -198,7 +201,7 @@ impl Writer {
         self.table = change.into_table();
         self.external_update = None;
         if expire_through_id.is_some() {
-            let listed = self.table.listed_generations()?;
+            let listed = self.table.listed_generations();
             store
                 .external_tables()
                 .forget_unlisted(&self.lease, &listed)
@@ -249,24 +252,11 @@ impl Writer {
     }
 }
 
-fn own_offsets(offsets: Offsets, external: Option<&ExternalSnapshot>) -> Result<Offsets, Error> {
-    let end = external.and_then(|external| external.end_offset(offsets.partition().index()));
-
-    match end {
-        Some(end) if end > offsets.start_offset() => Ok(Offsets::new(
-            offsets.partition().clone(),
-            end,
-            offsets.end_offset(),
-        )?),
-        _ => Ok(offsets),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
 
-    use mink_core::{DaySketches, Partition, Record, Scope, TableLocation};
+    use mink_core::{DaySketches, Offsets, Partition, Record, Scope, TableLocation};
     use mink_iceberg::{FileSchema, NewFiles};
     use uuid::Uuid;
 

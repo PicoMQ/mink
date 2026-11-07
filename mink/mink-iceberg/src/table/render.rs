@@ -18,11 +18,7 @@ impl Table {
             .into_iter()
             .chain(commit.schemas)
             .collect();
-        let declared: Vec<&ExternalSpecs> = self
-            .listed_generations()?
-            .iter()
-            .filter_map(|generation| self.external_specs.get(generation))
-            .collect();
+        let declared: Vec<&ExternalSpecs> = self.external_specs.values().collect();
         let mut specs = partition_specs(commit.specs)?;
         specs.extend(
             declared

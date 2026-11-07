@@ -5,13 +5,13 @@ use iceberg::spec::{
     DataContentType, ManifestContentType, ManifestFile, PartitionField, PartitionSpec, Schema,
     SortOrder, Summary, TableMetadata,
 };
-use iceberg::table::Table as ExternalTable;
-use mink_core::{MAX_GENERATION, TimeSpecs};
+use iceberg::table::Table as IcebergTable;
+use mink_core::{MAX_GENERATION, Offsets, TimeSpecs};
 
 use super::FormatVersion;
 use super::keys::{
-    EXTERNAL_GENERATION, EXTERNAL_SNAPSHOT_ID, end_offsets, external_end_offset_key,
-    external_end_offsets,
+    EXTERNAL_GENERATION, EXTERNAL_SNAPSHOT_ID, external_end_offset_key, external_end_offsets,
+    stored_end_offsets,
 };
 use super::specs::{PARTITION_FIELD, last_time_field_id, partition_specs};
 use crate::Error;
@@ -40,7 +40,7 @@ pub(super) struct ExternalSpecs {
 
 impl ExternalSnapshot {
     pub async fn check(
-        table: &ExternalTable,
+        table: &IcebergTable,
         schema: &Schema,
         specs: &TimeSpecs,
     ) -> Result<(), Error> {
@@ -48,7 +48,7 @@ impl ExternalSnapshot {
     }
 
     pub async fn read(
-        table: &ExternalTable,
+        table: &IcebergTable,
         generation: i32,
         schema: &Schema,
         specs: &TimeSpecs,
@@ -81,7 +81,7 @@ impl ExternalSnapshot {
                 partition_specs,
                 sort_orders: sort_orders_by_id(metadata),
             },
-            end_offsets: end_offsets(metadata.properties())?,
+            end_offsets: stored_end_offsets(metadata.properties())?,
         }))
     }
 
@@ -123,6 +123,17 @@ impl ExternalSnapshot {
 
     pub fn end_offset(&self, partition: i32) -> Option<i64> {
         self.end_offsets.get(&partition).copied()
+    }
+
+    pub fn own(&self, offsets: Offsets) -> Result<Offsets, Error> {
+        match self.end_offset(offsets.partition().index()) {
+            Some(end) if end > offsets.start_offset() => Ok(Offsets::new(
+                offsets.partition().clone(),
+                end,
+                offsets.end_offset(),
+            )?),
+            _ => Ok(offsets),
+        }
     }
 
     pub fn sequence_number(&self) -> Option<i64> {
@@ -307,7 +318,7 @@ fn sort_orders_by_id(metadata: &TableMetadata) -> Vec<SortOrder> {
 }
 
 async fn checked_manifests(
-    table: &ExternalTable,
+    table: &IcebergTable,
     schema: &Schema,
     specs: &TimeSpecs,
 ) -> Result<Option<(i64, Vec<ManifestFile>)>, Error> {
@@ -377,7 +388,7 @@ mod tests {
     use crate::testing::{appended, external_table};
 
     async fn read(
-        table: &ExternalTable,
+        table: &IcebergTable,
         specs: &TimeSpecs,
     ) -> Result<Option<ExternalSnapshot>, Error> {
         ExternalSnapshot::read(table, 1, binary_schema(), specs).await
@@ -431,7 +442,7 @@ mod tests {
             .build()
             .unwrap()
             .metadata;
-        let upgraded = ExternalTable::builder()
+        let upgraded = IcebergTable::builder()
             .identifier(table.identifier().clone())
             .metadata(metadata)
             .file_io(table.file_io().clone())

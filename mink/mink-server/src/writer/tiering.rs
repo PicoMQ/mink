@@ -1,9 +1,8 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 
-use iceberg::table::Table;
-use iceberg::transaction::{ApplyTransactionAction, Transaction};
+use iceberg::table::Table as IcebergTable;
 use mink_core::{Offsets, Partition, TieredRange};
-use mink_iceberg::{ExternalSnapshot, end_offset_key, end_offsets, start_offset_key};
+use mink_iceberg::ExternalSnapshot;
 use tokio::time::Instant;
 
 use super::{ExternalUpdate, Writer};
@@ -30,35 +29,24 @@ impl Writer {
         self.last_tiering = Some(Instant::now());
 
         let catalog = self.services.external_catalog(external.table().catalog())?;
-        let table = catalog.load(&external).await?;
+        let generation = external.generation();
+        let mut table = catalog.load(&external).await?;
 
-        self.reconcile(&table, external.generation()).await?;
-        let ranges = self.ranges_of_current_spec(&table).await?;
+        self.reconcile(&table, generation).await?;
+        self.discard_stale_ranges(&table).await?;
+        let ranges = store.tiered_ranges().list(topic).await?;
         let append = Append::of(&ranges)?;
-        let table = match append.spans.is_empty() {
-            true => table,
-            false => {
-                let committed = commit(&table, &catalog, &append).await?;
-                let ends = append
-                    .spans
-                    .iter()
-                    .map(|span| (span.partition().index(), span.end_offset()))
-                    .collect();
-                store
-                    .tiered_ranges()
-                    .settle(&self.lease, external.generation(), &ends)
-                    .await?;
-                committed
-            }
-        };
+        if !append.spans.is_empty() {
+            table = append.to(&table, &catalog).await?;
+            self.reconcile(&table, generation).await?;
+        }
 
-        self.read_external_snapshot(&table, external.generation())
-            .await
+        self.read_external_snapshot(&table, generation).await
     }
 
     async fn read_external_snapshot(
         &mut self,
-        table: &Table,
+        table: &IcebergTable,
         generation: i32,
     ) -> Result<(), Error> {
         let listed = self
@@ -88,13 +76,13 @@ impl Writer {
         Ok(())
     }
 
-    async fn reconcile(&self, table: &Table, generation: i32) -> Result<(), Error> {
+    async fn reconcile(&self, table: &IcebergTable, generation: i32) -> Result<(), Error> {
         let topic = self.topic.name();
         let ranges = self.services.store.tiered_ranges();
 
-        let found = end_offsets(table.metadata().properties())?;
-        let committed = ranges.settled(topic).await?;
-        for (partition, stored) in &committed {
+        let found = mink_iceberg::end_offsets(table)?;
+        let settled = ranges.settled(topic).await?;
+        for (partition, stored) in &settled {
             if found.get(partition).is_none_or(|found| found < stored) {
                 return Err(Error::ExternalProgressLost(topic.to_owned()));
             }
@@ -102,7 +90,7 @@ impl Writer {
 
         let landed: BTreeMap<i32, i64> = found
             .into_iter()
-            .filter(|(partition, end)| committed.get(partition) != Some(end))
+            .filter(|(partition, end)| settled.get(partition) != Some(end))
             .collect();
         if !landed.is_empty() {
             ranges.settle(&self.lease, generation, &landed).await?;
@@ -111,24 +99,20 @@ impl Writer {
         Ok(())
     }
 
-    async fn ranges_of_current_spec(&self, table: &Table) -> Result<Vec<TieredRange>, Error> {
-        let store = &self.services.store;
+    async fn discard_stale_ranges(&self, table: &IcebergTable) -> Result<(), Error> {
+        let ranges = self.services.store.tiered_ranges();
         let spec_id = table.metadata().default_partition_spec().spec_id();
 
-        let ranges = store.tiered_ranges().list(self.topic.name()).await?;
         let stale: BTreeSet<Partition> = ranges
+            .list(self.topic.name())
+            .await?
             .iter()
-            .filter(|range| range.spec_id() != spec_id)
+            .filter(|range| range.files().spec_id() != spec_id)
             .map(|range| range.offsets().partition().clone())
             .collect();
-
         for partition in &stale {
-            for range in store
-                .tiered_ranges()
-                .discard(&self.lease, partition)
-                .await?
-            {
-                match mink_iceberg::data_files(table, range.spec_id(), range.encoded_data_files()) {
+            for range in ranges.discard(&self.lease, partition).await? {
+                match mink_iceberg::decode_data_files(table, range.files()) {
                     Ok(files) => external::delete_data_files(table, &files).await,
                     Err(error) => tracing::warn!(
                         ?partition,
@@ -139,10 +123,7 @@ impl Writer {
             }
         }
 
-        Ok(ranges
-            .into_iter()
-            .filter(|range| !stale.contains(range.offsets().partition()))
-            .collect())
+        Ok(())
     }
 }
 
@@ -178,48 +159,20 @@ impl<'a> Append<'a> {
 
         Ok(append)
     }
-}
 
-async fn commit(
-    table: &Table,
-    catalog: &external::Catalog,
-    append: &Append<'_>,
-) -> Result<Table, Error> {
-    let mut files = Vec::new();
-    for range in &append.ranges {
-        files.extend(mink_iceberg::data_files(
-            table,
-            range.spec_id(),
-            range.encoded_data_files(),
-        )?);
+    async fn to(
+        &self,
+        table: &IcebergTable,
+        catalog: &external::Catalog,
+    ) -> Result<IcebergTable, Error> {
+        let mut files = Vec::new();
+        for range in &self.ranges {
+            files.extend(mink_iceberg::decode_data_files(table, range.files())?);
+        }
+
+        let transaction = mink_iceberg::append(table, files, &self.spans)?;
+        Ok(transaction.commit(&catalog.pinned(table.clone())).await?)
     }
-
-    let mut summary = HashMap::new();
-    let mut properties = HashMap::new();
-    for span in &append.spans {
-        let partition = span.partition().index();
-        let end = (end_offset_key(partition), span.end_offset().to_string());
-
-        summary.insert(start_offset_key(partition), span.start_offset().to_string());
-        summary.insert(end.0.clone(), end.1.clone());
-        properties.insert(end.0, end.1);
-    }
-
-    let transaction = Transaction::new(table);
-    let transaction = transaction
-        .fast_append()
-        .with_check_duplicate(false)
-        .add_data_files(files)
-        .set_snapshot_properties(summary)
-        .apply(transaction)?;
-
-    let mut updates = transaction.update_table_properties();
-    for (key, value) in properties {
-        updates = updates.set(key, value);
-    }
-    let transaction = updates.apply(transaction)?;
-
-    Ok(transaction.commit(&catalog.pinned(table.clone())).await?)
 }
 
 #[cfg(test)]
@@ -233,17 +186,17 @@ mod tests {
         NestedField, PrimitiveType, Schema, SortOrder, TableMetadata, Transform, Type,
         UnboundPartitionField, UnboundPartitionSpec,
     };
-    use iceberg::table::Table;
+    use iceberg::table::Table as IcebergTable;
     use iceberg::transaction::{ApplyTransactionAction, Transaction};
     use iceberg::{Catalog as _, ErrorKind, Runtime, TableIdent, TableUpdate};
     use mink_core::{
         CatalogTable, ExternalLocation, Offsets, Partition, Record, Scope, Snapshot, TableLocation,
-        TierSchedule, TieredRange,
+        TierSchedule, TieredFiles, TieredRange,
     };
-    use mink_iceberg::{FileSchema, end_offset_key, last_time_field_id};
+    use mink_iceberg::FileSchema;
     use uuid::Uuid;
 
-    use super::{Append, commit};
+    use super::Append;
     use crate::Error;
     use crate::testing::{TTL, Tiering, registered, tiering};
     use crate::writer::Writer;
@@ -253,8 +206,13 @@ mod tests {
         let offsets = |index, start, end| {
             Offsets::new(Partition::new("orders", index).unwrap(), start, end).unwrap()
         };
-        let range =
-            |index, start, end| TieredRange::new(offsets(index, start, end), 1, 0, Vec::new());
+        let range = |index, start, end| {
+            TieredRange::new(
+                offsets(index, start, end),
+                1,
+                TieredFiles::new(0, Vec::new()),
+            )
+        };
         let ranges = [
             range(0, 0, 5),
             range(0, 5, 8),
@@ -268,7 +226,7 @@ mod tests {
         assert_eq!(append.ranges, [&ranges[0], &ranges[1], &ranges[3]]);
     }
 
-    async fn table(tiering: &Tiering) -> Table {
+    async fn table(tiering: &Tiering) -> IcebergTable {
         tiering
             .catalog
             .load_table(&tiering.identifier)
@@ -276,7 +234,7 @@ mod tests {
             .unwrap()
     }
 
-    async fn rows(table: &Table) -> usize {
+    async fn rows(table: &IcebergTable) -> usize {
         let batches: Vec<_> = table
             .scan()
             .build()
@@ -306,7 +264,7 @@ mod tests {
         let partition = Partition::new(tiering.topic.name(), 0).unwrap();
         let record = Record::new(100, 0, None, Some(Bytes::from_static(b"x")), Vec::new()).unwrap();
         let rows = mink_iceberg::record_batch(&partition, &[record], &FileSchema::Binary).unwrap();
-        let files = mink_iceberg::write_data_files(&external, vec![rows], "user")
+        let files = mink_iceberg::write_data_files(&external, rows, "user")
             .await
             .unwrap();
         let transaction = Transaction::new(&external);
@@ -365,7 +323,7 @@ mod tests {
             .await
             .unwrap();
         let metadata: TableMetadata = serde_json::from_slice(&bytes).unwrap();
-        let table = Table::builder()
+        let table = IcebergTable::builder()
             .identifier(TableIdent::from_strs(["kafka", tiering.topic.name()]).unwrap())
             .metadata(metadata)
             .file_io(io)
@@ -393,14 +351,12 @@ mod tests {
         snapshot.offsets()[0].start_offset()
     }
 
-    async fn set_property(tiering: &Tiering, key: String, value: &str) {
-        let updates = vec![TableUpdate::SetProperties {
-            updates: HashMap::from([(key, value.to_owned())]),
-        }];
+    async fn set_end_offset(tiering: &Tiering, partition: i32, end: i64) {
+        let update = mink_iceberg::end_offsets_update(&BTreeMap::from([(partition, end)]));
 
         tiering
             .catalog
-            .commit(&tiering.identifier, Vec::new(), updates)
+            .commit(&tiering.identifier, Vec::new(), vec![update])
             .await
             .unwrap();
     }
@@ -416,7 +372,7 @@ mod tests {
 
         let table = table(&tiering).await;
         let ranges = tiering.services.store.tiered_ranges();
-        assert_eq!(table.metadata().properties()[&end_offset_key(0)], "6");
+        assert_eq!(mink_iceberg::end_offsets(&table).unwrap()[&0], 6);
         assert_eq!(rows(&table).await, 6);
         assert_eq!(
             ranges.settled(tiering.topic.name()).await.unwrap(),
@@ -433,7 +389,9 @@ mod tests {
         tiered(&tiering).await;
         let loaded = table(&tiering).await;
         let ranges = pending(&tiering).await;
-        commit(&loaded, &tiering.catalog, &Append::of(&ranges).unwrap())
+        Append::of(&ranges)
+            .unwrap()
+            .to(&loaded, &tiering.catalog)
             .await
             .unwrap();
 
@@ -464,8 +422,8 @@ mod tests {
         let ranges = pending(&tiering).await;
         let append = Append::of(&ranges).unwrap();
 
-        commit(&stale, &tiering.catalog, &append).await.unwrap();
-        let again = commit(&stale, &tiering.catalog, &append).await;
+        append.to(&stale, &tiering.catalog).await.unwrap();
+        let again = append.to(&stale, &tiering.catalog).await;
 
         assert!(
             matches!(
@@ -485,7 +443,7 @@ mod tests {
         };
         tiered(&tiering).await;
         tiering.writer().await.commit_tiered().await.unwrap();
-        set_property(&tiering, end_offset_key(0), "3").await;
+        set_end_offset(&tiering, 0, 3).await;
 
         let stopped = tiering.writer().await.commit_tiered().await;
 
@@ -501,7 +459,7 @@ mod tests {
             return;
         };
         tiered(&tiering).await;
-        set_property(&tiering, end_offset_key(0), "5").await;
+        set_end_offset(&tiering, 0, 5).await;
 
         let stopped = tiering.writer().await.commit_tiered().await;
 
@@ -578,11 +536,17 @@ mod tests {
             return;
         };
         tiered(&tiering).await;
+        let day = table(&tiering)
+            .await
+            .metadata()
+            .default_partition_spec()
+            .fields()[0]
+            .field_id;
         let spec = UnboundPartitionSpec::builder()
             .with_spec_id(9)
             .add_partition_fields([UnboundPartitionField {
                 source_id: mink_schema::TIMESTAMP_ID,
-                field_id: Some(last_time_field_id() + 2),
+                field_id: Some(day + 1),
                 name: "month".to_owned(),
                 transform: Transform::Month,
             }])
@@ -602,9 +566,7 @@ mod tests {
             .unwrap();
         let before = table(&tiering).await;
         let stale = pending(&tiering).await;
-        let stale_files =
-            mink_iceberg::data_files(&before, stale[0].spec_id(), stale[0].encoded_data_files())
-                .unwrap();
+        let stale_files = mink_iceberg::decode_data_files(&before, stale[0].files()).unwrap();
 
         tiering.writer().await.commit_tiered().await.unwrap();
         let discarded = tiering
@@ -620,7 +582,7 @@ mod tests {
         let table = table(&tiering).await;
         assert!(discarded.is_empty());
         assert_eq!(rows(&table).await, 6);
-        assert_eq!(table.metadata().properties()[&end_offset_key(0)], "6");
+        assert_eq!(mink_iceberg::end_offsets(&table).unwrap()[&0], 6);
         for file in stale_files {
             assert!(!table.file_io().exists(file.file_path()).await.unwrap());
         }
@@ -637,13 +599,7 @@ mod tests {
 
         let restarted = latest(&tiering).await;
         let (records, paths) = planned(&tiering, &restarted).await;
-        let spec = table(&tiering)
-            .await
-            .metadata()
-            .default_partition_spec()
-            .clone();
         let mink = tiering.services.warehouse.root().to_owned();
-        assert_eq!(spec.fields()[0].field_id, last_time_field_id() + 1);
         assert_eq!((start(&merged), start(&restarted)), (6, 6));
         assert_eq!(restarted.offsets()[0].end_offset(), 9);
         assert_eq!(records, 9);

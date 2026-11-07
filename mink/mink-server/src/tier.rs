@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use arrow_array::RecordBatch;
 use iceberg::spec::DataFile;
-use iceberg::table::Table;
+use iceberg::table::Table as IcebergTable;
 use mink_core::{
     ExternalTable, Offsets, Partition, TierFlush, TieredRange, millis, now_ms, oldest_untiered_ms,
     tier_flushes,
@@ -120,7 +120,7 @@ impl Tier {
         Ok(())
     }
 
-    async fn flush(&self, table: &Table, flush: &TierFlush) -> Result<(), Error> {
+    async fn flush(&self, table: &IcebergTable, flush: &TierFlush) -> Result<(), Error> {
         let _permit = self.services.tier_flushes.acquire().await;
 
         let mut written = Vec::new();
@@ -134,7 +134,7 @@ impl Tier {
 
     async fn write_and_record(
         &self,
-        table: &Table,
+        table: &IcebergTable,
         flush: &TierFlush,
         written: &mut Vec<DataFile>,
     ) -> Result<(), Error> {
@@ -143,26 +143,29 @@ impl Tier {
             let rows = self.record_batch(table, &offsets).await?;
             let prefix = format!("{}-{}-{}", self.partition.index(), read.start(), read.end());
 
-            written.extend(mink_iceberg::write_data_files(table, vec![rows], &prefix).await?);
+            written.extend(mink_iceberg::write_data_files(table, rows, &prefix).await?);
         }
 
         let range = flush.range();
         let offsets = Offsets::new(self.partition.clone(), range.start(), range.end())?;
-        let spec_id = table.metadata().default_partition_spec().spec_id();
-        let encoded = mink_iceberg::encoded_data_files(table, written.clone())?;
+        let files = mink_iceberg::encode_data_files(table, written)?;
         self.services
             .store
             .tiered_ranges()
             .add(
                 &self.lease,
-                &TieredRange::new(offsets, self.external.generation(), spec_id, encoded),
+                &TieredRange::new(offsets, self.external.generation(), files),
             )
             .await?;
 
         Ok(())
     }
 
-    async fn record_batch(&self, table: &Table, offsets: &Offsets) -> Result<RecordBatch, Error> {
+    async fn record_batch(
+        &self,
+        table: &IcebergTable,
+        offsets: &Offsets,
+    ) -> Result<RecordBatch, Error> {
         let records = self.services.kafka.cluster().await?.read(offsets).await?;
         let schema = self
             .services
@@ -264,9 +267,7 @@ mod tests {
         assert_eq!(ranges.len(), 1);
         assert_eq!(ranges[0].offsets().start_offset(), 0);
         assert_eq!(ranges[0].offsets().end_offset(), 6);
-        let files =
-            mink_iceberg::data_files(&table, ranges[0].spec_id(), ranges[0].encoded_data_files())
-                .unwrap();
+        let files = mink_iceberg::decode_data_files(&table, ranges[0].files()).unwrap();
         assert_eq!(files.len(), 2);
 
         for file in files {
@@ -482,8 +483,8 @@ mod tests {
             .additional_properties;
         let metrics = tiering.services.metrics.render();
         assert_eq!(spans, [(6, 9)]);
-        assert_eq!(summary[&mink_iceberg::start_offset_key(0)], "6");
-        assert_eq!(summary[&mink_iceberg::end_offset_key(0)], "9");
+        assert_eq!(summary["mink.partition.0.start-offset"], "6");
+        assert_eq!(summary["mink.partition.0.end-offset"], "9");
         assert!(metrics.contains("mink_tier_gaps_total 1"), "{metrics}");
         assert!(
             metrics.contains("mink_tier_skipped_offsets_total 3"),

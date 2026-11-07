@@ -31,8 +31,8 @@ pub use commit::FIRST_TAIL_SNAPSHOT_ID;
 use external::ExternalSpecs;
 
 pub use external::{ExternalSnapshot, check_schema};
-pub use keys::{end_offset_key, end_offsets, start_offset_key};
-pub use specs::last_time_field_id;
+pub(crate) use keys::{end_offset_key, start_offset_key, stored_end_offsets};
+pub(crate) use specs::last_time_field_id;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FormatVersion {
@@ -204,15 +204,8 @@ impl Table {
         self.snapshots.last().map(IcebergSnapshot::snapshot_id)
     }
 
-    pub fn listed_generations(&self) -> Result<Vec<i32>, Error> {
-        let mut generations = Vec::new();
-        for snapshot in &self.snapshots {
-            generations.extend(external::listed_generation(snapshot.summary())?);
-        }
-        generations.sort_unstable();
-        generations.dedup();
-
-        Ok(generations)
+    pub fn listed_generations(&self) -> Vec<i32> {
+        self.external_specs.keys().copied().collect()
     }
 
     pub fn external_snapshot(&self) -> Option<&ExternalSnapshot> {
@@ -423,6 +416,20 @@ impl Table {
 
         table.snapshots.drain(..kept);
         table.metadata_log.drain(..kept);
+
+        let mut listed = Vec::new();
+        for snapshot in &table.snapshots {
+            listed.extend(external::listed_generation(snapshot.summary())?);
+        }
+        listed.extend(
+            table
+                .external_snapshot
+                .as_ref()
+                .map(ExternalSnapshot::generation),
+        );
+        table
+            .external_specs
+            .retain(|generation, _| listed.contains(generation));
         Ok(table)
     }
 
@@ -480,7 +487,7 @@ mod tests {
     use futures::TryStreamExt;
     use iceberg::io::FileIO;
     use iceberg::spec::TableMetadata;
-    use iceberg::table::Table as ExternalTable;
+    use iceberg::table::Table as IcebergTable;
     use mink_conformance::{WAREHOUSE, metadata_fixture};
     use mink_core::{Partition, Stats, TimePartition};
     use serde_json::{Value, json};
@@ -490,7 +497,7 @@ mod tests {
 
     const GENERATION_1: i32 = (1 << 30) + (1 << 16);
 
-    async fn listing_external() -> (ExternalTable, Table, ExternalSnapshot, Change) {
+    async fn listing_external() -> (IcebergTable, Table, ExternalSnapshot, Change) {
         let external = tiered().await;
         let read = ExternalSnapshot::read(&external, 1, mink_schema::binary_schema(), &specs())
             .await
@@ -1176,7 +1183,7 @@ mod tests {
         store(io, &change).await;
         let (object, bytes) = change.metadata();
         let metadata: TableMetadata = serde_json::from_slice(bytes).unwrap();
-        let table = ExternalTable::builder()
+        let table = IcebergTable::builder()
             .identifier(iceberg::TableIdent::from_strs(["mink", "orders"]).unwrap())
             .metadata_location(object.path())
             .metadata(metadata)

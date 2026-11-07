@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use mink_core::{ExternalTable, File, Offsets, Partition, TieredRange};
+use mink_core::{ExternalTable, File, Offsets, Partition, TieredFiles, TieredRange};
 use sqlx::{FromRow, PgConnection, PgPool};
 
 use crate::Error;
@@ -43,8 +43,7 @@ impl RangeRow {
         Ok(TieredRange::new(
             offsets,
             self.generation,
-            self.spec_id,
-            self.encoded_data_files,
+            TieredFiles::new(self.spec_id, self.encoded_data_files),
         ))
     }
 }
@@ -90,8 +89,8 @@ impl<'a> TieredRanges<'a> {
         .bind(partition.index())
         .bind(offsets.start_offset())
         .bind(offsets.end_offset())
-        .bind(range.spec_id())
-        .bind(range.encoded_data_files())
+        .bind(range.files().spec_id())
+        .bind(range.files().encoded())
         .execute(&mut *transaction)
         .await?;
 
@@ -307,7 +306,8 @@ mod tests {
     use bytes::Bytes;
     use mink_core::{
         Assembly, BuiltFile, CatalogTable, DaySketches, ExternalLocation, File, FileVersion,
-        IndexedFile, Offsets, Partition, Scope, Span, Stats, TierSchedule, TieredRange, Topic,
+        IndexedFile, Offsets, Partition, Scope, Span, Stats, TierSchedule, TieredFiles,
+        TieredRange, Topic,
     };
     use uuid::Uuid;
 
@@ -317,7 +317,11 @@ mod tests {
     fn range(partition: &Partition, start: i64, end: i64) -> TieredRange {
         let offsets = Offsets::new(partition.clone(), start, end).unwrap();
 
-        TieredRange::new(offsets, 1, 0, vec![format!("{{\"file\":{start}}}")])
+        TieredRange::new(
+            offsets,
+            1,
+            TieredFiles::new(0, vec![format!("{{\"file\":{start}}}")]),
+        )
     }
 
     async fn indexed(store: &Store, topic: &Topic, bounds: &[i64]) -> (Lease, Vec<IndexedFile>) {

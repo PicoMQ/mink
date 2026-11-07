@@ -1,14 +1,14 @@
 use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr;
 
+use iceberg::TableRequirement;
 use iceberg::spec::{
-    NullOrder, PartitionSpec, Schema, SortDirection, SortField, SortOrder, Transform,
-    UnboundPartitionField, UnboundPartitionSpec,
+    NullOrder, Schema, SortDirection, SortField, SortOrder, Transform, UnboundPartitionField,
+    UnboundPartitionSpec,
 };
-use iceberg::table::Table;
-use iceberg::{TableRequirement, TableUpdate};
+use iceberg::table::Table as IcebergTable;
 use mink_core::{CatalogTable, ExternalLocation, ExternalTable, TierSchedule, Topic};
-use mink_iceberg::{ExternalSnapshot, end_offset_key, end_offsets, last_time_field_id};
+use mink_iceberg::ExternalSnapshot;
 use mink_kafka::Pool;
 use mink_store::Store;
 
@@ -178,7 +178,7 @@ async fn record(
     warehouse: &str,
     attachment: &Attachment,
     topic: &Topic,
-    table: &Table,
+    table: &IcebergTable,
     given: &BTreeMap<i32, i64>,
 ) -> Result<ExternalTable, Error> {
     let schema = store.schemas().latest(topic.name()).await?;
@@ -187,7 +187,7 @@ async fn record(
 
     let metadata = table.metadata();
     let location = external_location(warehouse, metadata.location())?;
-    let stored = end_offsets(metadata.properties())?;
+    let stored = mink_iceberg::end_offsets(table)?;
     let holds_data = metadata.current_snapshot().is_some();
     let offsets = chosen_end_offsets(topic, &stored, given, holds_data)?;
 
@@ -204,17 +204,13 @@ async fn record(
         .await?;
 
     if stored.is_empty() && !offsets.is_empty() {
-        let updates = offsets
-            .iter()
-            .map(|(index, end)| (end_offset_key(*index), end.to_string()))
-            .collect();
         let written = catalog
             .commit(
                 table.identifier(),
                 vec![TableRequirement::UuidMatch {
                     uuid: metadata.uuid(),
                 }],
-                vec![TableUpdate::SetProperties { updates }],
+                vec![mink_iceberg::end_offsets_update(&offsets)],
             )
             .await;
 
@@ -289,28 +285,23 @@ fn partition_spec(
         Partitioning::Fields(terms) => terms.as_slice(),
     };
 
-    let mut fields = Vec::with_capacity(terms.len());
-    for (index, term) in terms.iter().enumerate() {
-        let source = schema
-            .field_by_name(&term.column)
-            .ok_or_else(|| Error::UnknownColumn(term.column.clone()))?;
+    let fields = terms
+        .iter()
+        .map(|term| {
+            let source = schema
+                .field_by_name(&term.column)
+                .ok_or_else(|| Error::UnknownColumn(term.column.clone()))?;
 
-        fields.push(UnboundPartitionField {
-            source_id: source.id,
-            field_id: Some(last_time_field_id() + 1 + index as i32),
-            name: term.partition_name(),
-            transform: term.transform,
-        });
-    }
+            Ok(UnboundPartitionField {
+                source_id: source.id,
+                field_id: None,
+                name: term.partition_name(),
+                transform: term.transform,
+            })
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
 
-    let spec = UnboundPartitionSpec::builder()
-        .add_partition_fields(fields)?
-        .build();
-    PartitionSpec::builder(schema.clone())
-        .add_unbound_fields(spec.fields().iter().cloned())?
-        .build()?;
-
-    Ok(spec)
+    Ok(mink_iceberg::external_partition_spec(schema, fields)?)
 }
 
 fn sort_order(schema: &Schema, terms: &[SortTerm]) -> Result<SortOrder, Error> {
@@ -492,7 +483,7 @@ mod tests {
         }
     }
 
-    async fn created_by_a_user(tiering: &Tiering, schema: Schema) -> Table {
+    async fn created_by_a_user(tiering: &Tiering, schema: Schema) -> IcebergTable {
         tiering
             .catalog
             .create_table_with_ids(
@@ -507,11 +498,11 @@ mod tests {
             .unwrap()
     }
 
-    async fn appended_by_a_user(tiering: &Tiering, table: &Table) {
+    async fn appended_by_a_user(tiering: &Tiering, table: &IcebergTable) {
         let partition = mink_core::Partition::new(tiering.topic.name(), 0).unwrap();
         let record = Record::new(0, 0, None, Some(Bytes::from_static(b"x")), Vec::new()).unwrap();
         let rows = mink_iceberg::record_batch(&partition, &[record], &FileSchema::Binary).unwrap();
-        let files = mink_iceberg::write_data_files(table, vec![rows], "user")
+        let files = mink_iceberg::write_data_files(table, rows, "user")
             .await
             .unwrap();
         let transaction = Transaction::new(table);
@@ -536,7 +527,7 @@ mod tests {
         latest.offsets()[0].start_offset()
     }
 
-    async fn loaded(tiering: &Tiering, name: &str) -> iceberg::Result<Table> {
+    async fn loaded(tiering: &Tiering, name: &str) -> iceberg::Result<IcebergTable> {
         let table = CatalogTable::new("fixture", "mink", name);
 
         iceberg::Catalog::load_table(tiering.catalog.as_ref(), &identifier(&table)).await
@@ -609,7 +600,12 @@ mod tests {
             metadata.current_schema().as_struct(),
             mink_schema::binary_schema().as_struct()
         );
-        assert_eq!(field.field_id, last_time_field_id() + 1);
+        let chosen = partition_spec(
+            mink_schema::binary_schema(),
+            &Partitioning::Fields(vec!["day(_kafka_timestamp)".parse().unwrap()]),
+        )
+        .unwrap();
+        assert_eq!(Some(field.field_id), chosen.fields()[0].field_id);
         assert_eq!(field.transform, Transform::Day);
         assert_eq!(
             metadata.default_sort_order().fields[0].direction,
@@ -718,13 +714,9 @@ mod tests {
             ),
             "{beyond:?}"
         );
-        assert!(
-            end_offsets(untouched.metadata().properties())
-                .unwrap()
-                .is_empty()
-        );
+        assert!(mink_iceberg::end_offsets(&untouched).unwrap().is_empty());
         assert!(onboarded.is_ok(), "{onboarded:?}");
-        assert_eq!(table.metadata().properties()[&end_offset_key(0)], "3");
+        assert_eq!(mink_iceberg::end_offsets(&table).unwrap()[&0], 3);
         assert_eq!(committed, BTreeMap::from([(0, 3)]));
         assert_eq!(start(&tiering).await, 3);
     }
@@ -909,14 +901,12 @@ mod tests {
             &Partitioning::Fields(vec!["nothing".parse().unwrap()]),
         );
 
-        let ids: Vec<_> = spec.fields().iter().map(|field| field.field_id).collect();
-        assert_eq!(
-            ids,
-            [
-                Some(last_time_field_id() + 1),
-                Some(last_time_field_id() + 2)
-            ]
-        );
+        let ids: Vec<i32> = spec
+            .fields()
+            .iter()
+            .filter_map(|field| field.field_id)
+            .collect();
+        assert_eq!(ids, [ids[0], ids[0] + 1]);
         assert!(unpartitioned.fields().is_empty());
         assert!(mistyped.is_err());
         assert!(

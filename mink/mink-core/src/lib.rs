@@ -26,6 +26,6 @@ pub use record::{Header, Part, Record};
 pub use scope::Scope;
 pub use sketch::{DaySketch, DaySketches, FieldSketches, Sketch, estimate, union};
 pub use snapshot::Snapshot;
-pub use tier::{TierFlush, TieredRange, oldest_untiered_ms, tier_flushes};
+pub use tier::{TierFlush, TieredFiles, TieredRange, oldest_untiered_ms, tier_flushes};
 pub use time::{millis, now_ms};
 pub use topic::{Partition, TableState, Topic};

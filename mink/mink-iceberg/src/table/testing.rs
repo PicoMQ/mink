@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use bytes::Bytes;
 use iceberg::io::FileIO;
 use iceberg::spec::ManifestList;
-use iceberg::table::Table as ExternalTable;
+use iceberg::table::Table as IcebergTable;
 use mink_core::{
     Granularity, IndexedFile, Object, ObjectKind, Offsets, Partition, Record, Snapshot, TimeSpecs,
     Topic,
@@ -11,8 +11,9 @@ use mink_core::{
 use uuid::Uuid;
 
 use super::{Change, FormatVersion, ObjectReader, Table};
+use crate::table::last_time_field_id;
 use crate::testing::{appended, external_table};
-use crate::{Error, FileSchema, last_time_field_id, record_batch, write_data_files};
+use crate::{Error, FileSchema, record_batch, write_data_files};
 
 impl ObjectReader for FileIO {
     async fn read(&self, path: &str) -> Result<Bytes, Error> {
@@ -105,7 +106,7 @@ pub(super) async fn store(io: &FileIO, change: &Change) {
     }
 }
 
-pub(super) async fn tiered() -> ExternalTable {
+pub(super) async fn tiered() -> IcebergTable {
     let table = external_table(last_time_field_id() + 1, HashMap::new());
     let records: Vec<Record> = (0..6)
         .map(|offset| {
@@ -117,7 +118,7 @@ pub(super) async fn tiered() -> ExternalTable {
     let partition = Partition::new("orders", 0).unwrap();
     let rows = record_batch(&partition, &records, &FileSchema::Binary).unwrap();
 
-    let files = write_data_files(&table, vec![rows], "0-0-6").await.unwrap();
+    let files = write_data_files(&table, rows, "0-0-6").await.unwrap();
 
     appended(&table, files, Vec::new(), &[(0, 6)]).await
 }

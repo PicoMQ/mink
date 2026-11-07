@@ -37,7 +37,7 @@ pub(super) fn partition_specs(specs: &TimeSpecs) -> Result<Vec<PartitionSpec>, E
         .collect()
 }
 
-pub fn last_time_field_id() -> i32 {
+pub(crate) fn last_time_field_id() -> i32 {
     let time_fields = Granularity::ALL
         .iter()
         .filter(|granularity| transform(**granularity).is_some())

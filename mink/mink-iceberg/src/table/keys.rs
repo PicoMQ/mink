@@ -10,11 +10,11 @@ const END_OFFSET_SUFFIX: &str = ".end-offset";
 pub(super) const EXTERNAL_SNAPSHOT_ID: &str = "mink.external.snapshot-id";
 pub(super) const EXTERNAL_GENERATION: &str = "mink.external.generation";
 
-pub fn start_offset_key(partition: i32) -> String {
+pub(crate) fn start_offset_key(partition: i32) -> String {
     format!("{PARTITION_PREFIX}{partition}{START_OFFSET_SUFFIX}")
 }
 
-pub fn end_offset_key(partition: i32) -> String {
+pub(crate) fn end_offset_key(partition: i32) -> String {
     format!("{PARTITION_PREFIX}{partition}{END_OFFSET_SUFFIX}")
 }
 
@@ -22,7 +22,9 @@ pub(super) fn external_end_offset_key(partition: i32) -> String {
     format!("{EXTERNAL_PARTITION_PREFIX}{partition}{END_OFFSET_SUFFIX}")
 }
 
-pub fn end_offsets(properties: &HashMap<String, String>) -> Result<BTreeMap<i32, i64>, Error> {
+pub(crate) fn stored_end_offsets(
+    properties: &HashMap<String, String>,
+) -> Result<BTreeMap<i32, i64>, Error> {
     offsets(properties, PARTITION_PREFIX).map_err(|(key, value)| Error::table_property(key, value))
 }
 
@@ -71,13 +73,16 @@ mod tests {
         ]);
         let bad = HashMap::from([(end_offset_key(0), "six".to_owned())]);
 
-        assert_eq!(end_offsets(&properties).unwrap(), BTreeMap::from([(0, 6)]));
+        assert_eq!(
+            stored_end_offsets(&properties).unwrap(),
+            BTreeMap::from([(0, 6)])
+        );
         assert_eq!(
             external_end_offsets(&properties).unwrap(),
             BTreeMap::from([(1, 9)])
         );
         assert!(matches!(
-            end_offsets(&bad),
+            stored_end_offsets(&bad),
             Err(Error::TableProperty { .. })
         ));
         assert!(matches!(external_end_offsets(&bad), Ok(offsets) if offsets.is_empty()));

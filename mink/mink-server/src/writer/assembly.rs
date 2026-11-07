@@ -112,7 +112,7 @@ mod tests {
 
     use mink_core::{
         CatalogTable, ExternalLocation, Granularity, Offsets, Partition, Scope, Span, Stats,
-        TierSchedule, TieredRange,
+        TierSchedule, TieredFiles, TieredRange,
     };
     use uuid::Uuid;
 
@@ -224,7 +224,10 @@ mod tests {
             .unwrap();
         store
             .tiered_ranges()
-            .add(&tier, &TieredRange::new(offsets, 1, 0, Vec::new()))
+            .add(
+                &tier,
+                &TieredRange::new(offsets, 1, TieredFiles::new(0, Vec::new())),
+            )
             .await
             .unwrap();
 

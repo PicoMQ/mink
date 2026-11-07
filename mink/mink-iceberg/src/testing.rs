@@ -9,14 +9,14 @@ use iceberg::spec::{
     Operation, Snapshot, SortDirection, SortField, SortOrder, Summary, TableMetadataBuilder,
     Transform, UnboundPartitionField, UnboundPartitionSpec,
 };
-use iceberg::table::Table;
+use iceberg::table::Table as IcebergTable;
 use iceberg::{Runtime, TableIdent};
 use mink_core::{File, Partition, Record, TimePartition};
 use mink_schema::{TIMESTAMP_ID, binary_schema};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use uuid::Uuid;
 
-use crate::end_offset_key;
+use crate::table::end_offset_key;
 
 pub(crate) fn hour_records(
     offsets: std::ops::Range<i64>,
@@ -61,7 +61,10 @@ pub(crate) fn rows_of(bytes: &Bytes) -> RecordBatch {
     arrow_select::concat::concat_batches(&schema, &batches).unwrap()
 }
 
-pub(crate) fn external_table(day_field_id: i32, properties: HashMap<String, String>) -> Table {
+pub(crate) fn external_table(
+    day_field_id: i32,
+    properties: HashMap<String, String>,
+) -> IcebergTable {
     let spec = UnboundPartitionSpec::builder()
         .add_partition_fields([UnboundPartitionField {
             source_id: TIMESTAMP_ID,
@@ -109,7 +112,7 @@ pub(crate) fn external_table(day_field_id: i32, properties: HashMap<String, Stri
         .unwrap()
         .metadata;
 
-    Table::builder()
+    IcebergTable::builder()
         .identifier(TableIdent::from_strs(["kafka", "orders"]).unwrap())
         .metadata(metadata)
         .file_io(FileIOBuilder::new(Arc::new(MemoryStorageFactory)).build())
@@ -119,11 +122,11 @@ pub(crate) fn external_table(day_field_id: i32, properties: HashMap<String, Stri
 }
 
 pub(crate) async fn appended(
-    table: &Table,
+    table: &IcebergTable,
     data_files: Vec<DataFile>,
     delete_files: Vec<DataFile>,
     end_offsets: &[(i32, i64)],
-) -> Table {
+) -> IcebergTable {
     let metadata = table.metadata();
     let io = table.file_io();
     let parent = metadata.current_snapshot_id();
@@ -198,7 +201,7 @@ pub(crate) async fn appended(
         .unwrap()
         .metadata;
 
-    Table::builder()
+    IcebergTable::builder()
         .identifier(table.identifier().clone())
         .metadata(metadata)
         .file_io(io.clone())

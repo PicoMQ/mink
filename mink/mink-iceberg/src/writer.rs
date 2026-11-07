@@ -1,16 +1,14 @@
 use std::collections::HashMap;
 
-use arrow_array::RecordBatch;
+use arrow_array::{RecordBatch, UInt32Array};
 use arrow_ord::sort::{SortColumn, SortOptions, lexsort_to_indices};
-use arrow_select::concat::concat_batches;
 use arrow_select::take::take_record_batch;
 use iceberg::arrow::RecordBatchPartitionSplitter;
 use iceberg::spec::{
-    DataFile, DataFileBuilder, DataFileFormat, Datum, NullOrder, PartitionKey, PartitionSpecRef,
-    PrimitiveLiteral, Schema, SchemaRef, SortDirection, SortOrder, Type,
-    deserialize_data_file_from_json, serialize_data_file_to_json,
+    DataFile, DataFileBuilder, DataFileFormat, Datum, NullOrder, PrimitiveLiteral, Schema,
+    SortDirection, SortOrder, Type,
 };
-use iceberg::table::Table;
+use iceberg::table::Table as IcebergTable;
 use iceberg::transform::create_transform_function;
 use iceberg::writer::base_writer::data_file_writer::DataFileWriterBuilder;
 use iceberg::writer::file_writer::ParquetWriterBuilder;
@@ -45,17 +43,17 @@ enum MetricsMode {
 }
 
 pub async fn write_data_files(
-    table: &Table,
-    batches: Vec<RecordBatch>,
+    table: &IcebergTable,
+    rows: RecordBatch,
     prefix: &str,
 ) -> Result<Vec<DataFile>, Error> {
     let metadata = table.metadata();
     let schema = metadata.current_schema().clone();
     let properties = metadata.properties();
     let order = metadata.default_sort_order();
-    let Some(arrow_schema) = batches.first().map(RecordBatch::schema) else {
+    if rows.num_rows() == 0 {
         return Ok(Vec::new());
-    };
+    }
 
     let parquet =
         ParquetWriterBuilder::new(writer_properties(properties, &schema)?, schema.clone());
@@ -74,107 +72,71 @@ pub async fn write_data_files(
     let spec = metadata.default_partition_spec();
     let written = match spec.is_unpartitioned() {
         true => {
-            let rows = concat_batches(&arrow_schema, &batches)?;
-            drop(batches);
-
             let mut writer = UnpartitionedWriter::new(DataFileWriterBuilder::new(rolling));
-            for slice in slices(&sorted(&rows, order)?, target) {
-                writer.write(slice).await?;
+            let sorted = Sorted::new(&rows, order, target)?;
+            for slice in sorted.slices() {
+                writer.write(slice?).await?;
             }
             writer.close().await?
         }
         false => {
+            let splitter = RecordBatchPartitionSplitter::try_new_with_computed_values(
+                schema.clone(),
+                spec.clone(),
+            )?;
+            let parts = splitter.split(&rows)?;
+            drop(rows);
+
             let mut writer = ClusteredWriter::new(DataFileWriterBuilder::new(rolling));
-            for (key, batches) in partitioned(&schema, spec, batches)? {
-                let rows = concat_batches(&arrow_schema, &batches)?;
-                drop(batches);
-                for slice in slices(&sorted(&rows, order)?, target) {
-                    writer.write(key.clone(), slice).await?;
+            for (key, part) in parts {
+                let sorted = Sorted::new(&part, order, target)?;
+                for slice in sorted.slices() {
+                    writer.write(key.clone(), slice?).await?;
                 }
             }
             writer.close().await?
         }
     };
 
-    let spec_id = metadata.default_partition_spec().spec_id();
     let sort_order_id = (!order.is_unsorted()).then_some(order.order_id as i32);
     written
         .into_iter()
-        .map(|file| with_metrics_modes(file, &schema, properties, spec_id, sort_order_id))
+        .map(|file| with_metrics_modes(file, &schema, properties, spec.spec_id(), sort_order_id))
         .collect()
 }
 
-fn slices(rows: &RecordBatch, target: usize) -> Vec<RecordBatch> {
-    let total = rows.num_rows();
-    let slice_bytes = (target / SLICES_PER_FILE).max(1);
-    let length = (total * slice_bytes / rows.get_array_memory_size().max(1)).clamp(1, total.max(1));
-
-    (0..total)
-        .step_by(length)
-        .map(|offset| rows.slice(offset, length.min(total - offset)))
-        .collect()
+struct Sorted<'a> {
+    rows: &'a RecordBatch,
+    indices: Option<UInt32Array>,
+    length: usize,
 }
 
-fn partitioned(
-    schema: &SchemaRef,
-    spec: &PartitionSpecRef,
-    batches: Vec<RecordBatch>,
-) -> Result<Vec<(PartitionKey, Vec<RecordBatch>)>, Error> {
-    let splitter =
-        RecordBatchPartitionSplitter::try_new_with_computed_values(schema.clone(), spec.clone())?;
+impl<'a> Sorted<'a> {
+    fn new(rows: &'a RecordBatch, order: &SortOrder, target: usize) -> Result<Sorted<'a>, Error> {
+        let slice_bytes = (target / SLICES_PER_FILE).max(1);
+        let length = rows.num_rows() * slice_bytes / rows.get_array_memory_size().max(1);
 
-    let mut parts: Vec<(PartitionKey, Vec<RecordBatch>)> = Vec::new();
-    for batch in batches {
-        for (key, part) in splitter.split(&batch)? {
-            match parts
-                .iter_mut()
-                .find(|(known, _)| known.data() == key.data())
-            {
-                Some((_, batches)) => batches.push(part),
-                None => parts.push((key, vec![part])),
-            }
-        }
+        Ok(Sorted {
+            rows,
+            indices: sort_indices(rows, order)?,
+            length: length.max(1),
+        })
     }
 
-    Ok(parts)
-}
+    fn slices(&self) -> impl Iterator<Item = Result<RecordBatch, Error>> + '_ {
+        let total = self.rows.num_rows();
 
-pub fn encoded_data_files(table: &Table, files: Vec<DataFile>) -> Result<Vec<String>, Error> {
-    let metadata = table.metadata();
-    let partition_type = metadata
-        .default_partition_spec()
-        .partition_type(metadata.current_schema())?;
-
-    files
-        .into_iter()
-        .map(|file| {
-            Ok(serialize_data_file_to_json(
-                file,
-                &partition_type,
-                metadata.format_version(),
-            )?)
+        (0..total).step_by(self.length).map(move |offset| {
+            let length = self.length.min(total - offset);
+            match &self.indices {
+                Some(indices) => Ok(take_record_batch(
+                    self.rows,
+                    &indices.slice(offset, length),
+                )?),
+                None => Ok(self.rows.slice(offset, length)),
+            }
         })
-        .collect()
-}
-
-pub fn data_files(table: &Table, spec_id: i32, encoded: &[String]) -> Result<Vec<DataFile>, Error> {
-    let metadata = table.metadata();
-    let spec = metadata
-        .partition_spec_by_id(spec_id)
-        .ok_or(Error::UnknownPartitionSpec(spec_id))?;
-    let partition_type = spec.partition_type(metadata.current_schema())?;
-
-    encoded
-        .iter()
-        .map(|json| {
-            Ok(deserialize_data_file_from_json(
-                json,
-                spec_id,
-                &partition_type,
-                metadata.current_schema(),
-            )?)
-        })
-        .collect()
+    }
 }
 
 fn writer_properties(
@@ -284,9 +246,9 @@ fn compression(properties: &HashMap<String, String>) -> Result<Compression, Erro
     }
 }
 
-fn sorted(rows: &RecordBatch, order: &SortOrder) -> Result<RecordBatch, Error> {
+fn sort_indices(rows: &RecordBatch, order: &SortOrder) -> Result<Option<UInt32Array>, Error> {
     if order.is_unsorted() {
-        return Ok(rows.clone());
+        return Ok(None);
     }
 
     let mut columns = Vec::with_capacity(order.fields.len());
@@ -305,8 +267,7 @@ fn sorted(rows: &RecordBatch, order: &SortOrder) -> Result<RecordBatch, Error> {
         });
     }
 
-    let indices = lexsort_to_indices(&columns, None)?;
-    Ok(take_record_batch(rows, &indices)?)
+    Ok(Some(lexsort_to_indices(&columns, None)?))
 }
 
 fn column_index(rows: &RecordBatch, field_id: i32) -> Option<usize> {
@@ -441,8 +402,9 @@ mod tests {
     use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
     use super::*;
+    use crate::FileSchema;
+    use crate::table::last_time_field_id;
     use crate::testing::external_table;
-    use crate::{FileSchema, last_time_field_id};
 
     const DAY_MS: i64 = 86_400_000;
 
@@ -463,7 +425,7 @@ mod tests {
         let partition = Partition::new("orders", 0).unwrap();
         let rows = crate::record_batch(&partition, &records(), &FileSchema::Binary).unwrap();
 
-        let files = write_data_files(&table, vec![rows], "0-0-6").await.unwrap();
+        let files = write_data_files(&table, rows, "0-0-6").await.unwrap();
 
         assert_eq!(files.len(), 2);
         for file in &files {
@@ -520,7 +482,7 @@ mod tests {
             .unwrap()
             .metadata;
         let partitioned = external_table(last_time_field_id() + 1, HashMap::new());
-        let table = Table::builder()
+        let table = IcebergTable::builder()
             .identifier(iceberg::TableIdent::from_strs(["kafka", "plain"]).unwrap())
             .metadata(metadata)
             .file_io(partitioned.file_io().clone())
@@ -530,7 +492,7 @@ mod tests {
         let partition = Partition::new("orders", 0).unwrap();
         let rows = crate::record_batch(&partition, &records(), &FileSchema::Binary).unwrap();
 
-        let files = write_data_files(&table, vec![rows], "0-0-6").await.unwrap();
+        let files = write_data_files(&table, rows, "0-0-6").await.unwrap();
 
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].record_count(), 6);
@@ -556,9 +518,7 @@ mod tests {
             .collect();
         let rows = crate::record_batch(&partition, &records, &FileSchema::Binary).unwrap();
 
-        let files = write_data_files(&table, vec![rows], "0-0-400")
-            .await
-            .unwrap();
+        let files = write_data_files(&table, rows, "0-0-400").await.unwrap();
 
         assert!(files.len() > 1, "{}", files.len());
         assert_eq!(files.iter().map(DataFile::record_count).sum::<u64>(), 400);
@@ -591,7 +551,7 @@ mod tests {
         let partition = Partition::new("orders", 0).unwrap();
         let rows = crate::record_batch(&partition, &records(), &FileSchema::Binary).unwrap();
 
-        let files = write_data_files(&table, vec![rows], "0-0-6").await.unwrap();
+        let files = write_data_files(&table, rows, "0-0-6").await.unwrap();
 
         let file = &files[0];
         let value = file.lower_bounds()[&9].literal().clone();
@@ -684,7 +644,7 @@ mod tests {
         let partition = Partition::new("orders", 0).unwrap();
         let rows = crate::record_batch(&partition, &records(), &FileSchema::Binary).unwrap();
 
-        let files = write_data_files(&table, vec![rows], "0-0-6").await.unwrap();
+        let files = write_data_files(&table, rows, "0-0-6").await.unwrap();
 
         let bytes = table
             .file_io()
@@ -701,21 +661,6 @@ mod tests {
             .map(|column| column.column_path().string())
             .collect();
         assert_eq!(filtered, ["_kafka_headers.list.element.key"]);
-    }
-
-    #[tokio::test]
-    async fn data_files_round_trip_through_their_encoding() {
-        let table = external_table(last_time_field_id() + 1, HashMap::new());
-        let partition = Partition::new("orders", 0).unwrap();
-        let rows = crate::record_batch(&partition, &records(), &FileSchema::Binary).unwrap();
-        let files = write_data_files(&table, vec![rows], "0-0-6").await.unwrap();
-        let spec_id = table.metadata().default_partition_spec().spec_id();
-
-        let encoded = encoded_data_files(&table, files.clone()).unwrap();
-        let unknown = data_files(&table, spec_id + 7, &encoded);
-
-        assert_eq!(data_files(&table, spec_id, &encoded).unwrap(), files);
-        assert!(matches!(unknown, Err(Error::UnknownPartitionSpec(_))));
     }
 
     #[test]

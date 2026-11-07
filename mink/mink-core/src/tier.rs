@@ -6,22 +6,21 @@ use crate::offsets::{OffsetRange, Offsets};
 pub struct TieredRange {
     offsets: Offsets,
     generation: i32,
+    files: TieredFiles,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TieredFiles {
     spec_id: i32,
-    encoded_data_files: Vec<String>,
+    encoded: Vec<String>,
 }
 
 impl TieredRange {
-    pub fn new(
-        offsets: Offsets,
-        generation: i32,
-        spec_id: i32,
-        encoded_data_files: Vec<String>,
-    ) -> TieredRange {
+    pub fn new(offsets: Offsets, generation: i32, files: TieredFiles) -> TieredRange {
         TieredRange {
             offsets,
             generation,
-            spec_id,
-            encoded_data_files,
+            files,
         }
     }
 
@@ -33,12 +32,22 @@ impl TieredRange {
         self.generation
     }
 
+    pub fn files(&self) -> &TieredFiles {
+        &self.files
+    }
+}
+
+impl TieredFiles {
+    pub fn new(spec_id: i32, encoded: Vec<String>) -> TieredFiles {
+        TieredFiles { spec_id, encoded }
+    }
+
     pub fn spec_id(&self) -> i32 {
         self.spec_id
     }
 
-    pub fn encoded_data_files(&self) -> &[String] {
-        &self.encoded_data_files
+    pub fn encoded(&self) -> &[String] {
+        &self.encoded
     }
 }
 
