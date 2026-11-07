@@ -60,8 +60,8 @@ apache-avro = { version = "0.22.0", default-features = false }
 prost-reflect = { version = "0.16.5", features = ["serde"] }
 protox = "0.10.0"
 rust-embed = "8.13.0"
-nestor = { git = "https://github.com/PicoMQ/nestor", branch = "main", features = ["serde"] }
-nestor-store = { git = "https://github.com/PicoMQ/nestor", branch = "main" }
+nestor = { git = "https://github.com/PicoMQ/nestor", branch = "coalesce-late-misses", features = ["serde"] }
+nestor-store = { git = "https://github.com/PicoMQ/nestor", branch = "coalesce-late-misses" }
 metrics = "0.24.6"
 metrics-exporter-prometheus = { version = "0.18.3", default-features = false }
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls", "stream"] }

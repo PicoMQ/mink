@@ -3410,7 +3410,7 @@ checksum = "9252111cf132ba0929b6f8e030cac2a24b507f3a4d6db6fb2896f27b354c714b"
 [[package]]
 name = "nestor"
 version = "0.1.0"
-source = "git+https://github.com/PicoMQ/nestor?branch=main#d382dda6e213e4405b9e7741ae16767ede0ff319"
+source = "git+https://github.com/PicoMQ/nestor?branch=coalesce-late-misses#c13bb70c80a64cd66389eb699e42fd5141509c08"
 dependencies = [
  "ahash",
  "async-trait",
@@ -3432,7 +3432,7 @@ dependencies = [
 [[package]]
 name = "nestor-store"
 version = "0.1.0"
-source = "git+https://github.com/PicoMQ/nestor?branch=main#d382dda6e213e4405b9e7741ae16767ede0ff319"
+source = "git+https://github.com/PicoMQ/nestor?branch=coalesce-late-misses#c13bb70c80a64cd66389eb699e42fd5141509c08"
 dependencies = [
  "async-trait",
  "bytes",
