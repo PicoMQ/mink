@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::buckets::Buckets;
 use crate::config::{Credentials, ExternalCatalog, History, Kafka, Storage};
-use crate::external::{self, Attachment, Source};
+use crate::external::{self, Attachment, Partitioning, TableSource};
 use crate::indexer::Indexer;
 use crate::services::Services;
 use crate::tier::Tier;
@@ -171,15 +171,12 @@ pub(crate) async fn unattached() -> Option<Tiering> {
 
 pub(crate) async fn tiering(interval: Duration) -> Option<Tiering> {
     let tiering = unattached().await?;
-    let source = Source::new(
-        false,
-        Some(vec!["day(_kafka_timestamp)".parse().unwrap()]),
-        vec!["_kafka_offset desc".parse().unwrap()],
-        HashMap::new(),
-        None,
-        BTreeMap::new(),
-    )
-    .unwrap();
+    let source = TableSource::New {
+        partitioning: Partitioning::Fields(vec!["day(_kafka_timestamp)".parse().unwrap()]),
+        sort: vec!["_kafka_offset desc".parse().unwrap()],
+        properties: HashMap::new(),
+        location: None,
+    };
 
     tiering
         .attach(tiering.attachment(interval, source))
@@ -189,7 +186,7 @@ pub(crate) async fn tiering(interval: Duration) -> Option<Tiering> {
 }
 
 impl Tiering {
-    pub(crate) fn attachment(&self, interval: Duration, source: Source) -> Attachment {
+    pub(crate) fn attachment(&self, interval: Duration, source: TableSource) -> Attachment {
         Attachment {
             topic: self.topic.name().to_owned(),
             table: CatalogTable::new("fixture", "mink", self.topic.name()),
@@ -206,7 +203,7 @@ impl Tiering {
             &self.services.store,
             &self.services.kafka,
             &self.catalog,
-            self.services.warehouse.root(),
+            &self.services.warehouse,
             attachment,
         )
         .await

@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
-use mink_core::{Role, Scope, Topic, now_ms};
+use mink_core::{Role, Scope, Topic};
 use mink_metrics::Metrics;
 use mink_store::Lease;
 use tokio::sync::watch;
@@ -53,8 +53,6 @@ pub(crate) async fn supervise(services: Arc<Services>, mut stop: watch::Receiver
                 }
 
                 supervisor.count_leases();
-                let lag = supervisor.services.tier_lags.lag(now_ms());
-                supervisor.services.metrics.tier_lag(lag);
             }
             _ = stop.changed() => break,
         }

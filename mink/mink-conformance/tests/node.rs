@@ -1,4 +1,3 @@
-use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::net::TcpListener;
 use std::ops::Range;
@@ -9,7 +8,9 @@ use mink_core::{Member, Offsets, Partition, Scope};
 use mink_iceberg::FIRST_TAIL_SNAPSHOT_ID;
 use mink_kafka::{Cluster, Config as KafkaConfig};
 use mink_metrics::Metrics;
-use mink_server::{Attachment, CatalogTable, Config, Error, Node, Role, Source, TierSchedule};
+use mink_server::{
+    Attachment, CatalogTable, Config, Error, Node, Partitioning, Role, TableSource, TierSchedule,
+};
 use mink_store::{LeaseHolder, Store};
 use serde_json::{Map, Value, json};
 use tokio::process::Command;
@@ -1156,7 +1157,7 @@ fn external_catalogs(uri: &str) -> String {
     format!(r#"external_catalogs = {{ fixture = {{ uri = "{uri}" }} }}"#)
 }
 
-async fn attach(node: &TestNode, uri: &str, topic: &str, after: Duration, source: Source) {
+async fn attach(node: &TestNode, uri: &str, topic: &str, after: Duration, source: TableSource) {
     reqwest::Client::new()
         .post(format!("{uri}/v1/namespaces"))
         .json(&json!({ "namespace": ["mink"] }))
@@ -1175,21 +1176,16 @@ async fn attach(node: &TestNode, uri: &str, topic: &str, after: Duration, source
         .unwrap();
 }
 
-fn new_table(properties: &[(&str, String)]) -> Source {
-    let properties = properties
-        .iter()
-        .map(|(key, value)| (key.to_string(), value.clone()))
-        .collect();
-
-    Source::new(
-        false,
-        Some(vec!["day(_kafka_timestamp)".parse().unwrap()]),
-        vec!["_kafka_offset desc".parse().unwrap()],
-        properties,
-        None,
-        BTreeMap::new(),
-    )
-    .unwrap()
+fn new_table(properties: &[(&str, String)]) -> TableSource {
+    TableSource::New {
+        partitioning: Partitioning::Fields(vec!["day(_kafka_timestamp)".parse().unwrap()]),
+        sort: vec!["_kafka_offset desc".parse().unwrap()],
+        properties: properties
+            .iter()
+            .map(|(key, value)| (key.to_string(), value.clone()))
+            .collect(),
+        location: None,
+    }
 }
 
 async fn external_metadata(uri: &str, topic: &str) -> Value {
@@ -1554,7 +1550,7 @@ async fn detach_keeps_time_travel_and_reattaching_resumes() {
             (partition, offset.as_str().unwrap().parse().unwrap())
         })
         .collect();
-    let existing = Source::new(true, None, Vec::new(), HashMap::new(), None, end_offsets).unwrap();
+    let existing = TableSource::Existing { end_offsets };
     attach(&node, &uri, &topic, Duration::from_millis(1), existing).await;
     for partition in 0..2 {
         mink_conformance::produce_values(

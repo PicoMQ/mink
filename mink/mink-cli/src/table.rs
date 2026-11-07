@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use mink_server::{
-    Attachment, CatalogTable, Config, Granularity, SortTerm, Source, Term, TierSchedule,
-    parse_duration, parse_granularity,
+    Attachment, CatalogTable, Config, Granularity, Partitioning, SortTerm, TableSource, Term,
+    TierSchedule, parse_duration, parse_granularity,
 };
 
 #[derive(clap::Args)]
@@ -54,6 +54,20 @@ enum Action {
 
 #[derive(clap::Args)]
 struct Attach {
+    #[command(subcommand)]
+    source: AttachSource,
+}
+
+#[derive(clap::Subcommand)]
+enum AttachSource {
+    #[command(about = "create an Iceberg table and attach it")]
+    New(NewTable),
+    #[command(about = "attach an Iceberg table that already exists")]
+    Existing(ExistingTable),
+}
+
+#[derive(clap::Args)]
+struct Target {
     #[arg(help = "a table")]
     topic: String,
     #[arg(long, help = "an external catalog of the config")]
@@ -62,22 +76,18 @@ struct Attach {
     namespace: String,
     #[arg(long = "table", help = "the Iceberg table")]
     table: String,
-    #[arg(
-        long,
-        help = "attach a table that already exists instead of creating one"
-    )]
-    existing: bool,
-    #[arg(
-        long,
-        help = "a partition term such as day(_kafka_timestamp) or bucket(16, _kafka_key), repeatable"
-    )]
-    partition: Vec<Term>,
-    #[arg(
-        long,
-        help = "create the table unpartitioned",
-        conflicts_with = "partition"
-    )]
-    unpartitioned: bool,
+    #[arg(long, value_parser = parse_duration, help = "only records older than this are tiered, 1h when absent")]
+    tier_after: Option<Duration>,
+    #[arg(long, value_parser = parse_duration, help = "how often tiered files are committed, 1h when absent")]
+    tier_interval: Option<Duration>,
+}
+
+#[derive(clap::Args)]
+struct NewTable {
+    #[command(flatten)]
+    target: Target,
+    #[command(flatten)]
+    partitioning: PartitionTerms,
     #[arg(
         long,
         help = "a sort term such as _kafka_key desc nulls last, repeatable"
@@ -87,12 +97,26 @@ struct Attach {
     property: Vec<(String, String)>,
     #[arg(long, help = "where the new table keeps its files")]
     location: Option<String>,
-    #[arg(long = "end-offset", value_parser = end_offset, help = "partition=offset: the existing table holds every record of the partition before offset, repeatable")]
+}
+
+#[derive(clap::Args)]
+#[group(required = true, multiple = false)]
+struct PartitionTerms {
+    #[arg(
+        long,
+        help = "a partition term such as day(_kafka_timestamp) or bucket(16, _kafka_key), repeatable"
+    )]
+    partition: Vec<Term>,
+    #[arg(long, help = "create the table unpartitioned")]
+    unpartitioned: bool,
+}
+
+#[derive(clap::Args)]
+struct ExistingTable {
+    #[command(flatten)]
+    target: Target,
+    #[arg(long = "end-offset", value_parser = end_offset, help = "partition=offset: the table holds every record of the partition before offset, repeatable")]
     end_offsets: Vec<(i32, i64)>,
-    #[arg(long, value_parser = parse_duration, help = "only records older than this are tiered, 1h when absent")]
-    tier_after: Option<Duration>,
-    #[arg(long, value_parser = parse_duration, help = "how often tiered files are committed, 1h when absent")]
-    tier_interval: Option<Duration>,
 }
 
 impl Table {
@@ -150,25 +174,32 @@ impl Table {
 
 impl Attach {
     fn attachment(self) -> anyhow::Result<Attachment> {
-        let schedule = TierSchedule::given(self.tier_after, self.tier_interval)?;
-        let partition = match (self.unpartitioned, self.partition.is_empty()) {
-            (true, _) => Some(Vec::new()),
-            (false, true) => None,
-            (false, false) => Some(self.partition),
+        let (target, source) = match self.source {
+            AttachSource::New(new) => {
+                let partitioning = match new.partitioning.unpartitioned {
+                    true => Partitioning::Unpartitioned,
+                    false => Partitioning::Fields(new.partitioning.partition),
+                };
+                let source = TableSource::New {
+                    partitioning,
+                    sort: new.sort,
+                    properties: new.property.into_iter().collect::<HashMap<_, _>>(),
+                    location: new.location,
+                };
+                (new.target, source)
+            }
+            AttachSource::Existing(existing) => {
+                let source = TableSource::Existing {
+                    end_offsets: existing.end_offsets.into_iter().collect::<BTreeMap<_, _>>(),
+                };
+                (existing.target, source)
+            }
         };
-        let source = Source::new(
-            self.existing,
-            partition,
-            self.sort,
-            self.property.into_iter().collect::<HashMap<_, _>>(),
-            self.location,
-            self.end_offsets.into_iter().collect::<BTreeMap<_, _>>(),
-        )?;
 
         Ok(Attachment {
-            topic: self.topic,
-            table: CatalogTable::new(&self.catalog, &self.namespace, &self.table),
-            schedule,
+            table: CatalogTable::new(&target.catalog, &target.namespace, &target.table),
+            schedule: TierSchedule::given(target.tier_after, target.tier_interval)?,
+            topic: target.topic,
             source,
         })
     }

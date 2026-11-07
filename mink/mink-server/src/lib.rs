@@ -41,7 +41,7 @@ pub use config::{
     parse_role,
 };
 pub use error::Error;
-pub use external::{Attachment, Partitioning, SortTerm, Source, Term};
+pub use external::{Attachment, Partitioning, SortTerm, TableSource, Term};
 pub use mink_core::{
     CatalogTable, ExternalTable, Granularity, Role, TableState, TierSchedule, Topic,
 };

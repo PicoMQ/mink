@@ -7,6 +7,7 @@ use mink_store::Store;
 use crate::buckets::Buckets;
 use crate::config::Config;
 use crate::external::{self, Attachment};
+use crate::warehouse::Warehouse;
 use crate::{Error, registration};
 
 pub async fn add_table(
@@ -51,16 +52,21 @@ pub async fn attach_external_table(
     attachment: Attachment,
 ) -> Result<ExternalTable, Error> {
     let kafka = Pool::new(config.kafka.client_config()?, Metrics::new());
-    let catalog = catalog(config, attachment.table.catalog()).await?;
+    let buckets = Buckets::new(config.storage.clone());
+    let warehouse = Warehouse::connect(&config.warehouse, &buckets)?;
+    let catalog = catalog(config, attachment.table.catalog(), &buckets).await?;
 
     with_store(config, async |store| {
-        external::attach(store, &kafka, &catalog, config.warehouse_root(), attachment).await
+        external::attach(store, &kafka, &catalog, &warehouse, attachment).await
     })
     .await
 }
 
 pub async fn detach_external_table(config: &Config, topic: &str) -> Result<(), Error> {
-    with_store(config, async |store| external::detach(store, topic).await).await
+    with_store(config, async |store| {
+        Ok(store.external_tables().detach(topic).await?)
+    })
+    .await
 }
 
 pub async fn table_schema(config: &Config, topic: &str) -> Result<Schema, Error> {
@@ -75,13 +81,17 @@ pub async fn table_schema(config: &Config, topic: &str) -> Result<Schema, Error>
     .await
 }
 
-async fn catalog(config: &Config, name: &str) -> Result<external::Catalog, Error> {
+async fn catalog(
+    config: &Config,
+    name: &str,
+    buckets: &Buckets,
+) -> Result<external::Catalog, Error> {
     let settings = config
         .external_catalogs
         .get(name)
         .ok_or_else(|| Error::NoSuchExternalCatalog(name.to_owned()))?;
 
-    external::Catalog::new(name, settings, &Buckets::new(config.storage.clone())).await
+    external::Catalog::new(name, settings, buckets).await
 }
 
 async fn with_store<T>(

@@ -85,12 +85,6 @@ pub enum Error {
     MissingEndOffsets(String),
     #[error("end offset {offset} of partition {partition} is not an offset of the topic")]
     InvalidEndOffset { partition: i32, offset: i64 },
-    #[error("an existing table keeps its own {0}")]
-    ExistingTableKeeps(&'static str),
-    #[error("a new table takes no end offsets")]
-    EndOffsetsOfNewTable,
-    #[error("a new table needs partition terms, or to be marked unpartitioned")]
-    PartitioningRequired,
     #[error("the topic's schema has no column {0}")]
     UnknownColumn(String),
     #[error("cannot read {0:?} as a partition or sort term")]

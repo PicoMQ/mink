@@ -56,27 +56,35 @@ Every node with the `admin` role serves the admin API, the [console](/docs/opera
 
 ## External table
 
-`POST /admin/tables/{name}/external` takes the options of [`mink table attach`](/docs/operations/cli#attach).
+`POST /admin/tables/{name}/external` takes the options of [`mink table attach`](/docs/operations/cli#attach). `source` is `new` or `existing`, as an object with that one key.
 
 | Field | Default | Purpose |
 | --- | --- | --- |
 | `catalog`, `namespace`, `name` | | The Iceberg table, in an entry of `external_catalogs` |
-| `existing` | `false` | Attach a table that exists |
-| `partition` | | Partition terms. A new table needs them, and `[]` makes it unpartitioned. |
-| `sort` | `[]` | Sort terms |
-| `properties` | `{}` | Table properties |
-| `location` | the catalog's | Where a new table keeps its files |
-| `endOffsets` | the table's properties | For an existing table, as `{"0": 12345}` |
+| `source.new.partitioning` | | `{"fields": [terms]}`, or `"unpartitioned"` |
+| `source.new.sort` | `[]` | Sort terms |
+| `source.new.properties` | `{}` | Table properties |
+| `source.new.location` | the catalog's | Where the table keeps its files |
+| `source.existing.endOffsets` | the table's properties | As `{"0": 1200}` |
 | `tierAfter`, `tierInterval` | `"1h"` | As `--tier-after` and `--tier-interval` |
 
-It returns `201` with `{catalog, namespace, name, uuid, location, generation, tierAfterMs, tierIntervalMs}`, the `external` of `GET /admin/tables/{name}`.
+```json
+{
+  "catalog": "lake",
+  "namespace": "kafka",
+  "name": "orders",
+  "source": { "new": { "partitioning": { "fields": ["day(_kafka_timestamp)"] } } }
+}
+```
+
+It returns `201` with `{catalog, namespace, name, uuid, location, generation, tierAfter, tierInterval}`, the `external` of `GET /admin/tables/{name}`.
 
 | Status | When |
 | --- | --- |
-| `400` | Fields that do not fit together, an unknown catalog or term, a retention too short to tier, a location outside S3 or inside the warehouse, missing end offsets, or a table Mink cannot list |
-| `404` | With `existing`, no such namespace or Iceberg table |
+| `400` | An unreadable body or term, an unknown catalog or column, a retention too short to tier, a location that is not a path in an S3 bucket or is inside the warehouse, missing end offsets, or a table Mink cannot list |
+| `404` | For `existing`, no such namespace or Iceberg table |
 | `409` | The table has an external table, the Iceberg table exists or belongs to another table, its location overlaps another's, or the given end offsets differ from the table's |
-| `502` | The catalog did not answer |
+| `502` | The catalog did not answer or refused Mink's request |
 
 ## Records
 

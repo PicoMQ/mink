@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use crate::Error;
 use crate::config::Storage;
 
+pub(crate) type Located = (Arc<dyn ObjectStore>, Path);
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct Buckets {
     storage: Storage,
@@ -38,6 +40,12 @@ impl Buckets {
                 Ok(opened)
             }
         }
+    }
+
+    pub(crate) fn locate(&self, path: &str) -> Option<Result<Located, Error>> {
+        let (bucket, key) = bucket_and_key(path)?;
+
+        Some(self.client(bucket).map(|store| (store, key)))
     }
 }
 

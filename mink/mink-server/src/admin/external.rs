@@ -1,4 +1,3 @@
-use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use axum::extract::State;
@@ -13,8 +12,8 @@ use serde_json::{Value, json};
 use super::Admin;
 use super::reply::{Body, Failure, Segments};
 use crate::Error;
-use crate::config::parse_duration;
-use crate::external::{self, Attachment, Source};
+use crate::config::{format_duration, parse_duration};
+use crate::external::{self, Attachment, TableSource};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -22,16 +21,7 @@ struct AttachRequest {
     catalog: String,
     namespace: String,
     name: String,
-    #[serde(default)]
-    existing: bool,
-    partition: Option<Vec<String>>,
-    #[serde(default)]
-    sort: Vec<String>,
-    #[serde(default)]
-    properties: HashMap<String, String>,
-    location: Option<String>,
-    #[serde(default)]
-    end_offsets: BTreeMap<i32, i64>,
+    source: TableSource,
     tier_after: Option<String>,
     tier_interval: Option<String>,
 }
@@ -50,8 +40,8 @@ pub(super) fn external_json(external: &ExternalTable) -> Value {
         "uuid": external.uuid(),
         "location": external.location().path(),
         "generation": external.generation(),
-        "tierAfterMs": external.schedule().after().as_millis(),
-        "tierIntervalMs": external.schedule().interval().as_millis(),
+        "tierAfter": format_duration(external.schedule().after()),
+        "tierInterval": format_duration(external.schedule().interval()),
     })
 }
 
@@ -68,7 +58,7 @@ async fn attach(
         &services.store,
         &services.kafka,
         &catalog,
-        services.warehouse.root(),
+        &services.warehouse,
         attachment,
     )
     .await?;
@@ -80,7 +70,12 @@ async fn detach(
     State(admin): State<Arc<Admin>>,
     Segments(topic): Segments<String>,
 ) -> Result<StatusCode, Failure> {
-    external::detach(&admin.services.store, &topic).await?;
+    admin
+        .services
+        .store
+        .external_tables()
+        .detach(&topic)
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -97,29 +92,11 @@ fn attachment(topic: String, request: AttachRequest) -> Result<Attachment, Failu
     )
     .map_err(Error::from)?;
 
-    let partition = request
-        .partition
-        .map(|terms| terms.iter().map(|term| term.parse()).collect())
-        .transpose()?;
-    let sort = request
-        .sort
-        .iter()
-        .map(|term| term.parse())
-        .collect::<Result<_, _>>()?;
-    let source = Source::new(
-        request.existing,
-        partition,
-        sort,
-        request.properties,
-        request.location,
-        request.end_offsets,
-    )?;
-
     Ok(Attachment {
         topic,
         table: CatalogTable::new(&request.catalog, &request.namespace, &request.name),
         schedule,
-        source,
+        source: request.source,
     })
 }
 
@@ -133,7 +110,7 @@ mod tests {
     use crate::testing::registered;
 
     #[tokio::test]
-    async fn partitioning_is_required_for_a_new_table_and_refused_for_an_existing_one() {
+    async fn a_source_names_its_kind_and_takes_only_its_options() {
         let Some((node, base)) = admin(&[Role::Admin], |_| {}).await else {
             return;
         };
@@ -147,24 +124,34 @@ mod tests {
             Some(body)
         };
 
-        let (unpartitioned, _) = send(Method::POST, &base, &path, body(json!({}))).await;
+        let (unnamed, _) = send(Method::POST, &base, &path, body(json!({}))).await;
+        let (unpartitioned, _) = send(
+            Method::POST,
+            &base,
+            &path,
+            body(json!({ "source": { "new": {} } })),
+        )
+        .await;
         let (existing, _) = send(
             Method::POST,
             &base,
             &path,
-            body(json!({ "existing": true, "partition": [] })),
+            body(json!({ "source": { "existing": { "partitioning": "unpartitioned" } } })),
         )
         .await;
         let (unreadable, _) = send(
             Method::POST,
             &base,
             &path,
-            body(json!({ "partition": ["decade(_kafka_timestamp)"] })),
+            body(json!({
+                "source": { "new": { "partitioning": { "fields": ["decade(_kafka_timestamp)"] } } }
+            })),
         )
         .await;
         let (detached, _) = send(Method::DELETE, &base, &path, None).await;
         node.shutdown().await.unwrap();
 
+        assert_eq!(unnamed, StatusCode::BAD_REQUEST);
         assert_eq!(unpartitioned, StatusCode::BAD_REQUEST);
         assert_eq!(existing, StatusCode::BAD_REQUEST);
         assert_eq!(unreadable, StatusCode::BAD_REQUEST);
@@ -208,10 +195,15 @@ mod tests {
             "catalog": "fixture",
             "namespace": "mink",
             "name": topic.name(),
-            "partition": [],
+            "source": { "new": { "partitioning": "unpartitioned" } },
+            "tierAfter": "2h",
         });
-        let unknown =
-            json!({ "catalog": "nowhere", "namespace": "mink", "name": "t", "partition": [] });
+        let unknown = json!({
+            "catalog": "nowhere",
+            "namespace": "mink",
+            "name": "t",
+            "source": { "new": { "partitioning": "unpartitioned" } },
+        });
 
         let (attached, external) = send(Method::POST, &base, &path, Some(body.clone())).await;
         let (_, detail) =
@@ -223,6 +215,8 @@ mod tests {
 
         assert_eq!(attached, StatusCode::CREATED, "{external}");
         assert_eq!(external["generation"], 1);
+        assert_eq!(external["tierAfter"], "2h");
+        assert_eq!(external["tierInterval"], "1h");
         assert_eq!(detail["external"]["name"], json!(topic.name()));
         assert_eq!(again, StatusCode::CONFLICT);
         assert_eq!(uncatalogued, StatusCode::BAD_REQUEST);

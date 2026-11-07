@@ -90,10 +90,7 @@ impl From<Error> for Failure {
             | Error::ShortRetention { .. }
             | Error::LocationInWarehouse(_)
             | Error::MissingEndOffsets(_)
-            | Error::InvalidEndOffset { .. }
-            | Error::ExistingTableKeeps(_)
-            | Error::EndOffsetsOfNewTable
-            | Error::PartitioningRequired => StatusCode::BAD_REQUEST,
+            | Error::InvalidEndOffset { .. } => StatusCode::BAD_REQUEST,
             Error::Iceberg(mink_iceberg::Error::Iceberg(error)) => catalog_status(error),
             Error::Kafka(_)
             | Error::TopicUnavailable(_)

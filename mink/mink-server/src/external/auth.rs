@@ -117,7 +117,7 @@ impl Authorizer {
         }
     }
 
-    pub(super) async fn renew(&self) -> bool {
+    pub(super) async fn invalidate(&self) -> bool {
         match self {
             Authorizer::Oauth2(oauth2) => {
                 *oauth2.token.lock().await = None;

@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use super::build::{build, extent, path};
 use crate::Error;
-use crate::buckets::{Buckets, bucket_and_key};
+use crate::buckets::Buckets;
 use crate::runs::SharedRuns;
 use crate::services::Services;
 
@@ -115,8 +115,11 @@ impl BucketOrigin {
     }
 
     fn locate(&self, path: &str) -> Result<(ObjectStoreOrigin, String), OriginError> {
-        let (bucket, key) = bucket_and_key(path).ok_or(OriginError::NotFound)?;
-        let store = self.buckets.client(bucket).map_err(origin_error)?;
+        let (store, key) = self
+            .buckets
+            .locate(path)
+            .ok_or(OriginError::NotFound)?
+            .map_err(origin_error)?;
 
         Ok((ObjectStoreOrigin::new(store), key.to_string()))
     }

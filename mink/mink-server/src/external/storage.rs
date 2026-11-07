@@ -57,10 +57,10 @@ impl StorageFactory for S3StorageFactory {
 
 impl S3Storage {
     fn locate(&self, path: &str) -> Result<(Arc<dyn ObjectStore>, Path)> {
-        let (bucket, key) = bucket_and_key(path).ok_or_else(|| not_s3(path))?;
-        let store = self.buckets.client(bucket).map_err(failed)?;
-
-        Ok((store, key))
+        self.buckets
+            .locate(path)
+            .ok_or_else(|| not_s3(path))?
+            .map_err(failed)
     }
 }
 

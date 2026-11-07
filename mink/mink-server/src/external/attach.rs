@@ -11,95 +11,66 @@ use mink_core::{CatalogTable, ExternalLocation, ExternalTable, TierSchedule, Top
 use mink_iceberg::ExternalSnapshot;
 use mink_kafka::Pool;
 use mink_store::Store;
+use serde::Deserialize;
 
 use super::{Catalog, identifier};
 use crate::Error;
+use crate::warehouse::Warehouse;
 
 #[derive(Debug, Clone)]
 pub struct Attachment {
     pub topic: String,
     pub table: CatalogTable,
     pub schedule: TierSchedule,
-    pub source: Source,
+    pub source: TableSource,
 }
 
-#[derive(Debug, Clone)]
-pub enum Source {
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub enum TableSource {
+    #[serde(rename_all = "camelCase")]
     New {
         partitioning: Partitioning,
+        #[serde(default)]
         sort: Vec<SortTerm>,
+        #[serde(default)]
         properties: HashMap<String, String>,
         location: Option<String>,
     },
+    #[serde(rename_all = "camelCase")]
     Existing {
+        #[serde(default)]
         end_offsets: BTreeMap<i32, i64>,
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum Partitioning {
     Unpartitioned,
     Fields(Vec<Term>),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(try_from = "String")]
 pub struct Term {
     transform: Transform,
     column: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(try_from = "String")]
 pub struct SortTerm {
     term: Term,
     direction: SortDirection,
     null_order: NullOrder,
 }
 
-impl Source {
-    pub fn new(
-        existing: bool,
-        partition: Option<Vec<Term>>,
-        sort: Vec<SortTerm>,
-        properties: HashMap<String, String>,
-        location: Option<String>,
-        end_offsets: BTreeMap<i32, i64>,
-    ) -> Result<Source, Error> {
-        if existing {
-            let kept = [
-                ("partitioning", partition.is_some()),
-                ("sort order", !sort.is_empty()),
-                ("properties", !properties.is_empty()),
-                ("location", location.is_some()),
-            ];
-            return match kept.into_iter().find(|(_, given)| *given) {
-                Some((kept, _)) => Err(Error::ExistingTableKeeps(kept)),
-                None => Ok(Source::Existing { end_offsets }),
-            };
-        }
-
-        if !end_offsets.is_empty() {
-            return Err(Error::EndOffsetsOfNewTable);
-        }
-        let partitioning = match partition {
-            None => return Err(Error::PartitioningRequired),
-            Some(terms) if terms.is_empty() => Partitioning::Unpartitioned,
-            Some(terms) => Partitioning::Fields(terms),
-        };
-
-        Ok(Source::New {
-            partitioning,
-            sort,
-            properties,
-            location,
-        })
-    }
-}
-
 pub(crate) async fn attach(
     store: &Store,
     kafka: &Pool,
     catalog: &Catalog,
-    warehouse: &str,
+    warehouse: &Warehouse,
     attachment: Attachment,
 ) -> Result<ExternalTable, Error> {
     let topic = store
@@ -111,7 +82,7 @@ pub(crate) async fn attach(
 
     let identifier = identifier(&attachment.table);
     match &attachment.source {
-        Source::New {
+        TableSource::New {
             partitioning,
             sort,
             properties,
@@ -121,7 +92,7 @@ pub(crate) async fn attach(
             let spec = partition_spec(&schema, partitioning)?;
             let order = sort_order(&schema, sort)?;
             if let Some(location) = location {
-                external_location(warehouse, location)?;
+                external_location(warehouse.root(), location)?;
             }
 
             let table = catalog
@@ -151,7 +122,7 @@ pub(crate) async fn attach(
             }
             recorded
         }
-        Source::Existing { end_offsets } => {
+        TableSource::Existing { end_offsets } => {
             let table = iceberg::Catalog::load_table(catalog, &identifier).await?;
 
             record(
@@ -168,14 +139,10 @@ pub(crate) async fn attach(
     }
 }
 
-pub(crate) async fn detach(store: &Store, topic: &str) -> Result<(), Error> {
-    Ok(store.external_tables().detach(topic).await?)
-}
-
 async fn record(
     store: &Store,
     catalog: &Catalog,
-    warehouse: &str,
+    warehouse: &Warehouse,
     attachment: &Attachment,
     topic: &Topic,
     table: &IcebergTable,
@@ -186,7 +153,7 @@ async fn record(
     ExternalSnapshot::check(table, &schema, &specs).await?;
 
     let metadata = table.metadata();
-    let location = external_location(warehouse, metadata.location())?;
+    let location = external_location(warehouse.root(), metadata.location())?;
     let stored = mink_iceberg::end_offsets(table)?;
     let holds_data = metadata.current_snapshot().is_some();
     let offsets = chosen_end_offsets(topic, &stored, given, holds_data)?;
@@ -345,6 +312,22 @@ impl Term {
     }
 }
 
+impl TryFrom<String> for Term {
+    type Error = Error;
+
+    fn try_from(text: String) -> Result<Term, Error> {
+        text.parse()
+    }
+}
+
+impl TryFrom<String> for SortTerm {
+    type Error = Error;
+
+    fn try_from(text: String) -> Result<SortTerm, Error> {
+        text.parse()
+    }
+}
+
 impl FromStr for Term {
     type Err = Error;
 
@@ -452,28 +435,19 @@ mod tests {
     use super::*;
     use crate::testing::{Tiering, tiering, unattached};
 
-    fn unpartitioned(location: Option<String>) -> Source {
-        Source::new(
-            false,
-            Some(Vec::new()),
-            Vec::new(),
-            HashMap::new(),
+    fn unpartitioned(location: Option<String>) -> TableSource {
+        TableSource::New {
+            partitioning: Partitioning::Unpartitioned,
+            sort: Vec::new(),
+            properties: HashMap::new(),
             location,
-            BTreeMap::new(),
-        )
-        .unwrap()
+        }
     }
 
-    fn existing(end_offsets: &[(i32, i64)]) -> Source {
-        Source::new(
-            true,
-            None,
-            Vec::new(),
-            HashMap::new(),
-            None,
-            end_offsets.iter().copied().collect(),
-        )
-        .unwrap()
+    fn existing(end_offsets: &[(i32, i64)]) -> TableSource {
+        TableSource::Existing {
+            end_offsets: end_offsets.iter().copied().collect(),
+        }
     }
 
     fn named(attachment: Attachment, name: &str) -> Attachment {
@@ -531,45 +505,6 @@ mod tests {
         let table = CatalogTable::new("fixture", "mink", name);
 
         iceberg::Catalog::load_table(tiering.catalog.as_ref(), &identifier(&table)).await
-    }
-
-    #[test]
-    fn a_source_takes_only_the_options_of_its_kind() {
-        let new = |partition, end_offsets: &[(i32, i64)]| {
-            Source::new(
-                false,
-                partition,
-                Vec::new(),
-                HashMap::new(),
-                None,
-                end_offsets.iter().copied().collect(),
-            )
-        };
-        let existing_with_location = Source::new(
-            true,
-            None,
-            Vec::new(),
-            HashMap::new(),
-            Some("s3://b/t".to_owned()),
-            BTreeMap::new(),
-        );
-
-        assert!(matches!(new(None, &[]), Err(Error::PartitioningRequired)));
-        assert!(matches!(
-            new(Some(Vec::new()), &[]),
-            Ok(Source::New {
-                partitioning: Partitioning::Unpartitioned,
-                ..
-            })
-        ));
-        assert!(matches!(
-            new(Some(Vec::new()), &[(0, 1)]),
-            Err(Error::EndOffsetsOfNewTable)
-        ));
-        assert!(matches!(
-            existing_with_location,
-            Err(Error::ExistingTableKeeps("location"))
-        ));
     }
 
     #[tokio::test]
@@ -771,7 +706,11 @@ mod tests {
         tiering.index_and_commit(&[1]).await;
         tiering.tier().await.tick().await.unwrap();
 
-        detach(&tiering.services.store, tiering.topic.name())
+        tiering
+            .services
+            .store
+            .external_tables()
+            .detach(tiering.topic.name())
             .await
             .unwrap();
         ticked_twice().await;
@@ -789,7 +728,11 @@ mod tests {
         };
         tiering.index_and_commit(&[3]).await;
         let mut stale = tiering.tier().await;
-        detach(&tiering.services.store, tiering.topic.name())
+        tiering
+            .services
+            .store
+            .external_tables()
+            .detach(tiering.topic.name())
             .await
             .unwrap();
         let second = format!("{}_second", tiering.topic.name());

@@ -25,8 +25,8 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tokio::sync::OnceCell;
 
-pub use attach::{Attachment, Partitioning, SortTerm, Source, Term};
-pub(crate) use attach::{attach, detach};
+pub(crate) use attach::attach;
+pub use attach::{Attachment, Partitioning, SortTerm, TableSource, Term};
 use auth::Authorizer;
 use storage::S3StorageFactory;
 
@@ -251,7 +251,7 @@ impl Catalog {
         missing: ErrorKind,
     ) -> Result<(StatusCode, bytes::Bytes)> {
         let mut response = self.attempt(&method, &url, body.clone()).await?;
-        if response.status() == StatusCode::UNAUTHORIZED && self.authorizer.renew().await {
+        if response.status() == StatusCode::UNAUTHORIZED && self.authorizer.invalidate().await {
             response = self.attempt(&method, &url, body).await?;
         }
 

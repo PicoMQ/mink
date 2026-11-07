@@ -245,10 +245,6 @@ impl Default for Config {
 }
 
 impl Config {
-    pub(crate) fn warehouse_root(&self) -> &str {
-        self.warehouse.trim_end_matches('/')
-    }
-
     pub fn load(file: Option<&Path>) -> Result<Config, ConfigError> {
         let mut figment = Figment::from(Serialized::defaults(Config::default()));
         if let Some(file) = file {
@@ -448,6 +444,10 @@ pub fn parse_granularity(text: &str) -> Result<Granularity, ConfigError> {
     Granularity::from_name(text).ok_or_else(|| ConfigError::Granularity(text.to_owned()))
 }
 
+pub(crate) fn format_duration(duration: Duration) -> String {
+    duration::format(duration)
+}
+
 pub fn parse_duration(text: &str) -> Result<Duration, ConfigError> {
     duration::parse(text).ok_or_else(|| ConfigError::Duration(text.to_owned()))
 }
@@ -508,6 +508,10 @@ mod duration {
         duration: &Duration,
         serializer: S,
     ) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&format(*duration))
+    }
+
+    pub(super) fn format(duration: Duration) -> String {
         let millis = u64::try_from(duration.as_millis()).unwrap_or(u64::MAX);
         let (unit, size) = UNITS
             .iter()
@@ -515,7 +519,7 @@ mod duration {
             .find(|(_, size)| millis % size == 0)
             .unwrap_or(&UNITS[0]);
 
-        serializer.serialize_str(&format!("{}{unit}", millis / size))
+        format!("{}{unit}", millis / size)
     }
 
     pub(super) fn deserialize<'de, D: Deserializer<'de>>(

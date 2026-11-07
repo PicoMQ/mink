@@ -48,6 +48,8 @@ impl Admin {
         if let Some(cache) = &self.cache {
             self.services.metrics.cache_size(cache.usage().memory_bytes);
         }
+        let lag = self.services.tier_lags.lag(mink_core::now_ms());
+        self.services.metrics.tier_lag(lag);
 
         self.services.metrics.render()
     }
