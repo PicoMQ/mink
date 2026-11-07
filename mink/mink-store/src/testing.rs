@@ -36,7 +36,7 @@ pub(crate) async fn partition_lease(
     index: i32,
     holder: Uuid,
 ) -> Lease {
-    let scope = Scope::Partition(Partition::new(topic.name(), index).unwrap());
+    let scope = Scope::Indexer(Partition::new(topic.name(), index).unwrap());
 
     store
         .leases()
@@ -47,7 +47,7 @@ pub(crate) async fn partition_lease(
 }
 
 pub(crate) async fn topic_lease(store: &Store, topic: &Topic, holder: Uuid) -> Lease {
-    let scope = Scope::Topic(topic.name().to_owned());
+    let scope = Scope::Writer(topic.name().to_owned());
 
     store
         .leases()

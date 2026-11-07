@@ -19,7 +19,7 @@ use mink_core::{File, Partition, Scope};
 use sqlx::PgPool;
 use sqlx::migrate::MigrateError;
 
-pub use external::{ExternalTables, ServedLocation};
+pub use external::{ExternalTables, ListedLocation};
 pub use files::{Files, StoredFile, built_bytes, parse_built};
 pub use leases::{Lease, LeaseHolder, Leases};
 pub use members::Members;

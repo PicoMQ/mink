@@ -51,7 +51,7 @@ mod tests {
             )
             .await
             .unwrap();
-        let scope = Scope::Topic(topic.name().to_owned());
+        let scope = Scope::Writer(topic.name().to_owned());
         let lease = services
             .store
             .leases()

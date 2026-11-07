@@ -570,7 +570,7 @@ async fn metrics_move_with_the_work_they_count() {
     );
     assert_eq!(metric(&text, r#"mink_builds_total{result="ok"}"#), 1);
     assert!(metric(&text, "mink_cache_bytes") > 0);
-    assert!(metric(&text, r#"mink_leases{scope="partition"}"#) >= 1);
+    assert!(metric(&text, r#"mink_leases{worker="indexer"}"#) >= 1);
 }
 
 #[tokio::test]

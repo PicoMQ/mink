@@ -15,12 +15,10 @@ mod time;
 mod topic;
 
 pub use error::Error;
-pub use external::{
-    CatalogTable, ExternalTable, MAX_GENERATION, TierSchedule, locations_holding, locations_overlap,
-};
+pub use external::{CatalogTable, ExternalTable, MAX_GENERATION, TierSchedule};
 pub use file::{Assembly, AssemblyHash, BuiltFile, File, FileVersion, IndexedFile, Span, Stats};
 pub use granularity::{Granularity, TimePartition, TimeSpec, TimeSpecs, utc_day};
-pub use location::TableLocation;
+pub use location::{ExternalLocation, TableLocation};
 pub use member::{Member, Role};
 pub use object::{Object, ObjectKind};
 pub use offsets::{OffsetRange, Offsets};

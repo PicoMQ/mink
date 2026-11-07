@@ -139,9 +139,9 @@ mink_admin_requests_total{status="2xx"} 0
 mink_admin_requests_total{status="4xx"} 0
 mink_admin_requests_total{status="5xx"} 0
 # TYPE mink_leases gauge
-mink_leases{scope="partition"} 0
-mink_leases{scope="topic"} 0
-mink_leases{scope="tier"} 0
+mink_leases{worker="indexer"} 0
+mink_leases{worker="writer"} 0
+mink_leases{worker="tier"} 0
 # TYPE mink_cache_bytes gauge
 mink_cache_bytes 0
 # TYPE mink_tier_gaps_total counter

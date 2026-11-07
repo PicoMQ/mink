@@ -12,7 +12,7 @@ pub(crate) use http::router;
 mod tests {
     use bytes::Bytes;
     use mink_core::{
-        BuiltFile, CatalogTable, DaySketches, ExternalTable, File, Granularity, IndexedFile,
+        BuiltFile, CatalogTable, DaySketches, ExternalLocation, File, Granularity, IndexedFile,
         Member, Offsets, Partition, Span, Stats, TableLocation, TierSchedule, TimePartition, Topic,
     };
     use mink_iceberg::FileSchema;
@@ -710,19 +710,17 @@ mod tests {
     async fn external_location(node: &crate::Node) -> String {
         let topic = registered(&node.services, 1).await;
         let location = format!("s3://mink/external/{}", topic.name());
-        let table = ExternalTable::new(
-            topic.name(),
-            CatalogTable::new("rest", "kafka", topic.name()),
-            Uuid::new_v4(),
-            &location,
-            TierSchedule::default(),
-            1,
-        )
-        .unwrap();
         node.services
             .store
             .external_tables()
-            .add(&table, &std::collections::BTreeMap::new())
+            .attach(
+                topic.name(),
+                CatalogTable::new("rest", "kafka", topic.name()),
+                Uuid::new_v4(),
+                ExternalLocation::parse(&location).unwrap(),
+                TierSchedule::default(),
+                &std::collections::BTreeMap::new(),
+            )
             .await
             .unwrap();
 
@@ -769,7 +767,7 @@ mod tests {
         node.services
             .store
             .external_tables()
-            .remove(topic)
+            .detach(topic)
             .await
             .unwrap();
         let detached = get(node, &detached_path, None).await;

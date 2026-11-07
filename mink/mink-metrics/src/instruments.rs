@@ -2,7 +2,7 @@ use std::sync::atomic::AtomicU64;
 
 use crate::histogram::Histogram;
 use crate::labels::{
-    Answer, Forward, Method, Object, Outcome, Request, Route, Scope, Source, Status, Worker,
+    Answer, Forward, Method, Object, Outcome, Request, Route, Source, Status, Worker,
 };
 
 #[derive(Default)]
@@ -29,7 +29,7 @@ pub(crate) struct Instruments {
     pub(crate) registry_requests: [AtomicU64; Answer::ALL.len()],
     pub(crate) worker_failures: [AtomicU64; Worker::ALL.len()],
     pub(crate) admin_requests: [AtomicU64; Status::ALL.len()],
-    pub(crate) leases: [AtomicU64; Scope::ALL.len()],
+    pub(crate) leases: [AtomicU64; Worker::ALL.len()],
     pub(crate) cache_bytes: AtomicU64,
     pub(crate) tier_gaps: AtomicU64,
     pub(crate) tier_skipped_offsets: AtomicU64,

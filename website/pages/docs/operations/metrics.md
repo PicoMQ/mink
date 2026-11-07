@@ -26,7 +26,7 @@ Scrape every node. Each counts only its own work. Label values come from fixed s
 | `mink_snapshots_expired_total` | counter | | Snapshots expired |
 | `mink_objects_collected_total` | counter | | Metadata objects deleted |
 | `mink_worker_failures_total` | counter | `worker`: `indexer`, `writer`, `tier` | Workers that ended with an error. `tier` also counts failed tier commits. |
-| `mink_leases` | gauge | `scope`: `partition`, `topic`, `tier` | Leases this node holds |
+| `mink_leases` | gauge | `worker`: `indexer`, `writer`, `tier` | Leases this node holds, by the worker that holds them |
 
 ## Reads
 

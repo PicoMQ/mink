@@ -111,7 +111,7 @@ mod tests {
     use std::time::Duration;
 
     use mink_core::{
-        CatalogTable, ExternalTable, Granularity, Offsets, Partition, Scope, Span, Stats,
+        CatalogTable, ExternalLocation, Granularity, Offsets, Partition, Scope, Span, Stats,
         TierSchedule, TieredRange,
     };
     use uuid::Uuid;
@@ -210,18 +210,16 @@ mod tests {
             .unwrap()
             .unwrap();
         let offsets = Offsets::new(partition, 0, 10).unwrap();
-        let external = ExternalTable::new(
-            setup.topic.name(),
-            CatalogTable::new("rest", "kafka", setup.topic.name()),
-            Uuid::new_v4(),
-            &format!("s3://b/{}", setup.topic.name()),
-            TierSchedule::default(),
-            1,
-        )
-        .unwrap();
         store
             .external_tables()
-            .add(&external, &BTreeMap::new())
+            .attach(
+                setup.topic.name(),
+                CatalogTable::new("rest", "kafka", setup.topic.name()),
+                Uuid::new_v4(),
+                ExternalLocation::parse(&format!("s3://b/{}", setup.topic.name())).unwrap(),
+                TierSchedule::default(),
+                &BTreeMap::new(),
+            )
             .await
             .unwrap();
         store

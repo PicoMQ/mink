@@ -48,7 +48,7 @@ pub(super) fn external_json(external: &ExternalTable) -> Value {
         "namespace": table.namespace(),
         "name": table.name(),
         "uuid": external.uuid(),
-        "location": external.location(),
+        "location": external.location().path(),
         "generation": external.generation(),
         "tierAfterMs": external.schedule().after().as_millis(),
         "tierIntervalMs": external.schedule().interval().as_millis(),

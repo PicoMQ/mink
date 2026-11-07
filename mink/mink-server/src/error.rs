@@ -77,8 +77,6 @@ pub enum Error {
         retention: std::time::Duration,
         needed: std::time::Duration,
     },
-    #[error("location {0} is not a path inside an s3:// bucket")]
-    UnsupportedLocation(String),
     #[error("location {0} overlaps Mink's warehouse")]
     LocationInWarehouse(String),
     #[error("the end offsets given for {0} differ from those its table already has")]

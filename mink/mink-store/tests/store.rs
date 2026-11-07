@@ -89,7 +89,7 @@ async fn connect_creates_every_table() {
             "snapshot",
             "snapshot_offsets",
             "table_schema",
-            "tiered_offsets",
+            "tiered_end",
             "tiered_range",
             "time_spec",
             "topic",
@@ -188,13 +188,13 @@ async fn each_scope_of_a_partition_or_a_topic_has_at_most_one_lease() {
         .execute(&pool)
     };
 
-    assert!(lease("partition", Some(0), first).await.is_ok());
-    assert!(lease("partition", Some(0), second).await.is_err());
+    assert!(lease("indexer", Some(0), first).await.is_ok());
+    assert!(lease("indexer", Some(0), second).await.is_err());
     assert!(lease("tier", Some(0), second).await.is_ok());
     assert!(lease("tier", Some(0), first).await.is_err());
-    assert!(lease("topic", None, first).await.is_ok());
-    assert!(lease("topic", None, second).await.is_err());
-    assert!(lease("topic", Some(1), first).await.is_err());
+    assert!(lease("writer", None, first).await.is_ok());
+    assert!(lease("writer", None, second).await.is_err());
+    assert!(lease("writer", Some(1), first).await.is_err());
 }
 
 #[tokio::test]
@@ -209,9 +209,9 @@ async fn deleting_a_topic_deletes_what_references_it() {
         "INSERT INTO snapshot_offsets (topic, snapshot_id, partition, start_offset, end_offset) \
          VALUES ($1, 1, 0, 0, 10)",
         "INSERT INTO lease (topic, partition, scope, holder, epoch, expires_at_ms) \
-         VALUES ($1, 0, 'partition', gen_random_uuid(), 1, 0)",
+         VALUES ($1, 0, 'indexer', gen_random_uuid(), 1, 0)",
         "INSERT INTO lease (topic, partition, scope, holder, epoch, expires_at_ms) \
-         VALUES ($1, NULL, 'topic', gen_random_uuid(), 1, 0)",
+         VALUES ($1, NULL, 'writer', gen_random_uuid(), 1, 0)",
         "INSERT INTO object (topic, path, kind) VALUES ($1, 'x', 'manifest')",
         "INSERT INTO sketch (topic, day, field_id, sketch) VALUES ($1, 0, 2, '\\x00')",
         "INSERT INTO external_table \
@@ -220,7 +220,7 @@ async fn deleting_a_topic_deletes_what_references_it() {
         "INSERT INTO tiered_range \
          (topic, generation, partition, start_offset, end_offset, spec_id, encoded_data_files) \
          VALUES ($1, 1, 0, 0, 10, 0, '{}')",
-        "INSERT INTO tiered_offsets (topic, generation, partition, end_offset) VALUES ($1, 1, 0, 10)",
+        "INSERT INTO tiered_end (topic, generation, partition, end_offset) VALUES ($1, 1, 0, 10)",
         "INSERT INTO listed_location (topic, generation, uuid, location) \
          VALUES ($1, 1, gen_random_uuid(), 's3://b/t')",
     ] {
@@ -248,7 +248,7 @@ async fn deleting_a_topic_deletes_what_references_it() {
          UNION ALL SELECT count(*) FROM sketch WHERE topic = $1 \
          UNION ALL SELECT count(*) FROM external_table WHERE topic = $1 \
          UNION ALL SELECT count(*) FROM tiered_range WHERE topic = $1 \
-         UNION ALL SELECT count(*) FROM tiered_offsets WHERE topic = $1 \
+         UNION ALL SELECT count(*) FROM tiered_end WHERE topic = $1 \
          UNION ALL SELECT count(*) FROM listed_location WHERE topic = $1",
     )
     .bind(&topic)

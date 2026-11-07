@@ -357,7 +357,7 @@ mod tests {
         }
 
         pub(super) async fn writer(&self, holder: Uuid, ttl: Duration) -> Writer {
-            let scope = Scope::Topic(self.topic.name().to_owned());
+            let scope = Scope::Writer(self.topic.name().to_owned());
             let lease = self
                 .services
                 .store

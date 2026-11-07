@@ -8,7 +8,7 @@ use axum::http::{HeaderValue, Method};
 use bytes::Bytes;
 use futures::stream::{self, BoxStream};
 use futures::{StreamExt, TryStreamExt};
-use mink_core::{BuiltFile, File, locations_holding};
+use mink_core::{BuiltFile, ExternalLocation, File};
 use mink_iceberg::Slice;
 use mink_metrics::{Forward, Metrics};
 use nestor::{ReadRange, ReadStream};
@@ -268,11 +268,11 @@ impl Reader {
                 (vec![topic], topic_table(store, topic).await)
             }
             Object::External => {
-                let serving = store.external_tables().serving(key.path()).await;
-                let found = serving.map(|served| {
-                    served.map(|served| (served.location().to_owned(), served.uuid()))
+                let listed = store.external_tables().listed(key.path()).await;
+                let found = listed.map(|listed| {
+                    listed.map(|listed| (listed.location().to_owned(), listed.uuid()))
                 });
-                (locations_holding(key.path()), found)
+                (ExternalLocation::holding(key.path()), found)
             }
         };
 

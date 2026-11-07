@@ -7,7 +7,7 @@ use iceberg::spec::{
 };
 use iceberg::table::Table;
 use iceberg::{TableRequirement, TableUpdate};
-use mink_core::{CatalogTable, ExternalTable, TierSchedule, Topic, locations_overlap};
+use mink_core::{CatalogTable, ExternalLocation, ExternalTable, TierSchedule, Topic};
 use mink_iceberg::{ExternalSnapshot, end_offset_key, end_offsets, last_time_field_id};
 use mink_kafka::Pool;
 use mink_store::Store;
@@ -121,7 +121,7 @@ pub(crate) async fn attach(
             let spec = partition_spec(&schema, partitioning)?;
             let order = sort_order(&schema, sort)?;
             if let Some(location) = location {
-                check_location(warehouse, location)?;
+                external_location(warehouse, location)?;
             }
 
             let table = catalog
@@ -134,7 +134,7 @@ pub(crate) async fn attach(
                     location.clone(),
                 )
                 .await?;
-            let registered = register(
+            let recorded = record(
                 store,
                 catalog,
                 warehouse,
@@ -144,17 +144,17 @@ pub(crate) async fn attach(
                 &BTreeMap::new(),
             )
             .await;
-            if registered.is_err()
+            if recorded.is_err()
                 && let Err(error) = iceberg::Catalog::drop_table(catalog, &identifier).await
             {
                 tracing::warn!(topic = topic.name(), %error, "a table created for an attach that failed was not dropped");
             }
-            registered
+            recorded
         }
         Source::Existing { end_offsets } => {
             let table = iceberg::Catalog::load_table(catalog, &identifier).await?;
 
-            register(
+            record(
                 store,
                 catalog,
                 warehouse,
@@ -169,10 +169,10 @@ pub(crate) async fn attach(
 }
 
 pub(crate) async fn detach(store: &Store, topic: &str) -> Result<(), Error> {
-    Ok(store.external_tables().remove(topic).await?)
+    Ok(store.external_tables().detach(topic).await?)
 }
 
-async fn register(
+async fn record(
     store: &Store,
     catalog: &Catalog,
     warehouse: &str,
@@ -186,24 +186,22 @@ async fn register(
     ExternalSnapshot::check(table, &schema, &specs).await?;
 
     let metadata = table.metadata();
-    check_location(warehouse, metadata.location())?;
+    let location = external_location(warehouse, metadata.location())?;
     let stored = end_offsets(metadata.properties())?;
     let holds_data = metadata.current_snapshot().is_some();
     let offsets = chosen_end_offsets(topic, &stored, given, holds_data)?;
 
-    let generation = store
-        .topics()
-        .next_external_generation(topic.name())
+    let external = store
+        .external_tables()
+        .attach(
+            topic.name(),
+            attachment.table.clone(),
+            metadata.uuid(),
+            location,
+            attachment.schedule,
+            &offsets,
+        )
         .await?;
-    let external = ExternalTable::new(
-        topic.name(),
-        attachment.table.clone(),
-        metadata.uuid(),
-        metadata.location(),
-        attachment.schedule,
-        generation,
-    )?;
-    store.external_tables().add(&external, &offsets).await?;
 
     if stored.is_empty() && !offsets.is_empty() {
         let updates = offsets
@@ -221,7 +219,7 @@ async fn register(
             .await;
 
         if let Err(error) = written {
-            store.external_tables().remove(topic.name()).await?;
+            store.external_tables().detach(topic.name()).await?;
             return Err(error.into());
         }
     }
@@ -273,18 +271,13 @@ async fn check_retention(kafka: &Pool, topic: &str, schedule: TierSchedule) -> R
     }
 }
 
-fn check_location(warehouse: &str, location: &str) -> Result<(), Error> {
-    let under_bucket = location
-        .strip_prefix("s3://")
-        .is_some_and(|path| path.trim_end_matches('/').contains('/'));
-    if !under_bucket {
-        return Err(Error::UnsupportedLocation(location.to_owned()));
-    }
-    if locations_overlap(warehouse, location) {
-        return Err(Error::LocationInWarehouse(location.to_owned()));
+fn external_location(warehouse: &str, location: &str) -> Result<ExternalLocation, Error> {
+    let location = ExternalLocation::parse(location)?;
+    if location.overlaps(warehouse) {
+        return Err(Error::LocationInWarehouse(location.path().to_owned()));
     }
 
-    Ok(())
+    Ok(location)
 }
 
 fn partition_spec(
@@ -623,7 +616,7 @@ mod tests {
             SortDirection::Descending
         );
         assert_eq!(registered.uuid(), metadata.uuid());
-        assert_eq!(registered.location(), metadata.location());
+        assert_eq!(registered.location().path(), metadata.location());
         assert_eq!(registered.generation(), 1);
         assert!(
             matches!(
@@ -694,7 +687,7 @@ mod tests {
             .services
             .store
             .tiered_ranges()
-            .committed(tiering.topic.name())
+            .settled(tiering.topic.name())
             .await
             .unwrap();
         assert!(
@@ -840,18 +833,13 @@ mod tests {
     fn a_location_is_a_path_in_a_bucket_outside_the_warehouse() {
         let warehouse = "s3://mink/warehouse";
 
-        assert!(check_location(warehouse, "s3://lake/orders").is_ok());
-        for location in ["s3://lake", "s3://lake/", "gs://lake/orders"] {
-            assert!(
-                matches!(
-                    check_location(warehouse, location),
-                    Err(Error::UnsupportedLocation(_))
-                ),
-                "{location}"
-            );
-        }
+        assert!(external_location(warehouse, "s3://lake/orders").is_ok());
         assert!(matches!(
-            check_location(warehouse, "s3://mink/warehouse/orders"),
+            external_location(warehouse, "s3://lake"),
+            Err(Error::Core(mink_core::Error::ExternalLocation(_)))
+        ));
+        assert!(matches!(
+            external_location(warehouse, "s3://mink/warehouse/orders"),
             Err(Error::LocationInWarehouse(_))
         ));
     }

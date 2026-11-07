@@ -67,13 +67,6 @@ pub enum Worker {
     Tier,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Scope {
-    Partition,
-    Topic,
-    Tier,
-}
-
 impl Source {
     pub(crate) const ALL: [Source; 2] = [Source::Live, Source::Backfill];
 
@@ -215,18 +208,6 @@ impl Worker {
             Worker::Indexer => "indexer",
             Worker::Writer => "writer",
             Worker::Tier => "tier",
-        }
-    }
-}
-
-impl Scope {
-    pub(crate) const ALL: [Scope; 3] = [Scope::Partition, Scope::Topic, Scope::Tier];
-
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Scope::Partition => "partition",
-            Scope::Topic => "topic",
-            Scope::Tier => "tier",
         }
     }
 }

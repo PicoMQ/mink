@@ -95,7 +95,7 @@ impl<'a> Files<'a> {
         files: &[BuiltFile],
         sketches: &DaySketches,
     ) -> Result<Offsets, Error> {
-        let partition = lease.require_partition()?;
+        let partition = lease.require_indexer()?;
         let mut files = files.to_vec();
         files.sort_by_key(|built| {
             let file = built.indexed().file();
@@ -696,7 +696,7 @@ mod tests {
         store.indexed_ranges().start(&lease, 0).await.unwrap();
         let snapshots = store
             .leases()
-            .acquire(&Scope::Topic(topic.name().to_owned()), WRITER, TTL)
+            .acquire(&Scope::Writer(topic.name().to_owned()), WRITER, TTL)
             .await
             .unwrap()
             .unwrap();

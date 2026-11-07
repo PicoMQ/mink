@@ -58,7 +58,7 @@ async fn partitions(
         };
         let held = leases
             .iter()
-            .find(|held| matches!(held.scope(), Scope::Partition(leased) if *leased == partition));
+            .find(|held| matches!(held.scope(), Scope::Indexer(leased) if *leased == partition));
 
         let item = json!({
             "index": index,

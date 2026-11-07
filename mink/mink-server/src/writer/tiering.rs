@@ -46,7 +46,7 @@ impl Writer {
                     .collect();
                 store
                     .tiered_ranges()
-                    .commit(&self.lease, external.generation(), &ends)
+                    .settle(&self.lease, external.generation(), &ends)
                     .await?;
                 committed
             }
@@ -93,7 +93,7 @@ impl Writer {
         let ranges = self.services.store.tiered_ranges();
 
         let found = end_offsets(table.metadata().properties())?;
-        let committed = ranges.committed(topic).await?;
+        let committed = ranges.settled(topic).await?;
         for (partition, stored) in &committed {
             if found.get(partition).is_none_or(|found| found < stored) {
                 return Err(Error::ExternalProgressLost(topic.to_owned()));
@@ -105,7 +105,7 @@ impl Writer {
             .filter(|(partition, end)| committed.get(partition) != Some(end))
             .collect();
         if !landed.is_empty() {
-            ranges.commit(&self.lease, generation, &landed).await?;
+            ranges.settle(&self.lease, generation, &landed).await?;
         }
 
         Ok(())
@@ -237,7 +237,7 @@ mod tests {
     use iceberg::transaction::{ApplyTransactionAction, Transaction};
     use iceberg::{Catalog as _, ErrorKind, Runtime, TableIdent, TableUpdate};
     use mink_core::{
-        CatalogTable, ExternalTable, Offsets, Partition, Record, Scope, Snapshot, TableLocation,
+        CatalogTable, ExternalLocation, Offsets, Partition, Record, Scope, Snapshot, TableLocation,
         TierSchedule, TieredRange,
     };
     use mink_iceberg::{FileSchema, end_offset_key, last_time_field_id};
@@ -419,7 +419,7 @@ mod tests {
         assert_eq!(table.metadata().properties()[&end_offset_key(0)], "6");
         assert_eq!(rows(&table).await, 6);
         assert_eq!(
-            ranges.committed(tiering.topic.name()).await.unwrap(),
+            ranges.settled(tiering.topic.name()).await.unwrap(),
             BTreeMap::from([(0, 6)])
         );
         assert!(ranges.list(tiering.topic.name()).await.unwrap().is_empty());
@@ -447,7 +447,7 @@ mod tests {
                 .services
                 .store
                 .tiered_ranges()
-                .committed(tiering.topic.name())
+                .settled(tiering.topic.name())
                 .await
                 .unwrap(),
             BTreeMap::from([(0, 6)])
@@ -537,23 +537,21 @@ mod tests {
             )
             .await
             .unwrap();
-        let external = ExternalTable::new(
-            other.name(),
-            CatalogTable::new("fixture", "mink", other.name()),
-            Uuid::new_v4(),
-            created.metadata().location(),
-            TierSchedule::default(),
-            1,
-        )
-        .unwrap();
         tiering
             .services
             .store
             .external_tables()
-            .add(&external, &BTreeMap::new())
+            .attach(
+                other.name(),
+                CatalogTable::new("fixture", "mink", other.name()),
+                Uuid::new_v4(),
+                ExternalLocation::parse(created.metadata().location()).unwrap(),
+                TierSchedule::default(),
+                &BTreeMap::new(),
+            )
             .await
             .unwrap();
-        let scope = Scope::Topic(other.name().to_owned());
+        let scope = Scope::Writer(other.name().to_owned());
         let lease = tiering
             .services
             .store

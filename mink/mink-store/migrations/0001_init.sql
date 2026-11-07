@@ -68,7 +68,7 @@ CREATE TABLE tiered_range (
     CHECK (0 <= start_offset AND start_offset < end_offset)
 );
 
-CREATE TABLE tiered_offsets (
+CREATE TABLE tiered_end (
     topic TEXT NOT NULL,
     generation INTEGER NOT NULL,
     partition INTEGER NOT NULL CHECK (partition >= 0),
@@ -137,12 +137,12 @@ CREATE TABLE member (
 CREATE TABLE lease (
     topic TEXT NOT NULL REFERENCES topic (name) ON DELETE CASCADE,
     partition INTEGER CHECK (partition >= 0),
-    scope TEXT NOT NULL CHECK (scope IN ('partition', 'topic', 'tier')),
+    scope TEXT NOT NULL CHECK (scope IN ('indexer', 'writer', 'tier')),
     holder UUID NOT NULL,
     epoch BIGINT NOT NULL,
     expires_at_ms BIGINT NOT NULL,
     UNIQUE NULLS NOT DISTINCT (topic, partition, scope),
-    CHECK ((scope = 'topic') = (partition IS NULL))
+    CHECK ((scope = 'writer') = (partition IS NULL))
 );
 
 CREATE TABLE object (

@@ -25,7 +25,7 @@ impl<'a> Snapshots<'a> {
         released: &[Object],
         assembled: &[Assembly],
     ) -> Result<(), Error> {
-        let topic = lease.require_topic()?;
+        let topic = lease.require_writer()?;
         if snapshot.topic() != topic {
             return Err(Error::LeaseScope(lease.scope().clone()));
         }
@@ -60,7 +60,7 @@ impl<'a> Snapshots<'a> {
     }
 
     pub async fn expire(&self, lease: &Lease, through_id: i64) -> Result<u64, Error> {
-        let topic = lease.require_topic()?;
+        let topic = lease.require_writer()?;
         let mut transaction = self.pool.begin().await?;
         check(&mut transaction, lease).await?;
 
@@ -572,7 +572,7 @@ mod tests {
         };
         let topic = testing::topic(&store, 1).await;
         testing::started(&store, &topic).await;
-        let scope = Scope::Topic(topic.name().to_owned());
+        let scope = Scope::Writer(topic.name().to_owned());
         let stale = store
             .leases()
             .acquire(&scope, WRITER, Duration::ZERO)
@@ -922,7 +922,7 @@ mod tests {
     async fn run(store: &Store, steps: &[Step]) {
         let topic = testing::topic(store, 1).await;
         let indexer = testing::started(store, &topic).await.remove(0);
-        let scope = Scope::Topic(topic.name().to_owned());
+        let scope = Scope::Writer(topic.name().to_owned());
         let first = store
             .leases()
             .acquire(&scope, Uuid::from_u128(0), TTL)

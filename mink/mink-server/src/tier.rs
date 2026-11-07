@@ -325,7 +325,7 @@ mod tests {
             .collect();
         assert_eq!(spans, [(3, 6)]);
         assert_eq!(
-            ranges.committed(tiering.topic.name()).await.unwrap(),
+            ranges.settled(tiering.topic.name()).await.unwrap(),
             std::collections::BTreeMap::from([(0, 3)])
         );
     }

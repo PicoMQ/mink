@@ -109,20 +109,6 @@ impl<'a> Topics<'a> {
         Ok(())
     }
 
-    pub async fn next_external_generation(&self, name: &str) -> Result<i32, Error> {
-        let generation: Option<i32> = sqlx::query_scalar(
-            "UPDATE topic SET external_generation = external_generation + 1 WHERE name = $1 \
-             RETURNING external_generation",
-        )
-        .bind(name)
-        .fetch_optional(self.pool)
-        .await?;
-
-        generation.ok_or_else(|| Error::NoTable {
-            topic: name.to_owned(),
-        })
-    }
-
     pub async fn removable(&self, after: Duration) -> Result<Vec<String>, Error> {
         let names = sqlx::query_scalar(
             "SELECT name FROM topic WHERE state = 'removing' AND removing_at_ms <= now_ms() - $1 \

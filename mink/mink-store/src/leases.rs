@@ -34,24 +34,24 @@ impl Lease {
         self.epoch
     }
 
-    pub(crate) fn require_partition(&self) -> Result<&Partition, Error> {
+    pub(crate) fn require_indexer(&self) -> Result<&Partition, Error> {
         match &self.scope {
-            Scope::Partition(partition) => Ok(partition),
-            Scope::Topic(_) | Scope::Tier(_) => Err(Error::LeaseScope(self.scope.clone())),
+            Scope::Indexer(partition) => Ok(partition),
+            Scope::Writer(_) | Scope::Tier(_) => Err(Error::LeaseScope(self.scope.clone())),
         }
     }
 
     pub(crate) fn require_tier(&self) -> Result<&Partition, Error> {
         match &self.scope {
             Scope::Tier(partition) => Ok(partition),
-            Scope::Partition(_) | Scope::Topic(_) => Err(Error::LeaseScope(self.scope.clone())),
+            Scope::Indexer(_) | Scope::Writer(_) => Err(Error::LeaseScope(self.scope.clone())),
         }
     }
 
-    pub(crate) fn require_topic(&self) -> Result<&str, Error> {
+    pub(crate) fn require_writer(&self) -> Result<&str, Error> {
         match &self.scope {
-            Scope::Topic(topic) => Ok(topic),
-            Scope::Partition(_) | Scope::Tier(_) => Err(Error::LeaseScope(self.scope.clone())),
+            Scope::Writer(topic) => Ok(topic),
+            Scope::Indexer(_) | Scope::Tier(_) => Err(Error::LeaseScope(self.scope.clone())),
         }
     }
 }
@@ -238,7 +238,7 @@ mod tests {
 
         let index = store
             .leases()
-            .acquire(&Scope::Partition(partition.clone()), FIRST, TTL)
+            .acquire(&Scope::Indexer(partition.clone()), FIRST, TTL)
             .await
             .unwrap();
         let tier = store
@@ -259,8 +259,8 @@ mod tests {
             return;
         };
         let topic = testing::topic(&store, 1).await;
-        let partition = Scope::Partition(Partition::new(topic.name(), 0).unwrap());
-        let whole = Scope::Topic(topic.name().to_owned());
+        let partition = Scope::Indexer(Partition::new(topic.name(), 0).unwrap());
+        let whole = Scope::Writer(topic.name().to_owned());
 
         let first = store
             .leases()
@@ -291,7 +291,7 @@ mod tests {
             return;
         };
         let topic = testing::topic(&store, 1).await;
-        let scope = Scope::Topic(topic.name().to_owned());
+        let scope = Scope::Writer(topic.name().to_owned());
 
         store
             .leases()
@@ -311,7 +311,7 @@ mod tests {
             return;
         };
         let topic = testing::topic(&store, 1).await;
-        let scope = Scope::Partition(Partition::new(topic.name(), 0).unwrap());
+        let scope = Scope::Indexer(Partition::new(topic.name(), 0).unwrap());
         let stalled = store
             .leases()
             .acquire(&scope, FIRST, Duration::ZERO)
@@ -339,7 +339,7 @@ mod tests {
             return;
         };
         let topic = testing::topic(&store, 1).await;
-        let scope = Scope::Partition(Partition::new(topic.name(), 0).unwrap());
+        let scope = Scope::Indexer(Partition::new(topic.name(), 0).unwrap());
         let stale = store
             .leases()
             .acquire(&scope, FIRST, Duration::ZERO)
@@ -370,8 +370,8 @@ mod tests {
         };
         let topic = testing::topic(&store, 2).await;
         let (held, free) = (
-            Scope::Partition(Partition::new(topic.name(), 0).unwrap()),
-            Scope::Partition(Partition::new(topic.name(), 1).unwrap()),
+            Scope::Indexer(Partition::new(topic.name(), 0).unwrap()),
+            Scope::Indexer(Partition::new(topic.name(), 1).unwrap()),
         );
         let lease = store
             .leases()

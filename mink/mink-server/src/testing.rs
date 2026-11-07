@@ -108,7 +108,7 @@ pub(crate) async fn registered(services: &Services, partitions: i32) -> Topic {
 }
 
 pub(crate) async fn partition_lease(services: &Services, topic: &Topic, index: i32) -> Lease {
-    let scope = Scope::Partition(Partition::new(topic.name(), index).unwrap());
+    let scope = Scope::Indexer(Partition::new(topic.name(), index).unwrap());
 
     services
         .store
@@ -234,7 +234,7 @@ impl Tiering {
     }
 
     pub(crate) async fn writer(&self) -> Writer {
-        let scope = Scope::Topic(self.topic.name().to_owned());
+        let scope = Scope::Writer(self.topic.name().to_owned());
         let lease = self
             .services
             .store

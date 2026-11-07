@@ -96,7 +96,7 @@ impl Supervisor {
         for topic in topics {
             self.balance_writer(topic, &indexing).await?;
 
-            let partitions: Vec<Scope> = topic.partitions().map(Scope::Partition).collect();
+            let partitions: Vec<Scope> = topic.partitions().map(Scope::Indexer).collect();
             let share = share(partitions.len(), indexing.len());
             self.balance(&partitions, share).await?;
         }
@@ -153,7 +153,7 @@ impl Supervisor {
     }
 
     async fn balance_writer(&mut self, topic: &Topic, indexing: &[Uuid]) -> Result<(), Error> {
-        let scope = Scope::Topic(topic.name().to_owned());
+        let scope = Scope::Writer(topic.name().to_owned());
         let writer = owner(indexing, &scope_key(&scope));
 
         if writer != Some(self.services.membership.id()) {
@@ -191,7 +191,7 @@ impl Supervisor {
 
         for scope in free {
             let at_max_partitions =
-                matches!(scope, Scope::Partition(_)) && !self.room_for_partition();
+                matches!(scope, Scope::Indexer(_)) && !self.room_for_partition();
             if holding >= share || at_max_partitions {
                 break;
             }
@@ -221,23 +221,23 @@ impl Supervisor {
         let (mut partitions, mut topics, mut tiers) = (0, 0, 0);
         for scope in self.running.keys().chain(self.stopping.keys()) {
             match scope {
-                Scope::Partition(_) => partitions += 1,
-                Scope::Topic(_) => topics += 1,
+                Scope::Indexer(_) => partitions += 1,
+                Scope::Writer(_) => topics += 1,
                 Scope::Tier(_) => tiers += 1,
             }
         }
 
         let metrics = &self.services.metrics;
-        metrics.leases(mink_metrics::Scope::Partition, partitions);
-        metrics.leases(mink_metrics::Scope::Topic, topics);
-        metrics.leases(mink_metrics::Scope::Tier, tiers);
+        metrics.leases(mink_metrics::Worker::Indexer, partitions);
+        metrics.leases(mink_metrics::Worker::Writer, topics);
+        metrics.leases(mink_metrics::Worker::Tier, tiers);
     }
 
     fn held_partitions(&self) -> usize {
         self.running
             .keys()
             .chain(self.stopping.keys())
-            .filter(|scope| matches!(scope, Scope::Partition(_)))
+            .filter(|scope| matches!(scope, Scope::Indexer(_)))
             .count()
     }
 
@@ -365,10 +365,10 @@ impl Drop for Supervisor {
 impl Worker {
     async fn start(services: Arc<Services>, lease: Lease) -> Result<Worker, Error> {
         match lease.scope().clone() {
-            Scope::Partition(partition) => Ok(Worker::Indexer(
+            Scope::Indexer(partition) => Ok(Worker::Indexer(
                 Indexer::start(services, lease, partition).await?,
             )),
-            Scope::Topic(name) => Ok(Worker::Writer(Box::new(
+            Scope::Writer(name) => Ok(Worker::Writer(Box::new(
                 Writer::start(services, lease, name).await?,
             ))),
             Scope::Tier(partition) => {
@@ -424,8 +424,8 @@ fn record_end(
     ended: Result<Result<(), Error>, tokio::task::JoinError>,
 ) {
     let worker = match scope {
-        Scope::Partition(_) => mink_metrics::Worker::Indexer,
-        Scope::Topic(_) => mink_metrics::Worker::Writer,
+        Scope::Indexer(_) => mink_metrics::Worker::Indexer,
+        Scope::Writer(_) => mink_metrics::Worker::Writer,
         Scope::Tier(_) => mink_metrics::Worker::Tier,
     };
 
@@ -447,7 +447,7 @@ mod tests {
 
     use tokio::time::Instant;
 
-    use mink_core::{CatalogTable, ExternalTable, Scope, TierSchedule};
+    use mink_core::{CatalogTable, ExternalLocation, Scope, TierSchedule};
     use mink_store::LeaseHolder;
     use uuid::Uuid;
 
@@ -521,19 +521,17 @@ mod tests {
         }
 
         let node = testing::node_with(config).await;
-        let external = ExternalTable::new(
-            &tiered,
-            CatalogTable::new("fixture", "mink", &tiered),
-            Uuid::new_v4(),
-            "s3://mink/tiered",
-            TierSchedule::default(),
-            1,
-        )
-        .unwrap();
         node.services
             .store
             .external_tables()
-            .add(&external, &BTreeMap::new())
+            .attach(
+                &tiered,
+                CatalogTable::new("fixture", "mink", &tiered),
+                Uuid::new_v4(),
+                ExternalLocation::parse("s3://mink/tiered").unwrap(),
+                TierSchedule::default(),
+                &BTreeMap::new(),
+            )
             .await
             .unwrap();
         let deadline = Instant::now() + Duration::from_secs(30);
@@ -594,9 +592,7 @@ mod tests {
     fn partitions_of(leases: &[LeaseHolder], holder: Uuid) -> usize {
         leases
             .iter()
-            .filter(|lease| {
-                matches!(lease.scope(), Scope::Partition(_)) && lease.holder() == holder
-            })
+            .filter(|lease| matches!(lease.scope(), Scope::Indexer(_)) && lease.holder() == holder)
             .count()
     }
 
@@ -633,7 +629,7 @@ mod tests {
             );
             let writers: Vec<Uuid> = leases
                 .iter()
-                .filter(|lease| matches!(lease.scope(), Scope::Topic(_)))
+                .filter(|lease| matches!(lease.scope(), Scope::Writer(_)))
                 .map(LeaseHolder::holder)
                 .collect();
 

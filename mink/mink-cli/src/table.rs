@@ -121,7 +121,7 @@ impl Table {
                     external.topic(),
                     table.namespace(),
                     table.name(),
-                    external.location()
+                    external.location().path()
                 );
             }
             Action::Detach { topic } => {

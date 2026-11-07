@@ -1,14 +1,12 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use mink_core::{CatalogTable, ExternalTable, Partition, TierSchedule, locations_holding, millis};
+use mink_core::{CatalogTable, ExternalLocation, ExternalTable, TierSchedule, millis};
 use sqlx::{FromRow, PgConnection, PgPool};
 use uuid::Uuid;
 
-use crate::Error;
 use crate::leases::{Lease, check};
-use crate::ranges::{check_boundary, lock};
-use crate::tiered::set_committed;
+use crate::{Error, tiered};
 
 macro_rules! external_table_select {
     () => {
@@ -21,7 +19,7 @@ pub struct ExternalTables<'a> {
     pool: &'a PgPool,
 }
 
-pub struct ServedLocation {
+pub struct ListedLocation {
     location: String,
     uuid: Uuid,
 }
@@ -51,7 +49,7 @@ impl ExternalTableRow {
             &self.topic,
             CatalogTable::new(&self.catalog, &self.namespace, &self.name),
             self.uuid,
-            &self.location,
+            ExternalLocation::parse(&self.location)?,
             schedule,
             self.generation,
         )?)
@@ -63,43 +61,57 @@ impl<'a> ExternalTables<'a> {
         ExternalTables { pool }
     }
 
-    pub async fn add(
+    pub async fn attach(
         &self,
-        table: &ExternalTable,
+        topic: &str,
+        table: CatalogTable,
+        uuid: Uuid,
+        location: ExternalLocation,
+        schedule: TierSchedule,
         end_offsets: &BTreeMap<i32, i64>,
-    ) -> Result<(), Error> {
+    ) -> Result<ExternalTable, Error> {
         let mut transaction = self.pool.begin().await?;
-        sqlx::query("LOCK TABLE external_table IN SHARE ROW EXCLUSIVE MODE")
+        sqlx::query("LOCK TABLE listed_location IN SHARE ROW EXCLUSIVE MODE")
             .execute(&mut *transaction)
             .await?;
-        if overlaps_another_table(&mut transaction, table).await? {
+        if overlaps_another_table(&mut transaction, &location, uuid).await? {
             return Err(Error::OverlappingLocation {
-                location: table.location().to_owned(),
+                location: location.path().to_owned(),
             });
         }
+        let generation: Option<i32> = sqlx::query_scalar(
+            "UPDATE topic SET external_generation = external_generation + 1 WHERE name = $1 \
+             RETURNING external_generation",
+        )
+        .bind(topic)
+        .fetch_optional(&mut *transaction)
+        .await?;
+        let generation = generation.ok_or_else(|| Error::NoTable {
+            topic: topic.to_owned(),
+        })?;
+        let external = ExternalTable::new(topic, table, uuid, location, schedule, generation)?;
 
-        let catalog_table = table.table();
-        let added = sqlx::query(
+        let catalog_table = external.table();
+        let inserted = sqlx::query(
             "INSERT INTO external_table \
              (topic, catalog, namespace, name, uuid, location, tier_after_ms, tier_interval_ms, \
              generation) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
         )
-        .bind(table.topic())
+        .bind(topic)
         .bind(catalog_table.catalog())
         .bind(catalog_table.namespace())
         .bind(catalog_table.name())
-        .bind(table.uuid())
-        .bind(table.location())
-        .bind(millis(table.schedule().after()))
-        .bind(millis(table.schedule().interval()))
-        .bind(table.generation())
+        .bind(external.uuid())
+        .bind(external.location().path())
+        .bind(millis(external.schedule().after()))
+        .bind(millis(external.schedule().interval()))
+        .bind(generation)
         .execute(&mut *transaction)
         .await;
-
-        let topic = table.topic().to_owned();
-        match added {
+        match inserted {
             Ok(_) => {}
             Err(sqlx::Error::Database(error)) if error.is_unique_violation() => {
+                let topic = topic.to_owned();
                 return match error.constraint() {
                     Some("external_table_pkey") => Err(Error::AlreadyExternalTable { topic }),
                     _ => Err(Error::ExternalTableTaken { topic }),
@@ -111,41 +123,19 @@ impl<'a> ExternalTables<'a> {
         sqlx::query(
             "INSERT INTO listed_location (topic, generation, uuid, location) VALUES ($1, $2, $3, $4)",
         )
-        .bind(&topic)
-        .bind(table.generation())
-        .bind(table.uuid())
-        .bind(table.location())
+        .bind(topic)
+        .bind(generation)
+        .bind(external.uuid())
+        .bind(external.location().path())
         .execute(&mut *transaction)
         .await?;
-
-        for (index, end_offset) in end_offsets {
-            let partition = Partition::new(&topic, *index)?;
-            let indexed = lock(&mut transaction, &partition).await?;
-            if *end_offset > indexed.end_offset() {
-                return Err(Error::EndOffsetBeyondIndex {
-                    partition,
-                    offset: *end_offset,
-                    indexed: indexed.end_offset(),
-                });
-            }
-            if *end_offset > indexed.start_offset() {
-                check_boundary(&mut transaction, &indexed, *end_offset).await?;
-            }
-
-            set_committed(
-                &mut transaction,
-                &partition,
-                table.generation(),
-                *end_offset,
-            )
-            .await?;
-        }
+        tiered::start_at(&mut transaction, &external, end_offsets).await?;
 
         transaction.commit().await?;
-        Ok(())
+        Ok(external)
     }
 
-    pub async fn remove(&self, topic: &str) -> Result<(), Error> {
+    pub async fn detach(&self, topic: &str) -> Result<(), Error> {
         let removed = sqlx::query("DELETE FROM external_table WHERE topic = $1")
             .bind(topic)
             .execute(self.pool)
@@ -186,20 +176,20 @@ impl<'a> ExternalTables<'a> {
         row.map(ExternalTableRow::table).transpose()
     }
 
-    pub async fn serving(&self, path: &str) -> Result<Option<ServedLocation>, Error> {
+    pub async fn listed(&self, path: &str) -> Result<Option<ListedLocation>, Error> {
         let row: Option<(String, Uuid)> = sqlx::query_as(
             "SELECT location, uuid FROM listed_location WHERE location = ANY($1) \
              ORDER BY length(location) DESC LIMIT 1",
         )
-        .bind(locations_holding(path))
+        .bind(ExternalLocation::holding(path))
         .fetch_optional(self.pool)
         .await?;
 
-        Ok(row.map(|(location, uuid)| ServedLocation { location, uuid }))
+        Ok(row.map(|(location, uuid)| ListedLocation { location, uuid }))
     }
 
     pub async fn forget_unlisted(&self, lease: &Lease, generations: &[i32]) -> Result<(), Error> {
-        let topic = lease.require_topic()?;
+        let topic = lease.require_writer()?;
 
         let mut transaction = self.pool.begin().await?;
         check(&mut transaction, lease).await?;
@@ -218,7 +208,7 @@ impl<'a> ExternalTables<'a> {
     }
 }
 
-impl ServedLocation {
+impl ListedLocation {
     pub fn location(&self) -> &str {
         &self.location
     }
@@ -230,16 +220,17 @@ impl ServedLocation {
 
 async fn overlaps_another_table(
     connection: &mut PgConnection,
-    table: &ExternalTable,
+    location: &ExternalLocation,
+    uuid: Uuid,
 ) -> Result<bool, Error> {
-    let location = table.location();
+    let location = location.path();
     let overlapping: Option<i32> = sqlx::query_scalar(
         "SELECT 1 FROM listed_location WHERE uuid <> $3 \
          AND (location = $1 OR location = ANY($2) OR starts_with(location, $1 || '/')) LIMIT 1",
     )
     .bind(location)
-    .bind(locations_holding(location))
-    .bind(table.uuid())
+    .bind(ExternalLocation::holding(location))
+    .bind(uuid)
     .fetch_optional(&mut *connection)
     .await?;
 
@@ -250,26 +241,30 @@ async fn overlaps_another_table(
 mod tests {
     use std::collections::BTreeMap;
 
-    use mink_core::{CatalogTable, ExternalTable, TierSchedule, Topic};
+    use mink_core::{CatalogTable, ExternalLocation, ExternalTable, TierSchedule, Topic};
     use uuid::Uuid;
 
+    use super::ExternalTables;
     use crate::Error;
     use crate::testing::{self, WRITER};
 
-    fn table(topic: &Topic, name: &str) -> ExternalTable {
-        located(topic, name, &format!("s3://b/{name}"))
-    }
-
-    fn located(topic: &Topic, name: &str, location: &str) -> ExternalTable {
-        ExternalTable::new(
-            topic.name(),
-            CatalogTable::new("rest", "kafka", name),
-            Uuid::new_v4(),
-            location,
-            TierSchedule::default(),
-            1,
-        )
-        .unwrap()
+    async fn attach(
+        tables: &ExternalTables<'_>,
+        topic: &Topic,
+        name: &str,
+        location: &str,
+        uuid: Uuid,
+    ) -> Result<ExternalTable, Error> {
+        tables
+            .attach(
+                topic.name(),
+                CatalogTable::new("rest", "kafka", name),
+                uuid,
+                ExternalLocation::parse(location).unwrap(),
+                TierSchedule::default(),
+                &BTreeMap::new(),
+            )
+            .await
     }
 
     #[tokio::test]
@@ -278,30 +273,27 @@ mod tests {
             return;
         };
         let topic = testing::topic(&store, 1).await;
+        let other = testing::topic(&store, 1).await;
+        let tables = store.external_tables();
 
-        store
-            .external_tables()
-            .add(&table(&topic, "orders"), &BTreeMap::new())
+        let first = attach(&tables, &topic, "orders", "s3://b/t/orders", Uuid::new_v4())
             .await
             .unwrap();
-        let second = store
-            .external_tables()
-            .add(&table(&topic, "other"), &BTreeMap::new())
-            .await;
-        let other = testing::topic(&store, 1).await;
-        let same_location = store
-            .external_tables()
-            .add(
-                &located(&other, "elsewhere", "s3://b/orders"),
-                &BTreeMap::new(),
-            )
-            .await;
+        let second = attach(&tables, &topic, "other", "s3://b/t/other", Uuid::new_v4()).await;
+        let same_location = attach(
+            &tables,
+            &other,
+            "elsewhere",
+            "s3://b/t/orders",
+            Uuid::new_v4(),
+        )
+        .await;
 
-        let stored = store.external_tables().get(topic.name()).await.unwrap();
-        assert_eq!(stored.unwrap().table().name(), "orders");
-        let listed = store.external_tables().list().await.unwrap();
-        assert_eq!(listed.len(), 1);
-        assert_eq!(listed[0].topic(), topic.name());
+        let stored = tables.get(topic.name()).await.unwrap();
+        assert_eq!(stored, Some(first.clone()));
+        assert_eq!(first.generation(), 1);
+        let listed = tables.list().await.unwrap();
+        assert_eq!(listed, [first]);
         assert!(
             matches!(second, Err(Error::AlreadyExternalTable { .. })),
             "{second:?}"
@@ -313,43 +305,43 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_path_is_served_until_no_snapshot_lists_its_location() {
+    async fn a_path_is_listed_until_no_snapshot_lists_its_location() {
         let Some(store) = testing::store().await else {
             return;
         };
         let topic = testing::topic(&store, 1).await;
         let writer = testing::topic_lease(&store, &topic, WRITER).await;
         let tables = store.external_tables();
-        tables
-            .add(&table(&topic, topic.name()), &BTreeMap::new())
+        let location = format!("s3://b/t/{}", topic.name());
+        attach(&tables, &topic, topic.name(), &location, Uuid::new_v4())
             .await
             .unwrap();
-        let path = format!("s3://b/{}/data/0.parquet", topic.name());
-        let served = async || {
+        let path = format!("{location}/data/0.parquet");
+        let listed = async || {
             tables
-                .serving(&path)
+                .listed(&path)
                 .await
                 .unwrap()
-                .map(|served| served.uuid())
+                .map(|listed| listed.uuid())
         };
 
-        let attached = served().await;
+        let attached = listed().await;
         let beside = tables
-            .serving(&format!("s3://b/{}x/data/0.parquet", topic.name()))
+            .listed(&format!("{location}x/data/0.parquet"))
             .await
             .unwrap();
-        tables.remove(topic.name()).await.unwrap();
-        let detached = served().await;
+        tables.detach(topic.name()).await.unwrap();
+        let detached = listed().await;
         tables.forget_unlisted(&writer, &[1]).await.unwrap();
-        let listed = served().await;
+        let retained = listed().await;
         tables.forget_unlisted(&writer, &[]).await.unwrap();
-        let unlisted = served().await;
+        let forgotten = listed().await;
 
         assert!(attached.is_some());
         assert!(beside.is_none());
         assert_eq!(detached, attached);
-        assert_eq!(listed, attached);
-        assert_eq!(unlisted, None);
+        assert_eq!(retained, attached);
+        assert_eq!(forgotten, None);
     }
 
     #[tokio::test]
@@ -359,19 +351,19 @@ mod tests {
         };
         let first = testing::topic(&store, 1).await;
         let second = testing::topic(&store, 1).await;
+        let tables = store.external_tables();
 
-        store
-            .external_tables()
-            .add(&table(&first, "orders"), &BTreeMap::new())
+        attach(&tables, &first, "orders", "s3://b/t/orders", Uuid::new_v4())
             .await
             .unwrap();
-        let shared = store
-            .external_tables()
-            .add(
-                &located(&second, "orders", "s3://b/elsewhere"),
-                &BTreeMap::new(),
-            )
-            .await;
+        let shared = attach(
+            &tables,
+            &second,
+            "orders",
+            "s3://b/t/elsewhere",
+            Uuid::new_v4(),
+        )
+        .await;
 
         assert!(
             matches!(shared, Err(Error::ExternalTableTaken { .. })),
@@ -380,56 +372,45 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_table_registers_with_offsets_at_boundaries_and_detaches_with_its_rows() {
+    async fn a_table_attaches_with_offsets_at_boundaries_and_detaches_with_its_rows() {
         let Some(store) = testing::store().await else {
             return;
         };
         let topic = testing::topic(&store, 1).await;
         testing::started(&store, &topic).await;
         let tables = store.external_tables();
-        let beyond = tables
-            .add(&table(&topic, topic.name()), &BTreeMap::from([(0, 5)]))
-            .await;
-        tables
-            .add(&table(&topic, topic.name()), &BTreeMap::from([(0, 0)]))
-            .await
-            .unwrap();
-        let committed = store.tiered_ranges().committed(topic.name()).await.unwrap();
-        let generations = [
-            store
-                .topics()
-                .next_external_generation(topic.name())
+        let uuid = Uuid::new_v4();
+        let attach = async |end_offset| {
+            tables
+                .attach(
+                    topic.name(),
+                    CatalogTable::new("rest", "kafka", topic.name()),
+                    uuid,
+                    ExternalLocation::parse("s3://b/t/orders").unwrap(),
+                    TierSchedule::default(),
+                    &BTreeMap::from([(0, end_offset)]),
+                )
                 .await
-                .unwrap(),
-            store
-                .topics()
-                .next_external_generation(topic.name())
-                .await
-                .unwrap(),
-        ];
+        };
 
-        tables.remove(topic.name()).await.unwrap();
-        let again = tables.remove(topic.name()).await;
+        let beyond = attach(5).await;
+        let attached = attach(0).await.unwrap();
+        let settled = store.tiered_ranges().settled(topic.name()).await.unwrap();
+        tables.detach(topic.name()).await.unwrap();
+        let again = tables.detach(topic.name()).await;
+        let reattached = attach(0).await.unwrap();
 
         assert!(
             matches!(beyond, Err(Error::EndOffsetBeyondIndex { offset: 5, .. })),
             "{beyond:?}"
         );
-        assert_eq!(committed, BTreeMap::from([(0, 0)]));
-        assert_eq!(generations, [1, 2]);
-        assert!(tables.get(topic.name()).await.unwrap().is_none());
-        assert!(
-            store
-                .tiered_ranges()
-                .committed(topic.name())
-                .await
-                .unwrap()
-                .is_empty()
-        );
+        assert_eq!(attached.generation(), 1);
+        assert_eq!(settled, BTreeMap::from([(0, 0)]));
         assert!(
             matches!(again, Err(Error::NoExternalTable { .. })),
             "{again:?}"
         );
+        assert_eq!(reattached.generation(), 2);
     }
 
     #[tokio::test]
@@ -441,28 +422,19 @@ mod tests {
         let other = testing::topic(&store, 1).await;
         let name = topic.name().to_owned();
         let tables = store.external_tables();
-        let first = table(&topic, &name);
-        tables.add(&first, &BTreeMap::new()).await.unwrap();
-        tables.remove(&name).await.unwrap();
-        let add = async |location: &str| {
-            tables
-                .add(&located(&other, "elsewhere", location), &BTreeMap::new())
-                .await
+        let location = format!("s3://b/t/{name}");
+        let first = attach(&tables, &topic, &name, &location, Uuid::new_v4())
+            .await
+            .unwrap();
+        tables.detach(&name).await.unwrap();
+        let elsewhere = async |location: &str| {
+            attach(&tables, &other, "elsewhere", location, Uuid::new_v4()).await
         };
 
-        let inside = add(&format!("s3://b/{name}/inner")).await;
-        let around = add("s3://b").await;
-        let returned = ExternalTable::new(
-            topic.name(),
-            CatalogTable::new("rest", "kafka", &name),
-            first.uuid(),
-            first.location(),
-            TierSchedule::default(),
-            2,
-        )
-        .unwrap();
-        tables.add(&returned, &BTreeMap::new()).await.unwrap();
-        let beside = add(&format!("s3://b/{name}x")).await;
+        let inside = elsewhere(&format!("{location}/inner")).await;
+        let around = elsewhere("s3://b/t").await;
+        let returned = attach(&tables, &topic, &name, &location, first.uuid()).await;
+        let beside = elsewhere(&format!("{location}x")).await;
 
         assert!(
             matches!(inside, Err(Error::OverlappingLocation { .. })),
@@ -472,6 +444,7 @@ mod tests {
             matches!(around, Err(Error::OverlappingLocation { .. })),
             "{around:?}"
         );
+        assert_eq!(returned.unwrap().generation(), 2);
         assert!(beside.is_ok(), "{beside:?}");
     }
 }

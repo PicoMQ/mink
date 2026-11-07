@@ -1,7 +1,15 @@
+use crate::Error;
 use crate::file::{AssemblyHash, File, FileVersion};
 use crate::granularity::TimePartition;
 use crate::offsets::OffsetRange;
 use crate::topic::Partition;
+
+const S3: &str = "s3://";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExternalLocation {
+    path: String,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TableLocation {
@@ -129,6 +137,48 @@ impl TableLocation {
     }
 }
 
+impl ExternalLocation {
+    pub fn parse(location: &str) -> Result<ExternalLocation, Error> {
+        let path = root(location);
+        let in_bucket = path
+            .strip_prefix(S3)
+            .is_some_and(|bucket_path| bucket_path.contains('/'));
+
+        match in_bucket {
+            true => Ok(ExternalLocation {
+                path: path.to_owned(),
+            }),
+            false => Err(Error::ExternalLocation(location.to_owned())),
+        }
+    }
+
+    pub fn holding(path: &str) -> Vec<&str> {
+        if !path.starts_with(S3) {
+            return Vec::new();
+        }
+
+        path.match_indices('/')
+            .map(|(index, _)| &path[..index])
+            .filter(|location| location.len() > S3.len())
+            .collect()
+    }
+
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    pub fn overlaps(&self, other: &str) -> bool {
+        let other = root(other);
+        let under = |outer: &str, inner: &str| {
+            inner
+                .strip_prefix(outer)
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+        };
+
+        under(&self.path, other) || under(other, &self.path)
+    }
+}
+
 fn root(warehouse: &str) -> &str {
     warehouse.trim_end_matches('/')
 }
@@ -151,6 +201,36 @@ mod tests {
     use serde_json::Value;
 
     use super::*;
+
+    #[test]
+    fn an_external_location_is_a_path_inside_a_bucket() {
+        assert_eq!(
+            ExternalLocation::parse("s3://b/t/").unwrap().path(),
+            "s3://b/t"
+        );
+        for location in ["s3://b", "s3://b/", "/tmp/t", "gs://b/t"] {
+            assert_eq!(
+                ExternalLocation::parse(location),
+                Err(Error::ExternalLocation(location.to_owned()))
+            );
+        }
+    }
+
+    #[test]
+    fn a_path_is_held_by_each_location_it_falls_under() {
+        let location = |path| ExternalLocation::parse(path).unwrap();
+
+        assert_eq!(
+            ExternalLocation::holding("s3://b/t/data/0.parquet"),
+            ["s3://b", "s3://b/t", "s3://b/t/data"]
+        );
+        assert!(ExternalLocation::holding("s3://b").is_empty());
+        assert!(ExternalLocation::holding("/tmp/t/0.parquet").is_empty());
+        assert!(location("s3://b/wh/t").overlaps("s3://b/wh/"));
+        assert!(location("s3://b/wh").overlaps("s3://b/wh/t"));
+        assert!(location("s3://b/t").overlaps("s3://b/t/"));
+        assert!(!location("s3://b/t").overlaps("s3://b/tx"));
+    }
 
     fn cases() -> Value {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))

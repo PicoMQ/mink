@@ -88,7 +88,6 @@ impl From<Error> for Failure {
             | Error::UnreadableTerm(_)
             | Error::UnknownColumn(_)
             | Error::ShortRetention { .. }
-            | Error::UnsupportedLocation(_)
             | Error::LocationInWarehouse(_)
             | Error::MissingEndOffsets(_)
             | Error::InvalidEndOffset { .. }

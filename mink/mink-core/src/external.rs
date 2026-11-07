@@ -3,6 +3,7 @@ use std::time::Duration;
 use uuid::Uuid;
 
 use crate::Error;
+use crate::location::ExternalLocation;
 
 pub const MAX_GENERATION: i32 = 16_383;
 
@@ -11,7 +12,7 @@ pub struct ExternalTable {
     topic: String,
     table: CatalogTable,
     uuid: Uuid,
-    location: String,
+    location: ExternalLocation,
     schedule: TierSchedule,
     generation: i32,
 }
@@ -95,14 +96,14 @@ impl ExternalTable {
         topic: &str,
         table: CatalogTable,
         uuid: Uuid,
-        location: &str,
+        location: ExternalLocation,
         schedule: TierSchedule,
         generation: i32,
     ) -> Result<ExternalTable, Error> {
         let named = [topic, &table.catalog, &table.namespace, &table.name]
             .iter()
             .all(|part| !part.is_empty());
-        if !named || !location.starts_with("s3://") {
+        if !named {
             return Err(Error::ExternalTable(topic.to_owned()));
         }
         if !(1..=MAX_GENERATION).contains(&generation) {
@@ -113,7 +114,7 @@ impl ExternalTable {
             topic: topic.to_owned(),
             table,
             uuid,
-            location: location.trim_end_matches('/').to_owned(),
+            location,
             schedule,
             generation,
         })
@@ -131,7 +132,7 @@ impl ExternalTable {
         self.uuid
     }
 
-    pub fn location(&self) -> &str {
+    pub fn location(&self) -> &ExternalLocation {
         &self.location
     }
 
@@ -144,29 +145,6 @@ impl ExternalTable {
     }
 }
 
-pub fn locations_overlap(first: &str, second: &str) -> bool {
-    let (first, second) = (first.trim_end_matches('/'), second.trim_end_matches('/'));
-    let under = |outer: &str, inner: &str| {
-        inner
-            .strip_prefix(outer)
-            .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
-    };
-
-    under(first, second) || under(second, first)
-}
-
-pub fn locations_holding(path: &str) -> Vec<&str> {
-    let scheme = "s3://";
-    if !path.starts_with(scheme) {
-        return Vec::new();
-    }
-
-    path.match_indices('/')
-        .map(|(index, _)| &path[..index])
-        .filter(|location| location.len() > scheme.len())
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use uuid::Uuid;
@@ -174,36 +152,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn external_tables_need_names_and_an_s3_location() {
-        let uuid = Uuid::new_v4();
-        let schedule = TierSchedule::default();
-        let table = |catalog, location| {
+    fn external_tables_need_names() {
+        let table = |catalog| {
             ExternalTable::new(
                 "orders",
                 CatalogTable::new(catalog, "kafka", "orders"),
-                uuid,
-                location,
-                schedule,
+                Uuid::new_v4(),
+                ExternalLocation::parse("s3://b/t").unwrap(),
+                TierSchedule::default(),
                 1,
             )
         };
 
-        assert_eq!(
-            table("s3tables", "s3://b/t/").unwrap().location(),
-            "s3://b/t"
-        );
+        assert!(table("s3tables").is_ok());
         assert_eq!(
             TierSchedule::given(None, Some(Duration::from_secs(60))),
             TierSchedule::new(Duration::from_secs(3600), Duration::from_secs(60))
         );
-        assert_eq!(
-            table("", "s3://b/t"),
-            Err(Error::ExternalTable("orders".to_owned()))
-        );
-        assert_eq!(
-            table("s3tables", "/tmp/t"),
-            Err(Error::ExternalTable("orders".to_owned()))
-        );
+        assert_eq!(table(""), Err(Error::ExternalTable("orders".to_owned())));
     }
 
     #[test]
@@ -213,7 +179,7 @@ mod tests {
                 "orders",
                 CatalogTable::new("s3tables", "kafka", "orders"),
                 Uuid::new_v4(),
-                "s3://b/t",
+                ExternalLocation::parse("s3://b/t").unwrap(),
                 TierSchedule::default(),
                 generation,
             )
@@ -225,20 +191,6 @@ mod tests {
             table(MAX_GENERATION + 1),
             Err(Error::Generation(MAX_GENERATION + 1))
         );
-    }
-
-    #[test]
-    fn a_path_is_held_by_each_location_it_falls_under() {
-        assert_eq!(
-            locations_holding("s3://b/t/data/0.parquet"),
-            ["s3://b", "s3://b/t", "s3://b/t/data"]
-        );
-        assert!(locations_holding("s3://b").is_empty());
-        assert!(locations_overlap("s3://b/wh/", "s3://b/wh/t"));
-        assert!(locations_overlap("s3://b/wh/t", "s3://b/wh"));
-        assert!(locations_overlap("s3://b/t", "s3://b/t/"));
-        assert!(!locations_overlap("s3://b/t", "s3://b/tx"));
-        assert!(locations_holding("/tmp/t/0.parquet").is_empty());
     }
 
     #[test]

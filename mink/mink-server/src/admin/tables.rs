@@ -128,7 +128,7 @@ async fn table(
         .collect();
     detail["writer"] = leases
         .iter()
-        .find(|held| matches!(held.scope(), Scope::Topic(_)))
+        .find(|held| matches!(held.scope(), Scope::Writer(_)))
         .map_or(Value::Null, lease);
     detail["statisticsAtMs"] = json!(statistics_at_ms);
     detail["lag"] = json!(lag);
