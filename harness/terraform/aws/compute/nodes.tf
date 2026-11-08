@@ -51,9 +51,6 @@ resource "aws_ecs_task_definition" "node" {
         for port in values(var.ports) : { containerPort = port, hostPort = port, protocol = "tcp" }
       ]
       environment = concat([
-        { name = "MINK_WAREHOUSE", value = "s3://${var.bucket}/warehouse" },
-        { name = "MINK_STORAGE__REGION", value = var.region },
-        { name = "MINK_KAFKA__BOOTSTRAP", value = jsonencode(var.kafka.bootstrap) },
         { name = "MINK_CATALOG_ADDRESS", value = "0.0.0.0:${var.ports.catalog}" },
         { name = "MINK_S3_ADDRESS", value = "0.0.0.0:${var.ports.s3}" },
         { name = "MINK_ADMIN_ADDRESS", value = "0.0.0.0:${var.ports.admin}" },
@@ -66,19 +63,9 @@ resource "aws_ecs_task_definition" "node" {
         { name = "MINK_CACHE_BYTES", value = tostring(var.task_memory * 1024 * 1024 / 4) },
         { name = "MINK_CACHE_DISK_BYTES", value = tostring(10 * 1024 * 1024 * 1024) },
         ],
-        var.kafka.tls ? [{ name = "MINK_KAFKA__TLS", value = "{}" }] : [],
-        var.use_kafka_sasl ? [
-          { name = "MINK_KAFKA__SASL__MECHANISM", value = var.kafka.sasl.mechanism },
-          { name = "MINK_KAFKA__SASL__USERNAME", value = var.kafka.sasl.username },
-        ] : [],
-        [for key, value in var.registry_settings : { name = "MINK_SCHEMA_REGISTRY__${upper(key)}", value = value }],
-        [for name, value in local.external_catalog_settings : { name = name, value = value }],
+        [for name, value in var.settings : { name = name, value = value }],
       )
-      secrets = concat(
-        [{ name = "MINK_POSTGRES", valueFrom = var.postgres_secret_arn }],
-        [for arn in var.kafka_secret_arns : { name = "MINK_KAFKA__SASL__PASSWORD", valueFrom = arn }],
-        [for arn in var.registry_password_secret_arns : { name = "MINK_SCHEMA_REGISTRY__PASSWORD", valueFrom = arn }],
-      )
+      secrets = [for name, secret in var.secrets : { name = name, valueFrom = secret }]
       mountPoints = [
         { sourceVolume = "certs", containerPath = dirname(var.rds_ca), readOnly = true },
         { sourceVolume = "cache", containerPath = local.cache_dir },
@@ -147,14 +134,7 @@ resource "aws_ecs_service" "node" {
     }
   }
 
-  depends_on = [
-    var.postgres_secret_version_id,
-    var.kafka_secret_version_ids,
-    var.registry_password_secret_version_ids,
-    var.scram_association_ids,
-    var.nat_route_ids,
-    var.s3_endpoint_ids,
-  ]
+  depends_on = [aws_iam_role_policy.execution, aws_iam_role_policy.task]
 
   tags = {
     Name = "${var.project}-${each.key}"

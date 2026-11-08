@@ -85,7 +85,7 @@ resource "aws_lb_target_group" "registry" {
   count = var.create_confluent_registry ? 1 : 0
 
   name        = "${var.project}-registry"
-  port        = var.registry_port
+  port        = local.registry.port
   protocol    = "HTTP"
   vpc_id      = local.vpc_id
   target_type = "ip"
@@ -111,7 +111,7 @@ resource "aws_lb_listener" "registry" {
   count = var.create_confluent_registry ? 1 : 0
 
   load_balancer_arn = aws_lb.this.arn
-  port              = var.registry_port
+  port              = local.registry.port
   protocol          = "HTTP"
 
   default_action {

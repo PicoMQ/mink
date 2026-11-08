@@ -23,22 +23,12 @@ resource "aws_iam_role_policy_attachment" "execution_ecs" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-data "aws_iam_policy_document" "execution_secrets" {
-  statement {
-    actions = ["secretsmanager:GetSecretValue"]
-    resources = concat(
-      [var.postgres_secret_arn],
-      var.kafka_secret_arns,
-      var.registry_password_secret_arns,
-      aws_secretsmanager_secret.registry_kafka[*].arn,
-    )
-  }
-}
+resource "aws_iam_role_policy" "execution" {
+  for_each = var.execution_policies
 
-resource "aws_iam_role_policy" "execution_secrets" {
-  name   = "secrets"
+  name   = each.key
   role   = aws_iam_role.execution.id
-  policy = data.aws_iam_policy_document.execution_secrets.json
+  policy = each.value
 }
 
 resource "aws_iam_role" "task" {
@@ -48,29 +38,6 @@ resource "aws_iam_role" "task" {
   tags = {
     Name = "${var.project}-task"
   }
-}
-
-data "aws_iam_policy_document" "task_s3" {
-  statement {
-    actions = [
-      "s3:GetObject",
-      "s3:PutObject",
-      "s3:DeleteObject",
-      "s3:ListBucket",
-      "s3:AbortMultipartUpload",
-      "s3:ListBucketMultipartUploads",
-    ]
-    resources = [
-      "arn:aws:s3:::${var.bucket}",
-      "arn:aws:s3:::${var.bucket}/*",
-    ]
-  }
-}
-
-resource "aws_iam_role_policy" "task_s3" {
-  name   = "s3"
-  role   = aws_iam_role.task.id
-  policy = data.aws_iam_policy_document.task_s3.json
 }
 
 data "aws_iam_policy_document" "task_exec" {
@@ -85,33 +52,10 @@ data "aws_iam_policy_document" "task_exec" {
   }
 }
 
-resource "aws_iam_role_policy" "task_exec" {
-  name   = "exec"
+resource "aws_iam_role_policy" "task" {
+  for_each = merge(var.task_policies, { exec = data.aws_iam_policy_document.task_exec.json })
+
+  name   = each.key
   role   = aws_iam_role.task.id
-  policy = data.aws_iam_policy_document.task_exec.json
-}
-
-data "aws_iam_policy_document" "task_glue" {
-  count = var.use_glue_registry ? 1 : 0
-
-  statement {
-    actions   = ["glue:GetRegistry", "glue:GetSchemaVersion"]
-    resources = var.glue_registry_arns
-  }
-}
-
-resource "aws_iam_role_policy" "task_glue" {
-  count = var.use_glue_registry ? 1 : 0
-
-  name   = "glue"
-  role   = aws_iam_role.task.id
-  policy = data.aws_iam_policy_document.task_glue[0].json
-}
-
-resource "aws_iam_role_policy" "task_tables" {
-  count = var.create_s3_tables ? 1 : 0
-
-  name   = "tables"
-  role   = aws_iam_role.task.id
-  policy = var.external_catalog_write_policy
+  policy = each.value
 }

@@ -41,3 +41,20 @@ resource "aws_s3_bucket_ownership_controls" "warehouse" {
     object_ownership = "BucketOwnerEnforced"
   }
 }
+
+data "aws_iam_policy_document" "warehouse" {
+  statement {
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:DeleteObject",
+      "s3:ListBucket",
+      "s3:AbortMultipartUpload",
+      "s3:ListBucketMultipartUploads",
+    ]
+    resources = [
+      "arn:aws:s3:::${local.bucket}",
+      "arn:aws:s3:::${local.bucket}/*",
+    ]
+  }
+}

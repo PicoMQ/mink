@@ -27,7 +27,7 @@ variable "bucket" {
   type = string
 }
 
-variable "create_s3_tables" {
+variable "create_external_catalog" {
   type = bool
 }
 

@@ -26,7 +26,7 @@ resource "aws_route53_record" "registry" {
   count = var.create_confluent_registry ? 1 : 0
 
   zone_id = aws_route53_zone.this.zone_id
-  name    = "registry.${var.domain}"
+  name    = local.registry.host
   type    = "A"
 
   alias {

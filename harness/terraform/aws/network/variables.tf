@@ -42,14 +42,10 @@ variable "create_confluent_registry" {
   type = bool
 }
 
-variable "registry_port" {
-  type = number
-}
-
-variable "client" {
+variable "create_client" {
   type = bool
 }
 
-variable "emr" {
+variable "create_emr" {
   type = bool
 }

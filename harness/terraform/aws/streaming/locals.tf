@@ -13,12 +13,20 @@ locals {
     }
   } : var.kafka
 
-  use_kafka_sasl = nonsensitive(local.kafka.sasl != null)
+  use_kafka_sasl   = nonsensitive(local.kafka.sasl != null)
+  kafka_secret_arn = one(concat(aws_secretsmanager_secret_version.scram[*].secret_arn, aws_secretsmanager_secret_version.kafka[*].secret_arn))
+
+  kafka_security_protocol = "${local.use_kafka_sasl ? "SASL_" : ""}${local.kafka.tls ? "SSL" : "PLAINTEXT"}"
+  kafka_login_modules = {
+    PLAIN           = "org.apache.kafka.common.security.plain.PlainLoginModule"
+    "SCRAM-SHA-256" = "org.apache.kafka.common.security.scram.ScramLoginModule"
+    "SCRAM-SHA-512" = "org.apache.kafka.common.security.scram.ScramLoginModule"
+  }
 
   registry = (
     var.create_confluent_registry ? {
       type     = "confluent"
-      url      = "http://registry.${var.domain}:${var.registry_port}"
+      url      = "http://${var.registry.host}:${var.registry.port}"
       username = null
       password = null
       name     = null
@@ -37,7 +45,7 @@ locals {
 
   use_registry          = nonsensitive(local.registry != null)
   use_registry_password = nonsensitive(try(local.registry.password, null) != null)
-  registry_settings     = local.use_registry ? { for key, value in local.registry : key => value if value != null && key != "password" } : {}
+  registry_secret_arns  = concat(aws_secretsmanager_secret_version.registry_password[*].secret_arn, aws_secretsmanager_secret_version.registry_kafka[*].secret_arn)
 
   use_glue_registry    = nonsensitive(try(local.registry.type, null) == "glue")
   glue_registry_name   = local.use_glue_registry ? nonsensitive(local.registry.name) : null
@@ -46,4 +54,15 @@ locals {
     "arn:aws:glue:${local.glue_registry_region}:${data.aws_caller_identity.this.account_id}:registry/${local.glue_registry_name}",
     "arn:aws:glue:${local.glue_registry_region}:${data.aws_caller_identity.this.account_id}:schema/${local.glue_registry_name}/*",
   ] : []
+  glue_registry_actions = {
+    read = ["glue:GetRegistry", "glue:GetSchemaVersion"]
+    write = [
+      "glue:GetRegistry",
+      "glue:CreateSchema",
+      "glue:GetSchemaByDefinition",
+      "glue:RegisterSchemaVersion",
+      "glue:GetSchemaVersion",
+      "glue:PutSchemaVersionMetadata",
+    ]
+  }
 }

@@ -196,7 +196,7 @@ variable "external_catalog" {
   }
 }
 
-variable "client" {
+variable "create_client" {
   type    = bool
   default = false
 }
@@ -206,7 +206,7 @@ variable "client_instance_type" {
   default = "t4g.small"
 }
 
-variable "emr" {
+variable "create_emr" {
   type    = bool
   default = false
 }

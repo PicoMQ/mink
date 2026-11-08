@@ -1,5 +1,5 @@
 resource "aws_emrserverless_application" "this" {
-  count = var.emr ? 1 : 0
+  count = var.create_emr ? 1 : 0
 
   name          = var.project
   release_label = "emr-7.14.0"
@@ -7,8 +7,8 @@ resource "aws_emrserverless_application" "this" {
   architecture  = var.cpu_architecture
 
   maximum_capacity {
-    cpu    = "8 vCPU"
-    memory = "32 GB"
+    cpu    = "32 vCPU"
+    memory = "128 GB"
   }
 
   auto_stop_configuration {
@@ -27,7 +27,7 @@ resource "aws_emrserverless_application" "this" {
 }
 
 data "aws_iam_policy_document" "emr_assume" {
-  count = var.emr ? 1 : 0
+  count = var.create_emr ? 1 : 0
 
   statement {
     actions = ["sts:AssumeRole"]
@@ -40,7 +40,7 @@ data "aws_iam_policy_document" "emr_assume" {
 }
 
 resource "aws_iam_role" "emr" {
-  count = var.emr ? 1 : 0
+  count = var.create_emr ? 1 : 0
 
   name               = "${var.project}-emr"
   assume_role_policy = data.aws_iam_policy_document.emr_assume[0].json
@@ -51,7 +51,7 @@ resource "aws_iam_role" "emr" {
 }
 
 data "aws_iam_policy_document" "emr_s3" {
-  count = var.emr ? 1 : 0
+  count = var.create_emr ? 1 : 0
 
   statement {
     actions   = ["s3:GetObject", "s3:PutObject"]
@@ -70,18 +70,10 @@ data "aws_iam_policy_document" "emr_s3" {
   }
 }
 
-resource "aws_iam_role_policy" "emr_s3" {
-  count = var.emr ? 1 : 0
+resource "aws_iam_role_policy" "emr" {
+  for_each = var.create_emr ? merge(var.emr_policies, { s3 = data.aws_iam_policy_document.emr_s3[0].json }) : {}
 
-  name   = "s3"
+  name   = each.key
   role   = aws_iam_role.emr[0].id
-  policy = data.aws_iam_policy_document.emr_s3[0].json
-}
-
-resource "aws_iam_role_policy" "emr_tables" {
-  count = var.emr && var.create_s3_tables ? 1 : 0
-
-  name   = "tables"
-  role   = aws_iam_role.emr[0].id
-  policy = var.external_catalog_read_policy
+  policy = each.value
 }

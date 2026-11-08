@@ -39,10 +39,10 @@
 #   name = "my-registry"
 # }
 
-# client            = true
+# create_client     = true
 # create_repository = true
 
-# External catalog that tables tier into, as Mink's catalog "lake".
+# External catalog that tables tier into, under the name in the external_catalog_name output.
 # Create an S3 Tables bucket with a kafka namespace, or use an existing catalog.
 # create_external_catalog = "s3tables"
 # external_catalog = {

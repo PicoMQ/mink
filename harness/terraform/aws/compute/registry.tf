@@ -19,24 +19,15 @@ resource "aws_ecs_task_definition" "registry" {
       image     = "confluentinc/cp-schema-registry:8.1.1"
       essential = true
       portMappings = [
-        { containerPort = var.registry_port, hostPort = var.registry_port, protocol = "tcp" },
+        { containerPort = var.registry.port, hostPort = var.registry.port, protocol = "tcp" },
       ]
       environment = concat([
-        { name = "SCHEMA_REGISTRY_HOST_NAME", value = "registry.${var.domain}" },
-        { name = "SCHEMA_REGISTRY_LISTENERS", value = "http://0.0.0.0:${var.registry_port}" },
-        { name = "SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS", value = join(",", var.kafka.bootstrap) },
-        { name = "SCHEMA_REGISTRY_KAFKASTORE_SECURITY_PROTOCOL", value = local.kafka_security_protocol },
+        { name = "SCHEMA_REGISTRY_HOST_NAME", value = var.registry.host },
+        { name = "SCHEMA_REGISTRY_LISTENERS", value = "http://0.0.0.0:${var.registry.port}" },
         ],
-        var.use_kafka_sasl ? [
-          { name = "SCHEMA_REGISTRY_KAFKASTORE_SASL_MECHANISM", value = var.kafka.sasl.mechanism },
-        ] : [],
-        var.create_kafka ? [
-          { name = "SCHEMA_REGISTRY_KAFKASTORE_TOPIC_REPLICATION_FACTOR", value = tostring(var.kafka_broker_count) },
-        ] : [],
+        [for name, value in var.registry_settings : { name = name, value = value }],
       )
-      secrets = [
-        for secret in aws_secretsmanager_secret.registry_kafka : { name = "SCHEMA_REGISTRY_KAFKASTORE_SASL_JAAS_CONFIG", valueFrom = secret.arn }
-      ]
+      secrets = [for name, secret in var.registry_secrets : { name = name, valueFrom = secret }]
       logConfiguration = {
         logDriver = "awslogs"
         options = {
@@ -83,14 +74,10 @@ resource "aws_ecs_service" "registry" {
   load_balancer {
     target_group_arn = var.registry_target_group_arn
     container_name   = "registry"
-    container_port   = var.registry_port
+    container_port   = var.registry.port
   }
 
-  depends_on = [
-    aws_secretsmanager_secret_version.registry_kafka,
-    var.scram_association_ids,
-    var.nat_route_ids,
-  ]
+  depends_on = [aws_iam_role_policy.execution]
 
   tags = {
     Name = "${var.project}-registry"

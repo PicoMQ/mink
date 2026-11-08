@@ -77,8 +77,8 @@ resource "aws_security_group" "registry" {
 
   ingress {
     description     = "Schema Registry from the ALB"
-    from_port       = var.registry_port
-    to_port         = var.registry_port
+    from_port       = local.registry.port
+    to_port         = local.registry.port
     protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
   }
@@ -162,7 +162,7 @@ resource "aws_security_group" "postgres" {
 }
 
 resource "aws_security_group" "emr" {
-  count = var.emr ? 1 : 0
+  count = var.create_emr ? 1 : 0
 
   name_prefix = "${var.project}-emr-"
   description = "EMR Serverless jobs"
@@ -185,7 +185,7 @@ resource "aws_security_group" "emr" {
 }
 
 resource "aws_security_group" "client" {
-  count = var.client ? 1 : 0
+  count = var.create_client ? 1 : 0
 
   name_prefix = "${var.project}-client-"
   description = "Client instance, reached only through SSM"

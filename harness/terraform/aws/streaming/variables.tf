@@ -6,10 +6,6 @@ variable "region" {
   type = string
 }
 
-variable "domain" {
-  type = string
-}
-
 variable "create_kafka" {
   type = bool
 }
@@ -47,8 +43,11 @@ variable "create_glue_registry" {
   type = bool
 }
 
-variable "registry_port" {
-  type = number
+variable "registry" {
+  type = object({
+    host = string
+    port = number
+  })
 }
 
 variable "schema_registry" {

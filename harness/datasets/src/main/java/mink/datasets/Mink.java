@@ -1,4 +1,4 @@
-package mink.tpch;
+package mink.datasets;
 
 import java.io.IOException;
 import java.net.URI;
@@ -12,7 +12,7 @@ import java.util.Optional;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-record Mink(URI address, String warehouse, String namespace) {
+public record Mink(URI address, String warehouse, String namespace) {
     private static final HttpClient HTTP = HttpClient.newHttpClient();
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Duration ADDED_WITHIN = Duration.ofSeconds(30);
@@ -24,22 +24,22 @@ record Mink(URI address, String warehouse, String namespace) {
         boolean done() throws IOException, InterruptedException;
     }
 
-    static Mink at(URI address) throws IOException, InterruptedException {
+    public static Mink at(URI address) throws IOException, InterruptedException {
         var uri = address.resolve("/admin/cluster");
         var cluster = get(uri).orElseThrow(() -> new IOException(uri + " answered 404"));
 
         return new Mink(address, cluster.path("warehouse").asText(), cluster.path("namespace").asText());
     }
 
-    URI catalog() {
+    public URI catalog() {
         return address.resolve("/catalog");
     }
 
-    URI s3() {
+    public URI s3() {
         return address.resolve("/s3");
     }
 
-    void addTable(String topic, String granularity) throws IOException, InterruptedException {
+    public void addTable(String topic, String granularity) throws IOException, InterruptedException {
         var body = JSON.createObjectNode().put("topic", topic).put("granularity", granularity).toString();
         var request = HttpRequest.newBuilder(address.resolve("/admin/tables"))
                 .header("content-type", "application/json")
@@ -57,7 +57,7 @@ record Mink(URI address, String warehouse, String namespace) {
         });
     }
 
-    void awaitServed(String table, long rows) throws IOException, InterruptedException {
+    public void awaitServed(String table, long rows) throws IOException, InterruptedException {
         until(SERVED_WITHIN, SERVED_POLL, table + " served in full", () -> {
             var served = served(table);
             System.out.printf("served %,d of %,d%n", served, rows);

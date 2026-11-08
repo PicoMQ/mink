@@ -4,10 +4,16 @@ output "vpc_id" {
 
 output "private_subnet_ids" {
   value = local.private_subnet_ids
+
+  depends_on = [aws_route_table_association.private, aws_route.private_nat, aws_vpc_endpoint.s3]
 }
 
 output "nodes" {
   value = local.nodes
+}
+
+output "registry" {
+  value = local.registry
 }
 
 output "ports" {
@@ -39,11 +45,11 @@ output "postgres_security_group" {
 }
 
 output "emr_security_group" {
-  value = var.emr ? aws_security_group.emr[0].id : null
+  value = var.create_emr ? aws_security_group.emr[0].id : null
 }
 
 output "client_security_group" {
-  value = var.client ? aws_security_group.client[0].id : null
+  value = var.create_client ? aws_security_group.client[0].id : null
 }
 
 output "shared_target_group_arns" {
@@ -62,12 +68,4 @@ output "registry_target_group_arn" {
   value = var.create_confluent_registry ? aws_lb_target_group.registry[0].arn : null
 
   depends_on = [aws_lb_listener.registry]
-}
-
-output "nat_route_ids" {
-  value = aws_route.private_nat[*].id
-}
-
-output "s3_endpoint_ids" {
-  value = aws_vpc_endpoint.s3[*].id
 }

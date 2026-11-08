@@ -23,12 +23,16 @@ output "bucket" {
 }
 
 output "kafka_bootstrap" {
-  value     = module.streaming.kafka.bootstrap
+  value     = module.streaming.kafka_bootstrap
   sensitive = true
 }
 
 output "scram_secret_arn" {
   value = module.streaming.scram_secret_arn
+}
+
+output "external_catalog" {
+  value = module.storage.external_catalog
 }
 
 output "postgres_address" {

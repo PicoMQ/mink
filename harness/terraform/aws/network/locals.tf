@@ -19,7 +19,12 @@ locals {
     admin   = 9180
   }
 
-  alb_ports = merge(local.ports, var.create_confluent_registry ? { registry = var.registry_port } : {})
+  registry = {
+    host = "registry.${var.domain}"
+    port = 8081
+  }
+
+  alb_ports = merge(local.ports, var.create_confluent_registry ? { registry = local.registry.port } : {})
 
   node_ports = {
     for pair in setproduct(keys(local.nodes), ["s3", "admin"]) : "${pair[1]}-${pair[0]}" => {
