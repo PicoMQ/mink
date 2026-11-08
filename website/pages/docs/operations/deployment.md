@@ -8,7 +8,7 @@ A Mink cluster is a set of nodes that share one Postgres, one bucket and one Kaf
 | A bucket on an S3-compatible store | Iceberg metadata only, under `warehouse`. Data files are never written to it. The bucket must exist. |
 | Kafka | The topics it serves, read as a `read_committed` consumer |
 | A Schema Registry | Optional. Typed columns for Avro, Protobuf and JSON Schema records. |
-| An external catalog and its bucket | Optional. [Tiering](/docs/design/tiering). `tier` and `indexer` nodes write the bucket and `s3` nodes read it, with the `storage` credentials. |
+| An external catalog and its bucket | Optional. See [Tiering requirements](/docs/design/tiering#requirements). |
 
 ## Image
 

@@ -1,6 +1,6 @@
 # Reads
 
-Engines read a table in two steps: load it from the REST catalog, then read its objects from the S3 endpoint. Metadata objects come from the bucket. A data file's footer comes from Postgres. Its row groups are built from Kafka on the file's owner node, and cached there. A [tiered](/docs/design/tiering) table's external files come from the external table's bucket, through the owner node's cache.
+Engines read a table in two steps: load it from the REST catalog, then read its objects from the S3 endpoint. Metadata objects come from the bucket. A data file's footer comes from Postgres. Its row groups are built from Kafka on the file's owner node, and cached there.
 
 <div class="mink-diagram">
 <svg viewBox="0 0 660 340" width="660" role="img" aria-label="An engine loads the table from the catalog, which reads the snapshot from Postgres, then reads metadata and data files from the S3 endpoint. The S3 endpoint reads metadata objects from the bucket and forwards row group and external file reads to the owner node, which serves them from its cache, builds them from Kafka or fetches them from the external bucket.">

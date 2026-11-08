@@ -17,7 +17,7 @@
 
 `<g>` is `hour`, `day`, `month` or `none`. Without `--granularity`, a table gets the `granularity` setting, `hour` by default.
 
-`add`, `remove`, `attach` and `detach` have admin API routes that do the same. See [Admin API](/docs/operations/admin).
+Every command but `serve` and `table schema` has an admin API route that does the same. See [Admin API](/docs/operations/admin).
 
 ```bash
 mink serve -c mink.toml --roles catalog,s3

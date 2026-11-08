@@ -16,8 +16,7 @@ The project lives at [github.com/PicoMQ/mink](https://github.com/PicoMQ/mink). B
 | `mink/mink-cli` | The `mink` binary |
 | `mink/mink-conformance` | The fixture generator, and end-to-end tests against Kafka, DuckDB, PyIceberg, Spark and Trino |
 | `console/` | The admin console, embedded in the binary |
-| `specification/` | The file formats, see [File formats](/docs/formats) |
-| `conformance/fixtures/` | The fixtures each format is checked against |
+| `conformance/fixtures/` | The fixtures each [file format](/docs/formats) is checked against |
 | `harness/` | Compose files for Kafka, Schema Registry, Postgres, RustFS, Spark and Trino |
 | `website/` | This site |
 
@@ -67,9 +66,9 @@ The `e2e` workflow runs the same script on demand from GitHub Actions.
 
 ## File formats
 
-Every file Mink builds or writes has a specification in `specification/` and fixtures in `conformance/fixtures/`.
+Every file Mink builds or writes has a page under [File formats](/docs/formats) and fixtures in `conformance/fixtures/`.
 
-- A change to a format updates its specification, its version and its fixtures in the same PR.
+- A change to a format updates its page, its version and its fixtures in the same PR.
 - Never regenerate or edit fixtures to make a failing test pass. A failing fixture test means the format changed.
 
 ## Docs

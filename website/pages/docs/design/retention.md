@@ -8,6 +8,7 @@ Snapshots expire after `snapshot_retention`. The writer deletes the objects and 
 | --- | --- | --- |
 | It is older than | `snapshot_retention` | `24h` |
 | Kafka's retention deleted records it covers | Kafka's `retention.ms`, `retention.bytes` | |
+| It lists a detached external table, and another is attached | [Tiering](/docs/design/tiering#attach-and-detach) | |
 
 The latest snapshot never expires. Snapshots expire oldest first, as part of a commit.
 

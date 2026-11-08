@@ -18,9 +18,10 @@ This stack is a demo. It runs Mink on AWS end to end, and DuckDB, the console an
 | Nodes | `node_count` ECS services, one task each. They reach S3 with their task role. | |
 | Load balancer | An internal ALB on 8181 (catalog), 9100 (S3 endpoint) and 9180 (admin API and console), with a host name per node | |
 | DNS | A private Route 53 zone, `domain` (default `mink.internal`), for the ALB and each node | |
-| Client | With `client = true`, an EC2 instance with Docker, the Kafka CLI and DuckDB, reached only through SSM | |
+| Client | With `create_client = true`, an EC2 instance with Docker, the Kafka CLI and DuckDB, reached only through SSM | |
 | Image repository | With `create_repository = true`, an ECR repository for images built from source | |
-| EMR | With `emr = true`, an EMR Serverless Spark application, `emr-7.14.0`, in the private subnets. Its job role reads and writes only the bucket's `emr/` prefix. | |
+| EMR | With `create_emr = true`, an EMR Serverless Spark application, `emr-7.14.0`, in the private subnets. Its job role reads and writes only the bucket's `emr/` prefix. | |
+| External catalog | With `create_external_catalog = "s3tables"`, an S3 Tables table bucket with a `kafka` namespace, Mink's catalog `lake` for [tiering](/docs/design/tiering). Nodes and EMR get access to it. | `external_catalog`: any Iceberg REST catalog |
 
 The Postgres URL and the Kafka and Schema Registry passwords reach the containers from Secrets Manager. Nothing in the stack accepts connections from the internet. The NAT gateway's address is for outbound traffic only.
 
@@ -109,7 +110,7 @@ A new stack with every piece created, a client, and nothing kept on destroy:
 region        = "us-east-1"
 project       = "mink"
 node_count    = 2
-client        = true
+create_client = true
 force_destroy = true
 db_multi_az   = false
 ```
@@ -193,85 +194,106 @@ db.sql("SELECT _kafka_partition, _kafka_offset, CAST(_kafka_value AS VARCHAR) FR
 EOF
 ```
 
-## Load TPC-H
+## Load datasets
 
-`harness/tpch` loads TPC-H `lineitem` into the stack through its Schema Registry and checks the result. It works with either registry type.
+`harness/datasets` loads a dataset into a new topic, adds the topic as a table, and runs the dataset's queries through Mink and on DuckDB's own copy.
+
+| Dataset | Topic | Records | Encoding | Scale, default | Queries |
+| --- | --- | --- | --- | --- | --- |
+| `tpch` | `lineitem` | TPC-H `lineitem`, timestamped by ship date | JSON Schema | Scale factor, `0.5` | Q1, Q6 |
+| `telematics` | `vehicle_locations` | A position every 3 minutes per vehicle, 1,000 each, ending now | Avro | Vehicles, `50` | Positions and latest per vehicle |
+| `events` | `events` | Raw JSON over 50 hours, ending now | None | Events, `10000` | Counts |
 
 | Step | What it does |
 | --- | --- |
-| Generate | Builds `lineitem` at the given scale with DuckDB |
-| Create | Creates a `lineitem` topic with 2 partitions and unlimited retention, which must not exist yet, and adds it as a table with `month` granularity |
-| Produce | Writes the rows in `l_shipdate` order with the registry's own serializer: Confluent's JSON Schema serializer or AWS's Glue serializer. Each record's Kafka timestamp is its ship date. |
-| Wait | Waits until the catalog's current snapshot holds every row |
-| Check | Runs TPC-H Q1 and Q6 through Mink and on DuckDB's own copy, and fails if they differ |
+| Generate | Builds the dataset with DuckDB |
+| Create | Creates the topic with 2 partitions and unlimited retention, which must not exist yet, and adds it as a table |
+| Produce | Writes the records with the registry's own serializer, each record's Kafka timestamp its event time |
+| Wait | Waits until the catalog's current snapshot holds every record |
+| Check | Runs each query through Mink and on DuckDB's copy, prints `match` or `MISMATCH`, and fails on a mismatch |
 
-The table exists from the start. The console and engines show it fill as records are committed.
-
-Retention is unlimited. Kafka's time retention compares record timestamps with the current time, and these are from 1992 to 1998.
-
-Prices are `double` in Mink and in DuckDB's copy. Sums agree to a relative 1e-9.
-
-On the client, after writing the Kafka client config above:
+The registry comes from the Kafka properties: `registry.name` and `region` for Glue, whose registry is named after `project`, or `schema.registry.url` and any `basic.auth.*` for Confluent. On the client, after writing the Kafka client config above:
 
 ```bash
 dnf install -y git
 git clone https://github.com/PicoMQ/mink /opt/mink
-echo "bootstrap.servers=$BOOTSTRAP" >> /tmp/client.properties
-docker run --rm --network host -e AWS_REGION \
-  -v /opt/mink/harness/tpch:/src -v /tmp/client.properties:/client.properties -w /src \
-  maven:3.9-eclipse-temurin-25 mvn -q compile exec:java \
-  -Dexec.args="/client.properties glue mink http://mink.internal:9180 0.5"
+cat >> /tmp/client.properties <<EOF
+bootstrap.servers=$BOOTSTRAP
+registry.name=mink
+region=us-east-1
+EOF
+datasets() {
+  docker run --rm --network host -v /opt/mink/harness/datasets:/src -v /tmp/client.properties:/client.properties \
+    -w /src maven:3.9-eclipse-temurin-25 mvn -q compile exec:java -Dexec.args="$1 /client.properties http://mink.internal:9180"
+}
+datasets telematics
+datasets events
 ```
 
-With `create_schema_registry = "confluent"`, the registry arguments are `confluent http://registry.mink.internal:8081`.
+`events` ends with `counts: match` and its row, `[10000, 10000, …]`.
 
-| Argument | Value |
-| --- | --- |
-| Kafka properties | A Kafka client `.properties` file |
-| Registry type | `confluent` or `glue` |
-| Registry | A Confluent registry's URL, or a Glue registry's name in `AWS_REGION` |
-| Mink | A node's admin URL. The tool reaches the catalog at `/catalog` and the S3 endpoint at `/s3` under it. |
-| Scale | TPC-H scale, `0.5` by default |
-
-At scale `0.5` it loads 2,999,671 rows and ends with `Q1: match` and `Q6: match`, each followed by its result rows. Through Glue on the default stack the run takes about 25 minutes, most of it producing.
-
-While it loads, the indexer writes about one file per day per partition. Assembly then merges each partition's month into one file, 168 files in all. Filters on the ship date read only the matching months:
+TPC-H at scale `0.5` loads 2,999,671 rows in about 25 minutes through Glue. Assembly merges each partition's month into one file, 168 in all, and filters on the ship date read only the matching months:
 
 | Filter | Data files read |
 | --- | --- |
 | `l_shipdate` in January 1995 | 2 of 168 |
-| `_kafka_timestamp` in January 1995 | 2 |
 | `l_shipdate` in 1994, as in Q6 | 24 |
 | `_kafka_partition = 1` | 84 |
 | `l_orderkey BETWEEN 100000 AND 101000` | 166 |
 
+## Tier into S3 Tables
+
+With `create_external_catalog = "s3tables"`, attach a table to a new S3 Tables table. Here records tier once they are an hour old, with a commit every 2 minutes:
+
+```bash
+curl -X POST http://mink.internal:9180/admin/tables/vehicle_locations/external \
+  -H 'content-type: application/json' \
+  -d '{"catalog": "lake", "namespace": "kafka", "name": "vehicle_locations",
+       "source": {"new": {"partitioning": {"fields": ["day(_kafka_timestamp)"]}}},
+       "tierAfter": "1h", "tierInterval": "2m"}'
+curl -s http://mink.internal:8181/v1/namespaces/kafka/tables/vehicle_locations | jq '.metadata.snapshots[-1].summary'
+```
+
+The summary's `mink.external.partition.{p}.end-offset` is how far S3 Tables reaches in each partition. A few minutes after attaching the datasets above:
+
+| Table | Records | In S3 Tables | Data files in S3 Tables, in Mink's bucket |
+| --- | --- | --- | --- |
+| `vehicle_locations` | 50,000 | 49,750 | 6, 10 |
+| `events` | 10,000 | 9,949 | 6, 17 |
+
+DuckDB, as in [Try it](#try-it), reads each record once, older ones from S3 Tables and the last hour from Kafka. See [Tiering](/docs/design/tiering) for detach and attaching an existing table.
+
 ## Query from EMR Serverless
 
-With `emr = true`, Spark on EMR Serverless reads tables through the catalog, with EMR's bundled Iceberg and no other packages. `harness/emr/queries.py` runs SQL files against a table and prints the rows.
+With `create_emr = true`, Spark on EMR Serverless reads tables with EMR's bundled Iceberg and no other packages. `harness/datasets/src/main/python/queries.py` runs a dataset's queries against a table and prints the rows.
 
-From `harness/terraform/aws`, upload the script and the TPC-H queries, then start a job:
+From `harness/terraform/aws`, upload the script and the queries, then start a job on Mink's catalog:
 
 ```bash
 BUCKET=$(terraform output -raw bucket)
-aws s3 cp ../../emr/queries.py "s3://$BUCKET/emr/queries.py"
-aws s3 cp ../../tpch/src/main/resources/queries/ "s3://$BUCKET/emr/queries/" --recursive
-cat > /tmp/job.json <<EOF
-{
-  "sparkSubmit": {
-    "entryPoint": "s3://$BUCKET/emr/queries.py",
-    "entryPointArguments": ["mink.kafka.lineitem", "s3://$BUCKET/emr/queries/q1.sql", "s3://$BUCKET/emr/queries/q6.sql"],
-    "sparkSubmitParameters": "--conf spark.jars=/usr/share/aws/iceberg/lib/iceberg-spark3-runtime.jar --conf spark.sql.catalog.mink=org.apache.iceberg.spark.SparkCatalog --conf spark.sql.catalog.mink.type=rest --conf spark.sql.catalog.mink.uri=http://mink.internal:8181 --conf spark.sql.catalog.mink.io-impl=org.apache.iceberg.aws.s3.S3FileIO"
-  }
-}
-EOF
-cat > /tmp/logs.json <<EOF
-{"monitoringConfiguration": {"s3MonitoringConfiguration": {"logUri": "s3://$BUCKET/emr/logs/"}}}
-EOF
 APPLICATION=$(terraform output -raw emr_application_id)
-JOB=$(aws emr-serverless start-job-run --application-id "$APPLICATION" \
-  --execution-role-arn "$(terraform output -raw emr_role_arn)" --name tpch \
-  --job-driver file:///tmp/job.json --configuration-overrides file:///tmp/logs.json \
-  --query jobRunId --output text)
+ROLE=$(terraform output -raw emr_role_arn)
+aws s3 cp ../../datasets/src/main/python/queries.py "s3://$BUCKET/emr/queries.py"
+aws s3 cp ../../datasets/src/main/resources/ "s3://$BUCKET/emr/queries/" --recursive
+ICEBERG="--conf spark.jars=/usr/share/aws/iceberg/lib/iceberg-spark3-runtime.jar --conf spark.sql.session.timeZone=UTC"
+MINK="--conf spark.sql.catalog.mink=org.apache.iceberg.spark.SparkCatalog --conf spark.sql.catalog.mink.type=rest --conf spark.sql.catalog.mink.uri=http://mink.internal:8181 --conf spark.sql.catalog.mink.io-impl=org.apache.iceberg.aws.s3.S3FileIO"
+job() {
+  cat > /tmp/job.json <<EOF
+{"sparkSubmit": {"entryPoint": "s3://$BUCKET/emr/queries.py", "entryPointArguments": ["$1", "s3://$BUCKET/emr/queries/telematics/positions.sql", "s3://$BUCKET/emr/queries/telematics/latest.sql"], "sparkSubmitParameters": "$ICEBERG $2"}}
+EOF
+  aws emr-serverless start-job-run --application-id "$APPLICATION" --execution-role-arn "$ROLE" \
+    --name telematics --job-driver file:///tmp/job.json --query jobRunId --output text \
+    --configuration-overrides "{\"monitoringConfiguration\": {\"s3MonitoringConfiguration\": {\"logUri\": \"s3://$BUCKET/emr/logs/\"}}}"
+}
+JOB=$(job mink.kafka.vehicle_locations "$MINK")
+```
+
+The same job reads the S3 Tables table directly through its own catalog:
+
+```bash
+CATALOG=$(terraform output -json external_catalog)
+LAKE="--conf spark.sql.catalog.lake=org.apache.iceberg.spark.SparkCatalog --conf spark.sql.catalog.lake.type=rest --conf spark.sql.catalog.lake.uri=$(echo "$CATALOG" | jq -r .uri) --conf spark.sql.catalog.lake.warehouse=$(echo "$CATALOG" | jq -r .warehouse) --conf spark.sql.catalog.lake.rest.sigv4-enabled=true --conf spark.sql.catalog.lake.rest.signing-name=s3tables --conf spark.sql.catalog.lake.io-impl=org.apache.iceberg.aws.s3.S3FileIO"
+DIRECT=$(job lake.kafka.vehicle_locations "$LAKE")
 ```
 
 When `aws emr-serverless get-job-run --application-id "$APPLICATION" --job-run-id "$JOB"` reports `SUCCESS`, read the rows:
@@ -280,7 +302,12 @@ When `aws emr-serverless get-job-run --application-id "$APPLICATION" --job-run-i
 aws s3 cp "s3://$BUCKET/emr/logs/applications/$APPLICATION/jobs/$JOB/SPARK_DRIVER/stdout.gz" - | gunzip
 ```
 
-The rows match the ones `tpch` prints for the same scale.
+| Job | Positions per vehicle |
+| --- | --- |
+| On Mink's catalog | 1,000, all of them |
+| On S3 Tables | 995, the ones tiered so far |
+
+Each job takes about 2 minutes. The application allows 32 vCPU, so several jobs run at once and others wait their turn.
 
 ## Destroy
 
@@ -312,6 +339,8 @@ With `force_destroy = false`, the default, the database keeps a final snapshot, 
 | `bucket` | none | An existing bucket |
 | `create_schema_registry` | none | `confluent` or `glue` |
 | `schema_registry` | none | An existing registry: `{ type = "confluent", url, username, password }` or `{ type = "glue", name, region }` |
-| `client`, `client_instance_type` | `false`, `t4g.small` | The client instance |
-| `emr` | `false` | An EMR Serverless Spark application |
+| `create_client`, `client_instance_type` | `false`, `t4g.small` | The client instance |
+| `create_emr` | `false` | An EMR Serverless Spark application |
+| `create_external_catalog` | none | `s3tables` |
+| `external_catalog` | none | An existing Iceberg REST catalog: `{ uri, warehouse, auth = { type, service, region } }` |
 | `force_destroy` | `false` | Let destroy delete data |

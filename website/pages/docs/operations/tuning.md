@@ -76,7 +76,7 @@ An indexer reads each committed record once. Adding nodes with the `indexer` rol
 | --- | --- |
 | `tier_bytes` | Larger flushes write fewer, larger files. A flush holds about twice its decoded records in memory. |
 | `max_tier_flushes` | Flushes at once on a node, the multiple of a flush's memory |
-| `tier_after` | Records stay in Mink's own files this long before they tier |
-| `tier_interval` | Fewer commits with more files each. Kafka keeps records longer than `tier_after` plus twice this. |
+
+A longer [`tier_interval`](/docs/design/tiering#when-records-tier) makes fewer commits with more files each.
 
 Tiered files reach `write.target-file-size-bytes` only when a flush holds that much for one partition of the external table. `rewrite_data_files` on the external table joins smaller files.

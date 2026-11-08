@@ -39,7 +39,17 @@ const docsSidebar = [
     collapsed: false,
     items: [
       { text: 'Engines', link: '/docs/engines' },
-      { text: 'File formats', link: '/docs/formats' },
+    ],
+  },
+  {
+    text: 'File formats',
+    collapsed: false,
+    items: [
+      { text: 'Overview', link: '/docs/formats' },
+      { text: 'Data files', link: '/docs/formats/data' },
+      { text: 'Schemas', link: '/docs/formats/schema' },
+      { text: 'Table metadata', link: '/docs/formats/metadata' },
+      { text: 'Statistics', link: '/docs/formats/statistics' },
     ],
   },
   {

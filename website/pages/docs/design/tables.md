@@ -102,7 +102,7 @@ A new schema version is merged into the table the first time a record uses it. C
 | New field | A new optional column at the end of its struct |
 | Field removed | The column stays, null for new records |
 
-A schema Mink cannot merge leaves its records with their raw bytes, for example one with a field named after a Mink column or a column Iceberg reserves. The exact rules are in [`schema.md`](https://github.com/PicoMQ/mink/blob/main/specification/schema.md) and [`decoding.md`](https://github.com/PicoMQ/mink/blob/main/specification/decoding.md).
+A schema Mink cannot merge leaves its records with their raw bytes, for example one with a field named after a Mink column or a column Iceberg reserves. The exact rules are in [Schemas](/docs/formats/schema) and [Data files](/docs/formats/data#values).
 
 ## States
 

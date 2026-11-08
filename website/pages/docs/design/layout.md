@@ -1,6 +1,6 @@
 # Layout and pruning
 
-A table's own data files are partitioned by time and carry min/max bounds per column. A [tiered](/docs/design/tiering) table's external files follow the external table's partition spec and sort order. Engines use both to skip files a filter rules out. Once a time bucket has ended, its small files are assembled into larger ones. Tables with granularity `none` are not assembled.
+A table's own data files are partitioned by time and carry min/max bounds per column. Engines use both to skip files a filter rules out. A [tiered](/docs/design/tiering) table's external files follow the external table's partition spec and sort order. Once a time bucket has ended, its small files are assembled into larger ones. Tables with granularity `none` are not assembled.
 
 ## Time partitioning
 
@@ -99,4 +99,4 @@ Engines read a small file in one request. DuckDB 2.0 read files of about 1 MB wh
 
 Each manifest holds the files of one time bucket, so engines skip whole manifests outside a time range. An assembled bucket has one manifest. A bucket still open has at most 16.
 
-The exact rules are in [`layout.md`](https://github.com/PicoMQ/mink/blob/main/specification/layout.md) and [`file.md`](https://github.com/PicoMQ/mink/blob/main/specification/file.md).
+The exact rules are in [Data files](/docs/formats/data) and [Table metadata](/docs/formats/metadata#manifests).

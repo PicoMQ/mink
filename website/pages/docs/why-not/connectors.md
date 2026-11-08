@@ -77,7 +77,7 @@ Expiring snapshots or deleting orphan files under a running Flink job can break 
 | --- | --- | --- |
 | Copies | Kafka, and Parquet in the bucket | Kafka. A [tiered](/docs/design/tiering) table also writes its older records to an external table. |
 | Freshness | The last commit | Every record committed when the table loads |
-| Moving parts | A Flink, Connect, Spark or RisingWave deployment, a catalog, maintenance jobs | Mink nodes and Postgres, and a tiered table's external catalog |
+| Moving parts | A Flink, Connect, Spark or RisingWave deployment, a catalog, maintenance jobs | Mink nodes and Postgres |
 | Schema changes | Off by default in the Connect sink. Firehose drops fields the table lacks. | New Schema Registry versions evolve the table |
 | History | Kept in the table after Kafka deletes it | As far back as Kafka's retention, or a tiered table's external table |
 | Transforms | Any, in the job | None. One row per record. |

@@ -6,7 +6,7 @@ Mink serves Kafka topics as Iceberg tables, through a read-only Iceberg REST cat
 
 - **`mink/`** the node: Kafka client, schemas, Postgres store, Iceberg files and metadata, metrics, and the `mink` CLI
 - **`console/`** the web console, embedded in the node
-- **`specification/`** the files and metadata Mink writes
+- **`conformance/`** the fixtures that pin the [file formats](https://minkdb.com/docs/formats)
 
 ## Install
 

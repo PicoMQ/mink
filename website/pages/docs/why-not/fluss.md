@@ -19,7 +19,7 @@ Apache Fluss replaces Kafka with its own streaming storage. Producers, consumers
 | Clients | A Fluss integration in every producer, consumer and engine | Kafka clients stay. Engines use Iceberg. |
 | Copies | The Fluss log, and the lake tables | Kafka. A [tiered](/docs/design/tiering) table also writes its older records to an external table. |
 | Freshness | What the tiering job last committed | Every record committed when the table loads |
-| Moving parts | Fluss cluster, ZooKeeper, Flink tiering job | Mink nodes and Postgres, and a tiered table's external catalog |
+| Moving parts | Fluss cluster, ZooKeeper, Flink tiering job | Mink nodes and Postgres |
 | Updates | Primary key tables, written to Iceberg as equality deletes | None. One row per record. |
 | History | Lake tables outlive the log's TTL | As far back as Kafka's retention, or a tiered table's external table |
 

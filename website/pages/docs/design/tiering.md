@@ -82,9 +82,11 @@ Tiering moves a table's older records into an Iceberg table in another REST cata
 
 ## When records tier
 
+`tier_after` and `tier_interval` are set per table when it is [attached](/docs/operations/cli#attach).
+
 - A file tiers once its first record is older than `tier_after`, 1 hour by default. Newer records in the same file tier with it.
 - A partition flushes once `tier_bytes` of such files wait, or once its oldest waiting record is older than `tier_after` plus `tier_interval`.
-- A flush reads its offsets from Kafka, at most `tier_bytes` per read, and writes Parquet with the external table's partition spec, sort order and `write.*` properties. Its range ends at a file boundary.
+- A flush reads its offsets from Kafka, at most `tier_bytes` per read, and writes Parquet with the external table's partition spec, sort order and the `write.*` properties [Table metadata](/docs/formats/metadata#external-table) lists. Its range ends at a file boundary.
 - A flush that cannot be recorded deletes its files.
 
 ## Commits
@@ -97,7 +99,7 @@ Every `tier_interval`, 1 hour by default, the writer appends each partition's wr
 | Appends data files | Compaction, deletes and rewrites |
 | Sets `mink.partition.{p}.end-offset` | Snapshot expiry, orphan file removal and other properties |
 
-Changes by other writers are listed within one `tier_interval`. Mink keeps listing the last snapshot it accepted when the current one has equality deletes, a schema other than the table's latest schema, or a partition field id that a time spec takes. The exact metadata is in [`metadata.md`](https://github.com/PicoMQ/mink/blob/main/specification/metadata.md#external-table).
+Changes by other writers are listed within one `tier_interval`. Mink keeps listing the last snapshot it accepted while the current one has equality deletes, a schema other than the table's latest, or a spec or partition field id that time specs take.
 
 ## Attach and detach
 
@@ -105,11 +107,15 @@ A table has at most one external table. [`mink table attach`](/docs/operations/c
 
 | Attaching | Rule |
 | --- | --- |
-| A new table | Created with the table's schema and the given partition terms, or unpartitioned when that is given explicitly. Dropped again if Mink cannot register it. |
+| A new table | Created with the table's schema and the given partition terms, or unpartitioned when that is given explicitly. Purged again if the attach then fails. |
 | An existing table | Has the table's schema with the same field ids (`mink table schema`), format version 2 and no equality deletes. If it holds data, it needs an end offset for every partition. |
-| Either | The topic's `retention.ms` exceeds `tier_after` plus twice `tier_interval`. The location is `s3://`, outside Mink's warehouse, and inside or around no other external table's location. |
+| Either | The topic's retention meets the [Requirements](#requirements). The location is `s3://`, outside Mink's warehouse, and inside or around no other external table's location. |
 
-Detaching stops tiering and listing. The external table is left as it is, and files written but not committed stay for its orphan file removal. Mink serves a detached table's files while a retained snapshot lists them.
+Each attach is the table's next generation, the `mink.external.generation` a snapshot's summary names. A snapshot lists one generation:
+
+- Detaching stops tiering and listing. The external table is left as it is, and files written but not committed stay for its orphan file removal.
+- Snapshots that list a detached table stay readable for time travel until they expire.
+- The next attach expires them, so time travel reaches back to the attach. When the latest snapshot still lists the detached table, one snapshot without it comes first, and for one `snapshot_interval` the table reaches back only as far as Kafka.
 
 ## Gaps
 
@@ -123,15 +129,13 @@ When Kafka deletes records before they tier, tiering continues from the start of
 | Snapshot expiry on the external table keeps snapshots longer than `tier_interval` and `snapshot_retention` | Mink's snapshots list the external table's manifests |
 | Orphan file removal on the external table waits longer than `tier_interval` | Written files wait up to one interval for their commit |
 | Regular `rewrite_data_files` and `rewrite_manifests` on the external table | Each commit adds files and manifests |
-| Mink's `storage` credentials write the external location from `tier` and writer nodes and read it from `s3` nodes | Mink writes the files and serves them to engines |
+| Mink's `storage` credentials write the external location from `tier` and `indexer` nodes and read it from `s3` nodes | Mink writes the files and serves them to engines |
 | A rollback of the external table is followed by a detach and an attach with the end offsets of the snapshot rolled back to | Mink stops tiering when the end offsets move back |
 
 ## Limits
 
 | | Limit |
 | --- | --- |
-| Region | The external bucket is in Mink's `storage.region`, reached with Mink's `storage` credentials |
+| Region | The external bucket is in Mink's `storage.region` |
 | Namespace | One level |
-| `write.parquet.bloom-filter-max-bytes` | Not applied |
 | Equality deletes | Stop the listing |
-| Attaches | 16383 per table |
