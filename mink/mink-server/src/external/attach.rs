@@ -116,7 +116,7 @@ pub(crate) async fn attach(
             )
             .await;
             if recorded.is_err()
-                && let Err(error) = iceberg::Catalog::drop_table(catalog, &identifier).await
+                && let Err(error) = iceberg::Catalog::purge_table(catalog, &identifier).await
             {
                 tracing::warn!(topic = topic.name(), %error, "a table created for an attach that failed was not dropped");
             }
@@ -586,6 +586,39 @@ mod tests {
             "{warehouse:?}"
         );
         assert!(loaded(&tiering, tiering.topic.name()).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn a_created_table_is_purged_when_its_attach_fails() {
+        let Some(tiering) = tiering(Duration::from_secs(1)).await else {
+            return;
+        };
+        let first = loaded(&tiering, tiering.topic.name()).await.unwrap();
+        tiering
+            .services
+            .store
+            .external_tables()
+            .detach(tiering.topic.name())
+            .await
+            .unwrap();
+        let second = format!("{}_second", tiering.topic.name());
+        let inside = format!("{}/inner", first.metadata().location());
+
+        let attached = tiering
+            .attach(named(
+                tiering.attachment(Duration::from_secs(1), unpartitioned(Some(inside))),
+                &second,
+            ))
+            .await;
+
+        assert!(
+            matches!(
+                attached,
+                Err(Error::Store(mink_store::Error::OverlappingLocation { .. }))
+            ),
+            "{attached:?}"
+        );
+        assert!(loaded(&tiering, &second).await.is_err());
     }
 
     #[tokio::test]

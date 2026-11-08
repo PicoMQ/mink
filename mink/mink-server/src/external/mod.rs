@@ -111,10 +111,11 @@ impl Catalog {
                 last_assigned_field_id: metadata.last_column_id(),
             },
         ];
-        let mut updates = vec![
-            TableUpdate::AddSchema { schema },
-            TableUpdate::SetCurrentSchema { schema_id: -1 },
-        ];
+        let mut updates = Vec::new();
+        if metadata.current_schema().as_struct() != schema.as_struct() {
+            updates.push(TableUpdate::AddSchema { schema });
+            updates.push(TableUpdate::SetCurrentSchema { schema_id: -1 });
+        }
         if !spec.fields().is_empty() {
             let spec_id = metadata
                 .partition_specs_iter()
@@ -136,9 +137,12 @@ impl Catalog {
             updates.push(TableUpdate::SetDefaultSortOrder { sort_order_id: -1 });
         }
 
+        if updates.is_empty() {
+            return Ok(created);
+        }
         let assigned = self.commit(identifier, requirements, updates).await;
         if assigned.is_err()
-            && let Err(error) = iceberg::Catalog::drop_table(self, identifier).await
+            && let Err(error) = iceberg::Catalog::purge_table(self, identifier).await
         {
             tracing::warn!(catalog = %self.name, %error, "a created table whose ids were not assigned was not dropped");
         }
@@ -437,8 +441,13 @@ impl iceberg::Catalog for Catalog {
             .map(|_| ())
     }
 
-    async fn purge_table(&self, _: &TableIdent) -> Result<()> {
-        Err(unsupported("purging tables"))
+    async fn purge_table(&self, identifier: &TableIdent) -> Result<()> {
+        let mut url = self.table_url(identifier).await?;
+        url.query_pairs_mut().append_pair("purgeRequested", "true");
+
+        self.request(Method::DELETE, url, None, ErrorKind::TableNotFound)
+            .await
+            .map(|_| ())
     }
 
     async fn table_exists(&self, _: &TableIdent) -> Result<bool> {
