@@ -1,15 +1,5 @@
-resource "aws_glue_registry" "this" {
-  count = local.create_glue_registry ? 1 : 0
-
-  registry_name = var.project
-
-  tags = {
-    Name = var.project
-  }
-}
-
 resource "aws_ecs_task_definition" "registry" {
-  count = local.create_confluent_registry ? 1 : 0
+  count = var.create_confluent_registry ? 1 : 0
 
   family                   = "${var.project}-registry"
   requires_compatibilities = ["FARGATE"]
@@ -29,19 +19,19 @@ resource "aws_ecs_task_definition" "registry" {
       image     = "confluentinc/cp-schema-registry:8.1.1"
       essential = true
       portMappings = [
-        { containerPort = local.registry_port, hostPort = local.registry_port, protocol = "tcp" },
+        { containerPort = var.registry_port, hostPort = var.registry_port, protocol = "tcp" },
       ]
       environment = concat([
         { name = "SCHEMA_REGISTRY_HOST_NAME", value = "registry.${var.domain}" },
-        { name = "SCHEMA_REGISTRY_LISTENERS", value = "http://0.0.0.0:${local.registry_port}" },
-        { name = "SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS", value = join(",", local.kafka.bootstrap) },
+        { name = "SCHEMA_REGISTRY_LISTENERS", value = "http://0.0.0.0:${var.registry_port}" },
+        { name = "SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS", value = join(",", var.kafka.bootstrap) },
         { name = "SCHEMA_REGISTRY_KAFKASTORE_SECURITY_PROTOCOL", value = local.kafka_security_protocol },
         ],
-        local.use_kafka_sasl ? [
-          { name = "SCHEMA_REGISTRY_KAFKASTORE_SASL_MECHANISM", value = local.kafka.sasl.mechanism },
+        var.use_kafka_sasl ? [
+          { name = "SCHEMA_REGISTRY_KAFKASTORE_SASL_MECHANISM", value = var.kafka.sasl.mechanism },
         ] : [],
-        local.create_kafka ? [
-          { name = "SCHEMA_REGISTRY_KAFKASTORE_TOPIC_REPLICATION_FACTOR", value = tostring(aws_msk_cluster.this[0].number_of_broker_nodes) },
+        var.create_kafka ? [
+          { name = "SCHEMA_REGISTRY_KAFKASTORE_TOPIC_REPLICATION_FACTOR", value = tostring(var.kafka_broker_count) },
         ] : [],
       )
       secrets = [
@@ -64,7 +54,7 @@ resource "aws_ecs_task_definition" "registry" {
 }
 
 resource "aws_ecs_service" "registry" {
-  count = local.create_confluent_registry ? 1 : 0
+  count = var.create_confluent_registry ? 1 : 0
 
   name            = "${var.project}-registry"
   cluster         = aws_ecs_cluster.this.id
@@ -85,22 +75,21 @@ resource "aws_ecs_service" "registry" {
   }
 
   network_configuration {
-    subnets          = local.private_subnet_ids
-    security_groups  = [aws_security_group.registry[0].id]
+    subnets          = var.private_subnet_ids
+    security_groups  = [var.registry_security_group]
     assign_public_ip = false
   }
 
   load_balancer {
-    target_group_arn = aws_lb_target_group.registry[0].arn
+    target_group_arn = var.registry_target_group_arn
     container_name   = "registry"
-    container_port   = local.registry_port
+    container_port   = var.registry_port
   }
 
   depends_on = [
-    aws_lb_listener.registry,
     aws_secretsmanager_secret_version.registry_kafka,
-    aws_msk_single_scram_secret_association.this,
-    aws_route.private_nat,
+    var.scram_association_ids,
+    var.nat_route_ids,
   ]
 
   tags = {

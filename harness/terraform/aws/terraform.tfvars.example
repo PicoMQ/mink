@@ -41,3 +41,12 @@
 
 # client            = true
 # create_repository = true
+
+# External catalog that tables tier into, as Mink's catalog "lake".
+# Create an S3 Tables bucket with a kafka namespace, or use an existing catalog.
+# create_external_catalog = "s3tables"
+# external_catalog = {
+#   uri       = "https://glue.us-east-1.amazonaws.com/iceberg"
+#   warehouse = "111122223333:s3tablescatalog/lake"
+#   auth      = { type = "sigv4", service = "glue", region = "us-east-1" }
+# }

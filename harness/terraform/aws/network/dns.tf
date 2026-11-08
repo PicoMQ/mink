@@ -23,7 +23,7 @@ resource "aws_route53_record" "endpoint" {
 }
 
 resource "aws_route53_record" "registry" {
-  count = local.create_confluent_registry ? 1 : 0
+  count = var.create_confluent_registry ? 1 : 0
 
   zone_id = aws_route53_zone.this.zone_id
   name    = "registry.${var.domain}"

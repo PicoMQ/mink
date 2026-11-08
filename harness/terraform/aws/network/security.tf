@@ -69,7 +69,7 @@ resource "aws_vpc_security_group_ingress_rule" "node" {
 }
 
 resource "aws_security_group" "registry" {
-  count = local.create_confluent_registry ? 1 : 0
+  count = var.create_confluent_registry ? 1 : 0
 
   name_prefix = "${var.project}-registry-"
   description = "Confluent Schema Registry"
@@ -77,8 +77,8 @@ resource "aws_security_group" "registry" {
 
   ingress {
     description     = "Schema Registry from the ALB"
-    from_port       = local.registry_port
-    to_port         = local.registry_port
+    from_port       = var.registry_port
+    to_port         = var.registry_port
     protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
   }
@@ -100,7 +100,7 @@ resource "aws_security_group" "registry" {
 }
 
 resource "aws_security_group" "kafka" {
-  count = local.create_kafka ? 1 : 0
+  count = var.create_kafka ? 1 : 0
 
   name_prefix = "${var.project}-kafka-"
   description = "MSK brokers"
@@ -131,7 +131,7 @@ resource "aws_security_group" "kafka" {
 }
 
 resource "aws_security_group" "postgres" {
-  count = local.create_postgres ? 1 : 0
+  count = var.create_postgres ? 1 : 0
 
   name_prefix = "${var.project}-postgres-"
   description = "Mink Postgres"

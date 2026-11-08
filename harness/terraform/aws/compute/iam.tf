@@ -27,9 +27,9 @@ data "aws_iam_policy_document" "execution_secrets" {
   statement {
     actions = ["secretsmanager:GetSecretValue"]
     resources = concat(
-      [aws_secretsmanager_secret.postgres.arn],
-      aws_secretsmanager_secret.kafka[*].arn,
-      aws_secretsmanager_secret.registry_password[*].arn,
+      [var.postgres_secret_arn],
+      var.kafka_secret_arns,
+      var.registry_password_secret_arns,
       aws_secretsmanager_secret.registry_kafka[*].arn,
     )
   }
@@ -61,8 +61,8 @@ data "aws_iam_policy_document" "task_s3" {
       "s3:ListBucketMultipartUploads",
     ]
     resources = [
-      "arn:aws:s3:::${local.bucket}",
-      "arn:aws:s3:::${local.bucket}/*",
+      "arn:aws:s3:::${var.bucket}",
+      "arn:aws:s3:::${var.bucket}/*",
     ]
   }
 }
@@ -91,21 +91,27 @@ resource "aws_iam_role_policy" "task_exec" {
   policy = data.aws_iam_policy_document.task_exec.json
 }
 
-data "aws_caller_identity" "this" {}
-
 data "aws_iam_policy_document" "task_glue" {
-  count = local.use_glue_registry ? 1 : 0
+  count = var.use_glue_registry ? 1 : 0
 
   statement {
     actions   = ["glue:GetRegistry", "glue:GetSchemaVersion"]
-    resources = local.glue_registry_arns
+    resources = var.glue_registry_arns
   }
 }
 
 resource "aws_iam_role_policy" "task_glue" {
-  count = local.use_glue_registry ? 1 : 0
+  count = var.use_glue_registry ? 1 : 0
 
   name   = "glue"
   role   = aws_iam_role.task.id
   policy = data.aws_iam_policy_document.task_glue[0].json
+}
+
+resource "aws_iam_role_policy" "task_tables" {
+  count = var.create_s3_tables ? 1 : 0
+
+  name   = "tables"
+  role   = aws_iam_role.task.id
+  policy = var.external_catalog_write_policy
 }

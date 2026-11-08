@@ -123,7 +123,7 @@ MSK takes the longest to create, often more than half an hour.
 To run an image built from source, set `create_repository = true`, create the repository first, push to it, then apply the rest:
 
 ```bash
-terraform apply -target=aws_ecr_repository.mink
+terraform apply -target=module.compute.aws_ecr_repository.mink
 REPOSITORY=$(terraform output -raw repository_url)
 aws ecr get-login-password | docker login --username AWS --password-stdin "${REPOSITORY%%/*}"
 docker buildx build --platform linux/arm64 -t "$REPOSITORY:dev" --push ../../..

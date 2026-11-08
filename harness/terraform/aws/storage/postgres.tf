@@ -1,8 +1,8 @@
 resource "aws_db_subnet_group" "this" {
-  count = local.create_postgres ? 1 : 0
+  count = var.create_postgres ? 1 : 0
 
   name       = var.project
-  subnet_ids = local.private_subnet_ids
+  subnet_ids = var.private_subnet_ids
 
   tags = {
     Name = var.project
@@ -10,7 +10,7 @@ resource "aws_db_subnet_group" "this" {
 }
 
 resource "aws_db_instance" "this" {
-  count = local.create_postgres ? 1 : 0
+  count = var.create_postgres ? 1 : 0
 
   identifier     = var.project
   engine         = "postgres"
@@ -27,7 +27,7 @@ resource "aws_db_instance" "this" {
   password = random_password.postgres[0].result
 
   db_subnet_group_name   = aws_db_subnet_group.this[0].name
-  vpc_security_group_ids = [aws_security_group.postgres[0].id]
+  vpc_security_group_ids = [var.postgres_security_group]
   publicly_accessible    = false
   multi_az               = var.db_multi_az
 

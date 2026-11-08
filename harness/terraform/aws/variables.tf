@@ -168,6 +168,34 @@ variable "schema_registry" {
   }
 }
 
+variable "create_external_catalog" {
+  type    = string
+  default = null
+
+  validation {
+    condition     = var.create_external_catalog == null || var.create_external_catalog == "s3tables"
+    error_message = "create_external_catalog must be s3tables."
+  }
+}
+
+variable "external_catalog" {
+  type = object({
+    uri       = string
+    warehouse = optional(string)
+    auth = optional(object({
+      type    = string
+      service = optional(string)
+      region  = optional(string)
+    }))
+  })
+  default = null
+
+  validation {
+    condition     = var.external_catalog == null || var.create_external_catalog == null
+    error_message = "Set create_external_catalog or external_catalog, not both."
+  }
+}
+
 variable "client" {
   type    = bool
   default = false

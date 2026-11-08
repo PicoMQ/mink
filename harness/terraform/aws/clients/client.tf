@@ -42,21 +42,21 @@ resource "aws_iam_role_policy_attachment" "client_ssm" {
 }
 
 data "aws_iam_policy_document" "client_kafka" {
-  count = var.client && local.create_kafka ? 1 : 0
+  count = var.client && var.create_kafka ? 1 : 0
 
   statement {
     actions   = ["secretsmanager:GetSecretValue"]
-    resources = [aws_secretsmanager_secret.scram[0].arn]
+    resources = [var.scram_secret_arn]
   }
 
   statement {
     actions   = ["kms:Decrypt"]
-    resources = [aws_kms_key.scram[0].arn]
+    resources = [var.scram_kms_key_arn]
   }
 }
 
 resource "aws_iam_role_policy" "client_kafka" {
-  count = var.client && local.create_kafka ? 1 : 0
+  count = var.client && var.create_kafka ? 1 : 0
 
   name   = "kafka"
   role   = aws_iam_role.client[0].id
@@ -64,7 +64,7 @@ resource "aws_iam_role_policy" "client_kafka" {
 }
 
 data "aws_iam_policy_document" "client_glue" {
-  count = var.client && local.use_glue_registry ? 1 : 0
+  count = var.client && var.use_glue_registry ? 1 : 0
 
   statement {
     actions = [
@@ -75,12 +75,12 @@ data "aws_iam_policy_document" "client_glue" {
       "glue:GetSchemaVersion",
       "glue:PutSchemaVersionMetadata",
     ]
-    resources = local.glue_registry_arns
+    resources = var.glue_registry_arns
   }
 }
 
 resource "aws_iam_role_policy" "client_glue" {
-  count = var.client && local.use_glue_registry ? 1 : 0
+  count = var.client && var.use_glue_registry ? 1 : 0
 
   name   = "glue"
   role   = aws_iam_role.client[0].id
@@ -99,8 +99,8 @@ resource "aws_instance" "client" {
 
   ami                    = data.aws_ssm_parameter.client_ami[0].value
   instance_type          = var.client_instance_type
-  subnet_id              = local.private_subnet_ids[0]
-  vpc_security_group_ids = [aws_security_group.client[0].id]
+  subnet_id              = var.private_subnet_ids[0]
+  vpc_security_group_ids = [var.client_security_group]
   iam_instance_profile   = aws_iam_instance_profile.client[0].name
 
   metadata_options {
@@ -127,5 +127,5 @@ resource "aws_instance" "client" {
     Name = "${var.project}-client"
   }
 
-  depends_on = [aws_route.private_nat, aws_vpc_endpoint.s3]
+  depends_on = [var.nat_route_ids, var.s3_endpoint_ids]
 }

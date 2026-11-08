@@ -1,5 +1,5 @@
 resource "aws_msk_configuration" "this" {
-  count = local.create_kafka ? 1 : 0
+  count = var.create_kafka ? 1 : 0
 
   name           = var.project
   kafka_versions = [var.msk_version]
@@ -11,7 +11,7 @@ resource "aws_msk_configuration" "this" {
 }
 
 resource "aws_msk_cluster" "this" {
-  count = local.create_kafka ? 1 : 0
+  count = var.create_kafka ? 1 : 0
 
   cluster_name           = var.project
   kafka_version          = var.msk_version
@@ -20,7 +20,7 @@ resource "aws_msk_cluster" "this" {
   broker_node_group_info {
     instance_type   = var.msk_instance_type
     client_subnets  = local.kafka_subnet_ids
-    security_groups = [aws_security_group.kafka[0].id]
+    security_groups = [var.kafka_security_group]
 
     storage_info {
       ebs_storage_info {
@@ -55,7 +55,7 @@ resource "aws_msk_cluster" "this" {
 }
 
 resource "aws_msk_single_scram_secret_association" "this" {
-  count = local.create_kafka ? 1 : 0
+  count = var.create_kafka ? 1 : 0
 
   cluster_arn = aws_msk_cluster.this[0].arn
   secret_arn  = aws_secretsmanager_secret.scram[0].arn

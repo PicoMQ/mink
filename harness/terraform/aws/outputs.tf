@@ -1,64 +1,64 @@
 output "catalog_endpoint" {
-  value = "http://${var.domain}:${local.ports.catalog}"
+  value = "http://${var.domain}:${module.network.ports.catalog}"
 }
 
 output "s3_endpoint" {
-  value = "http://${var.domain}:${local.ports.s3}"
+  value = "http://${var.domain}:${module.network.ports.s3}"
 }
 
 output "admin_endpoint" {
-  value = "http://${var.domain}:${local.ports.admin}"
+  value = "http://${var.domain}:${module.network.ports.admin}"
 }
 
 output "nodes" {
-  value = { for key, node in local.nodes : key => node.host }
+  value = { for key, node in module.network.nodes : key => node.host }
 }
 
 output "alb_dns_name" {
-  value = aws_lb.this.dns_name
+  value = module.network.alb_dns_name
 }
 
 output "bucket" {
-  value = local.bucket
+  value = module.storage.bucket
 }
 
 output "kafka_bootstrap" {
-  value     = local.kafka.bootstrap
+  value     = module.streaming.kafka.bootstrap
   sensitive = true
 }
 
 output "scram_secret_arn" {
-  value = local.create_kafka ? aws_secretsmanager_secret.scram[0].arn : null
+  value = module.streaming.scram_secret_arn
 }
 
 output "postgres_address" {
-  value = local.create_postgres ? aws_db_instance.this[0].address : null
+  value = module.storage.postgres_address
 }
 
 output "client_instance_id" {
-  value = var.client ? aws_instance.client[0].id : null
+  value = module.clients.client_instance_id
 }
 
 output "emr_application_id" {
-  value = var.emr ? aws_emrserverless_application.this[0].id : null
+  value = module.clients.emr_application_id
 }
 
 output "emr_role_arn" {
-  value = var.emr ? aws_iam_role.emr[0].arn : null
+  value = module.clients.emr_role_arn
 }
 
 output "repository_url" {
-  value = var.create_repository ? aws_ecr_repository.mink[0].repository_url : null
+  value = module.compute.repository_url
 }
 
 output "node_security_group" {
-  value = aws_security_group.node.id
+  value = module.network.node_security_group
 }
 
 output "vpc_id" {
-  value = local.vpc_id
+  value = module.network.vpc_id
 }
 
 output "private_subnet_ids" {
-  value = local.private_subnet_ids
+  value = module.network.private_subnet_ids
 }

@@ -17,8 +17,8 @@ resource "aws_emrserverless_application" "this" {
   }
 
   network_configuration {
-    subnet_ids         = local.private_subnet_ids
-    security_group_ids = [aws_security_group.emr[0].id]
+    subnet_ids         = var.private_subnet_ids
+    security_group_ids = [var.emr_security_group]
   }
 
   tags = {
@@ -55,12 +55,12 @@ data "aws_iam_policy_document" "emr_s3" {
 
   statement {
     actions   = ["s3:GetObject", "s3:PutObject"]
-    resources = ["arn:aws:s3:::${local.bucket}/emr/*"]
+    resources = ["arn:aws:s3:::${var.bucket}/emr/*"]
   }
 
   statement {
     actions   = ["s3:ListBucket"]
-    resources = ["arn:aws:s3:::${local.bucket}"]
+    resources = ["arn:aws:s3:::${var.bucket}"]
 
     condition {
       test     = "StringLike"
@@ -76,4 +76,12 @@ resource "aws_iam_role_policy" "emr_s3" {
   name   = "s3"
   role   = aws_iam_role.emr[0].id
   policy = data.aws_iam_policy_document.emr_s3[0].json
+}
+
+resource "aws_iam_role_policy" "emr_tables" {
+  count = var.emr && var.create_s3_tables ? 1 : 0
+
+  name   = "tables"
+  role   = aws_iam_role.emr[0].id
+  policy = var.external_catalog_read_policy
 }

@@ -1,5 +1,5 @@
 resource "aws_ecs_task_definition" "node" {
-  for_each = local.nodes
+  for_each = var.nodes
 
   family                   = "${var.project}-${each.key}"
   requires_compatibilities = ["FARGATE"]
@@ -27,9 +27,9 @@ resource "aws_ecs_task_definition" "node" {
       name      = "certs"
       image     = "public.ecr.aws/amazonlinux/amazonlinux:2023"
       essential = false
-      command   = ["curl", "-fsS", "-o", local.rds_ca, "https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem"]
+      command   = ["curl", "-fsS", "-o", var.rds_ca, "https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem"]
       mountPoints = [
-        { sourceVolume = "certs", containerPath = dirname(local.rds_ca) },
+        { sourceVolume = "certs", containerPath = dirname(var.rds_ca) },
       ]
       logConfiguration = {
         logDriver = "awslogs"
@@ -48,38 +48,39 @@ resource "aws_ecs_task_definition" "node" {
         { containerName = "certs", condition = "SUCCESS" },
       ]
       portMappings = [
-        for port in values(local.ports) : { containerPort = port, hostPort = port, protocol = "tcp" }
+        for port in values(var.ports) : { containerPort = port, hostPort = port, protocol = "tcp" }
       ]
       environment = concat([
-        { name = "MINK_WAREHOUSE", value = "s3://${local.bucket}/warehouse" },
+        { name = "MINK_WAREHOUSE", value = "s3://${var.bucket}/warehouse" },
         { name = "MINK_STORAGE__REGION", value = var.region },
-        { name = "MINK_KAFKA__BOOTSTRAP", value = jsonencode(local.kafka.bootstrap) },
-        { name = "MINK_CATALOG_ADDRESS", value = "0.0.0.0:${local.ports.catalog}" },
-        { name = "MINK_S3_ADDRESS", value = "0.0.0.0:${local.ports.s3}" },
-        { name = "MINK_ADMIN_ADDRESS", value = "0.0.0.0:${local.ports.admin}" },
+        { name = "MINK_KAFKA__BOOTSTRAP", value = jsonencode(var.kafka.bootstrap) },
+        { name = "MINK_CATALOG_ADDRESS", value = "0.0.0.0:${var.ports.catalog}" },
+        { name = "MINK_S3_ADDRESS", value = "0.0.0.0:${var.ports.s3}" },
+        { name = "MINK_ADMIN_ADDRESS", value = "0.0.0.0:${var.ports.admin}" },
         { name = "MINK_ADMIN_REMOTE", value = "true" },
-        { name = "MINK_CATALOG_ENDPOINT", value = "http://${var.domain}:${local.ports.catalog}" },
-        { name = "MINK_S3_ENDPOINT", value = "http://${var.domain}:${local.ports.s3}" },
-        { name = "MINK_ADVERTISED_ADDRESS", value = "http://${each.value.host}:${local.ports.s3}" },
-        { name = "MINK_ADVERTISED_ADMIN_ADDRESS", value = "http://${each.value.host}:${local.ports.admin}" },
+        { name = "MINK_CATALOG_ENDPOINT", value = "http://${var.domain}:${var.ports.catalog}" },
+        { name = "MINK_S3_ENDPOINT", value = "http://${var.domain}:${var.ports.s3}" },
+        { name = "MINK_ADVERTISED_ADDRESS", value = "http://${each.value.host}:${var.ports.s3}" },
+        { name = "MINK_ADVERTISED_ADMIN_ADDRESS", value = "http://${each.value.host}:${var.ports.admin}" },
         { name = "MINK_CACHE_DIR", value = local.cache_dir },
         { name = "MINK_CACHE_BYTES", value = tostring(var.task_memory * 1024 * 1024 / 4) },
         { name = "MINK_CACHE_DISK_BYTES", value = tostring(10 * 1024 * 1024 * 1024) },
         ],
-        local.kafka.tls ? [{ name = "MINK_KAFKA__TLS", value = "{}" }] : [],
-        local.use_kafka_sasl ? [
-          { name = "MINK_KAFKA__SASL__MECHANISM", value = local.kafka.sasl.mechanism },
-          { name = "MINK_KAFKA__SASL__USERNAME", value = local.kafka.sasl.username },
+        var.kafka.tls ? [{ name = "MINK_KAFKA__TLS", value = "{}" }] : [],
+        var.use_kafka_sasl ? [
+          { name = "MINK_KAFKA__SASL__MECHANISM", value = var.kafka.sasl.mechanism },
+          { name = "MINK_KAFKA__SASL__USERNAME", value = var.kafka.sasl.username },
         ] : [],
-        [for key, value in local.registry_settings : { name = "MINK_SCHEMA_REGISTRY__${upper(key)}", value = value }],
+        [for key, value in var.registry_settings : { name = "MINK_SCHEMA_REGISTRY__${upper(key)}", value = value }],
+        [for name, value in local.external_catalog_settings : { name = name, value = value }],
       )
       secrets = concat(
-        [{ name = "MINK_POSTGRES", valueFrom = aws_secretsmanager_secret.postgres.arn }],
-        [for secret in aws_secretsmanager_secret.kafka : { name = "MINK_KAFKA__SASL__PASSWORD", valueFrom = secret.arn }],
-        [for secret in aws_secretsmanager_secret.registry_password : { name = "MINK_SCHEMA_REGISTRY__PASSWORD", valueFrom = secret.arn }],
+        [{ name = "MINK_POSTGRES", valueFrom = var.postgres_secret_arn }],
+        [for arn in var.kafka_secret_arns : { name = "MINK_KAFKA__SASL__PASSWORD", valueFrom = arn }],
+        [for arn in var.registry_password_secret_arns : { name = "MINK_SCHEMA_REGISTRY__PASSWORD", valueFrom = arn }],
       )
       mountPoints = [
-        { sourceVolume = "certs", containerPath = dirname(local.rds_ca), readOnly = true },
+        { sourceVolume = "certs", containerPath = dirname(var.rds_ca), readOnly = true },
         { sourceVolume = "cache", containerPath = local.cache_dir },
       ]
       logConfiguration = {
@@ -99,7 +100,7 @@ resource "aws_ecs_task_definition" "node" {
 }
 
 resource "aws_ecs_service" "node" {
-  for_each = local.nodes
+  for_each = var.nodes
 
   name            = "${var.project}-${each.key}"
   cluster         = aws_ecs_cluster.this.id
@@ -121,41 +122,38 @@ resource "aws_ecs_service" "node" {
   }
 
   network_configuration {
-    subnets          = local.private_subnet_ids
-    security_groups  = [aws_security_group.node.id]
+    subnets          = var.private_subnet_ids
+    security_groups  = [var.node_security_group]
     assign_public_ip = false
   }
 
   dynamic "load_balancer" {
-    for_each = local.ports
+    for_each = var.ports
 
     content {
-      target_group_arn = aws_lb_target_group.shared[load_balancer.key].arn
+      target_group_arn = var.shared_target_group_arns[load_balancer.key]
       container_name   = "mink"
       container_port   = load_balancer.value
     }
   }
 
   dynamic "load_balancer" {
-    for_each = { for key, node_port in local.node_ports : key => node_port if node_port.node == each.key }
+    for_each = { for key, node_port in var.node_ports : key => node_port if node_port.node == each.key }
 
     content {
-      target_group_arn = aws_lb_target_group.node[load_balancer.key].arn
+      target_group_arn = var.node_target_group_arns[load_balancer.key]
       container_name   = "mink"
       container_port   = load_balancer.value.port
     }
   }
 
   depends_on = [
-    aws_lb_listener.this,
-    aws_lb_listener_rule.node,
-    aws_secretsmanager_secret_version.postgres,
-    aws_secretsmanager_secret_version.kafka,
-    aws_secretsmanager_secret_version.registry_password,
-    aws_msk_single_scram_secret_association.this,
-    aws_db_instance.this,
-    aws_route.private_nat,
-    aws_vpc_endpoint.s3,
+    var.postgres_secret_version_id,
+    var.kafka_secret_version_ids,
+    var.registry_password_secret_version_ids,
+    var.scram_association_ids,
+    var.nat_route_ids,
+    var.s3_endpoint_ids,
   ]
 
   tags = {
