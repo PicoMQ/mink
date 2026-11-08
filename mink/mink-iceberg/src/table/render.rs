@@ -3,8 +3,7 @@ use mink_schema::binary_schema;
 use serde_json::{Map, Value, json};
 
 use super::commit::Commit;
-use super::external::ExternalSpecs;
-use super::specs::partition_specs;
+use super::specs::{iceberg_spec_id, partition_specs};
 use super::{FormatVersion, Table};
 use crate::Error;
 
@@ -18,26 +17,14 @@ impl Table {
             .into_iter()
             .chain(commit.schemas)
             .collect();
-        let declared: Vec<&ExternalSpecs> = self.external_specs.values().collect();
         let mut specs = partition_specs(commit.specs)?;
-        specs.extend(
-            declared
-                .iter()
-                .flat_map(|declared| declared.partition_specs())
-                .cloned(),
-        );
+        specs.extend(self.external_specs.partition_specs().iter().cloned());
         let last_partition_id = specs
             .iter()
             .filter_map(PartitionSpec::highest_field_id)
             .max();
         let mut sort_orders = vec![SortOrder::unsorted_order()];
-        sort_orders.extend(
-            declared
-                .last()
-                .into_iter()
-                .flat_map(|declared| declared.sort_orders())
-                .cloned(),
-        );
+        sort_orders.extend(self.external_specs.sort_orders().iter().cloned());
 
         let metadata = match self.version {
             FormatVersion::V2 => json!({
@@ -49,7 +36,7 @@ impl Table {
                 "last-column-id": schemas.iter().map(|schema| schema.highest_field_id()).max(),
                 "current-schema-id": commit.current_schema().schema_id(),
                 "schemas": schemas,
-                "default-spec-id": commit.specs.current().id(),
+                "default-spec-id": iceberg_spec_id(commit.specs.current().id()),
                 "partition-specs": specs,
                 "last-partition-id": last_partition_id,
                 "default-sort-order-id": SortOrder::unsorted_order().order_id,

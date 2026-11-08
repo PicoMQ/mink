@@ -11,7 +11,7 @@ use iceberg::spec::{
 use mink_core::{File, Granularity, IndexedFile, Object, ObjectKind, TableLocation, TimePartition};
 
 use super::commit::{Commit, CommitOutput};
-use super::specs::partition_specs;
+use super::specs::{iceberg_spec_id, partition_specs};
 use super::{FormatVersion, Table};
 use crate::Error;
 
@@ -243,7 +243,7 @@ impl Table {
     ) -> Result<ManifestWriter, Error> {
         let spec = partition_specs(commit.specs)?
             .into_iter()
-            .find(|spec| spec.spec_id() == key.spec_id())
+            .find(|spec| spec.spec_id() == iceberg_spec_id(key.spec_id()))
             .ok_or(Error::UnknownTimeSpec(key.spec_id()))?;
         let builder = ManifestWriterBuilder::new(
             io.new_output(location)?,
@@ -286,7 +286,7 @@ impl Table {
             .file_path(TableLocation::data_file(&self.warehouse, file))
             .file_format(DataFileFormat::Parquet)
             .partition(partition_value(commit, file)?)
-            .partition_spec_id(file.time().spec_id())
+            .partition_spec_id(iceberg_spec_id(file.time().spec_id()))
             .record_count(stats.records())
             .file_size_in_bytes(stats.bytes())
             .lower_bounds(datums(stats.lower())?)

@@ -628,6 +628,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_new_generation_is_listed_after_a_snapshot_without_the_earlier_one() {
+        let Some(tiering) = tiering(Duration::from_secs(1)).await else {
+            return;
+        };
+        merged(&tiering).await;
+        let tables = tiering.services.store.external_tables();
+        let topic = tiering.topic.name();
+        let attached = tables.get(topic).await.unwrap().unwrap();
+        let ends = mink_iceberg::end_offsets(&table(&tiering).await).unwrap();
+        tables.detach(topic).await.unwrap();
+        tables
+            .attach(
+                topic,
+                attached.table().clone(),
+                attached.uuid(),
+                attached.location().clone(),
+                attached.schedule(),
+                &ends,
+            )
+            .await
+            .unwrap();
+
+        let mut writer = tiering.writer().await;
+        writer.commit_tiered().await.unwrap();
+        let unlisted = writer.commit().await.unwrap().unwrap();
+        let listed_after_unlisting = writer.table.external_snapshot().cloned();
+        let relisted = writer.commit().await.unwrap().unwrap();
+
+        assert_eq!(listed_after_unlisting, None);
+        assert_eq!(start(&unlisted), 0);
+        assert_eq!(start(&relisted), 6);
+        assert_eq!(writer.table.listed_generations().unwrap(), [2]);
+    }
+
+    #[tokio::test]
     async fn a_rejected_external_snapshot_keeps_the_listed_one() {
         let Some(tiering) = tiering(Duration::from_secs(1)).await else {
             return;

@@ -42,7 +42,8 @@ pub async fn set_granularity(
     granularity: Granularity,
 ) -> Result<i32, Error> {
     with_store(config, async |store| {
-        Ok(store.time_specs().record(topic, granularity).await?)
+        let time_spec_id = store.time_specs().record(topic, granularity).await?;
+        Ok(mink_iceberg::iceberg_spec_id(time_spec_id))
     })
     .await
 }

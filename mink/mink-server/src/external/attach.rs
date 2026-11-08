@@ -92,7 +92,8 @@ pub(crate) async fn attach(
             let spec = partition_spec(&schema, partitioning)?;
             let order = sort_order(&schema, sort)?;
             if let Some(location) = location {
-                external_location(warehouse.root(), location)?;
+                let location = external_location(warehouse.root(), location)?;
+                store.external_tables().check_location(&location).await?;
             }
 
             let table = catalog
@@ -118,7 +119,7 @@ pub(crate) async fn attach(
             if recorded.is_err()
                 && let Err(error) = iceberg::Catalog::purge_table(catalog, &identifier).await
             {
-                tracing::warn!(topic = topic.name(), %error, "a table created for an attach that failed was not dropped");
+                tracing::warn!(topic = topic.name(), %error, "a table created for an attach that failed was not purged");
             }
             recorded
         }
@@ -589,7 +590,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_created_table_is_purged_when_its_attach_fails() {
+    async fn an_overlapping_location_is_refused_before_a_table_is_created() {
         let Some(tiering) = tiering(Duration::from_secs(1)).await else {
             return;
         };
@@ -615,6 +616,30 @@ mod tests {
             matches!(
                 attached,
                 Err(Error::Store(mink_store::Error::OverlappingLocation { .. }))
+            ),
+            "{attached:?}"
+        );
+        assert!(loaded(&tiering, &second).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn a_created_table_is_purged_when_its_attach_fails() {
+        let Some(tiering) = tiering(Duration::from_secs(1)).await else {
+            return;
+        };
+        let second = format!("{}_second", tiering.topic.name());
+
+        let attached = tiering
+            .attach(named(
+                tiering.attachment(Duration::from_secs(1), unpartitioned(None)),
+                &second,
+            ))
+            .await;
+
+        assert!(
+            matches!(
+                attached,
+                Err(Error::Store(mink_store::Error::AlreadyExternalTable { .. }))
             ),
             "{attached:?}"
         );

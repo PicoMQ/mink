@@ -107,7 +107,11 @@ pub(super) async fn store(io: &FileIO, change: &Change) {
 }
 
 pub(super) async fn tiered() -> IcebergTable {
-    let table = external_table(last_time_field_id() + 1, HashMap::new());
+    tiered_by_day_field(last_time_field_id() + 1).await
+}
+
+pub(super) async fn tiered_by_day_field(day_field_id: i32) -> IcebergTable {
+    let table = external_table(day_field_id, HashMap::new());
     let records: Vec<Record> = (0..6)
         .map(|offset| {
             let value = Some(Bytes::from(format!("v{offset}")));

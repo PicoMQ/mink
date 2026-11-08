@@ -5,6 +5,7 @@ use mink_schema::{PARTITION, PARTITION_ID, TIMESTAMP, TIMESTAMP_ID, binary_schem
 use crate::Error;
 
 pub(super) const PARTITION_FIELD: i32 = 1000;
+pub(super) const TIME_SPEC_ID_BASE: i32 = 1 << 30;
 
 pub(super) fn partition_specs(specs: &TimeSpecs) -> Result<Vec<PartitionSpec>, Error> {
     specs
@@ -30,11 +31,21 @@ pub(super) fn partition_specs(specs: &TimeSpecs) -> Result<Vec<PartitionSpec>, E
             }
 
             Ok(PartitionSpec::builder(binary_schema().clone())
-                .with_spec_id(i32::try_from(spec_id).expect("spec ids fit in an i32"))
+                .with_spec_id(iceberg_spec_id(
+                    i32::try_from(spec_id).expect("spec ids fit in an i32"),
+                ))
                 .add_unbound_fields(fields)?
                 .build()?)
         })
         .collect()
+}
+
+pub fn iceberg_spec_id(time_spec_id: i32) -> i32 {
+    TIME_SPEC_ID_BASE + time_spec_id
+}
+
+pub(super) fn is_time_spec(iceberg_spec_id: i32) -> bool {
+    iceberg_spec_id >= TIME_SPEC_ID_BASE
 }
 
 pub(crate) fn last_time_field_id() -> i32 {

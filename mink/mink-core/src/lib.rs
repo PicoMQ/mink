@@ -15,7 +15,7 @@ mod time;
 mod topic;
 
 pub use error::Error;
-pub use external::{CatalogTable, ExternalTable, MAX_GENERATION, TierSchedule};
+pub use external::{CatalogTable, ExternalTable, TierSchedule};
 pub use file::{Assembly, AssemblyHash, BuiltFile, File, FileVersion, IndexedFile, Span, Stats};
 pub use granularity::{Granularity, TimePartition, TimeSpec, TimeSpecs, utc_day};
 pub use location::{ExternalLocation, TableLocation};

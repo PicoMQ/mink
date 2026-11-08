@@ -65,6 +65,6 @@
     }
   ],
   "format_version": 2,
-  "partition_spec_id": 0,
+  "partition_spec_id": 1073741824,
   "schema_id": 0
 }

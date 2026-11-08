@@ -74,7 +74,7 @@ impl<'a> ExternalTables<'a> {
         sqlx::query("LOCK TABLE listed_location IN SHARE ROW EXCLUSIVE MODE")
             .execute(&mut *transaction)
             .await?;
-        if overlaps_another_table(&mut transaction, &location, uuid).await? {
+        if overlaps_another_table(&mut transaction, &location, Some(uuid)).await? {
             return Err(Error::OverlappingLocation {
                 location: location.path().to_owned(),
             });
@@ -133,6 +133,16 @@ impl<'a> ExternalTables<'a> {
 
         transaction.commit().await?;
         Ok(external)
+    }
+
+    pub async fn check_location(&self, location: &ExternalLocation) -> Result<(), Error> {
+        let mut connection = self.pool.acquire().await?;
+        match overlaps_another_table(&mut connection, location, None).await? {
+            true => Err(Error::OverlappingLocation {
+                location: location.path().to_owned(),
+            }),
+            false => Ok(()),
+        }
     }
 
     pub async fn detach(&self, topic: &str) -> Result<(), Error> {
@@ -221,11 +231,11 @@ impl ListedLocation {
 async fn overlaps_another_table(
     connection: &mut PgConnection,
     location: &ExternalLocation,
-    uuid: Uuid,
+    uuid: Option<Uuid>,
 ) -> Result<bool, Error> {
     let location = location.path();
     let overlapping: Option<i32> = sqlx::query_scalar(
-        "SELECT 1 FROM listed_location WHERE uuid <> $3 \
+        "SELECT 1 FROM listed_location WHERE uuid IS DISTINCT FROM $3 \
          AND (location = $1 OR location = ANY($2) OR starts_with(location, $1 || '/')) LIMIT 1",
     )
     .bind(location)

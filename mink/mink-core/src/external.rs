@@ -5,8 +5,6 @@ use uuid::Uuid;
 use crate::Error;
 use crate::location::ExternalLocation;
 
-pub const MAX_GENERATION: i32 = 16_383;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExternalTable {
     topic: String,
@@ -106,7 +104,7 @@ impl ExternalTable {
         if !named {
             return Err(Error::ExternalTable(topic.to_owned()));
         }
-        if !(1..=MAX_GENERATION).contains(&generation) {
+        if generation < 1 {
             return Err(Error::Generation(generation));
         }
 
@@ -173,7 +171,7 @@ mod tests {
     }
 
     #[test]
-    fn a_table_allows_generations_up_to_the_last_attach() {
+    fn a_generation_is_positive() {
         let table = |generation| {
             ExternalTable::new(
                 "orders",
@@ -185,12 +183,8 @@ mod tests {
             )
         };
 
-        assert!(table(MAX_GENERATION).is_ok());
+        assert!(table(1).is_ok());
         assert_eq!(table(0), Err(Error::Generation(0)));
-        assert_eq!(
-            table(MAX_GENERATION + 1),
-            Err(Error::Generation(MAX_GENERATION + 1))
-        );
     }
 
     #[test]

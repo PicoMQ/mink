@@ -173,7 +173,7 @@ fn item(stored: &StoredFile) -> Value {
         "startOffset": file.start_offset(),
         "endOffset": file.end_offset(),
         "bucket": file.time().bucket(),
-        "specId": file.time().spec_id(),
+        "specId": mink_iceberg::iceberg_spec_id(file.time().spec_id()),
         "schemaId": file.schema_id(),
         "version": file.version().number(),
         "parts": stored.spans().len(),

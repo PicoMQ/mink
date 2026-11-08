@@ -124,7 +124,10 @@ async fn table(
         .granularities()
         .iter()
         .enumerate()
-        .map(|(id, granularity)| json!({ "id": id, "granularity": granularity.name() }))
+        .map(|(id, granularity)| {
+            let id = i32::try_from(id).expect("spec ids fit in an i32");
+            json!({ "id": mink_iceberg::iceberg_spec_id(id), "granularity": granularity.name() })
+        })
         .collect();
     detail["writer"] = leases
         .iter()
@@ -341,7 +344,10 @@ mod tests {
         assert_eq!(table["granularity"], "day");
         assert_eq!(
             detail["specs"],
-            json!([{ "id": 0, "granularity": "none" }, { "id": 1, "granularity": "day" }])
+            json!([
+                { "id": 1 << 30, "granularity": "none" },
+                { "id": (1 << 30) + 1, "granularity": "day" }
+            ])
         );
         assert_eq!(bad, StatusCode::BAD_REQUEST);
         assert_eq!(removed, StatusCode::ACCEPTED);

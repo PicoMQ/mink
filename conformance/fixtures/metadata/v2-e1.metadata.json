@@ -2,7 +2,7 @@
   "current-schema-id": 0,
   "current-snapshot-id": 2,
   "default-sort-order-id": 0,
-  "default-spec-id": 0,
+  "default-spec-id": 1073741824,
   "format-version": 2,
   "last-column-id": 9,
   "last-partition-id": 1000,
@@ -25,7 +25,7 @@
           "transform": "identity"
         }
       ],
-      "spec-id": 0
+      "spec-id": 1073741824
     }
   ],
   "refs": {

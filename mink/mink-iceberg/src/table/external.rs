@@ -6,22 +6,15 @@ use iceberg::spec::{
     SortOrder, Summary, TableMetadata,
 };
 use iceberg::table::Table as IcebergTable;
-use mink_core::{MAX_GENERATION, Offsets, TimeSpecs};
+use mink_core::{Offsets, TimeSpecs};
 
 use super::FormatVersion;
 use super::keys::{
     EXTERNAL_GENERATION, EXTERNAL_SNAPSHOT_ID, external_end_offset_key, external_end_offsets,
     stored_end_offsets,
 };
-use super::specs::{PARTITION_FIELD, last_time_field_id, partition_specs};
+use super::specs::{PARTITION_FIELD, is_time_spec, last_time_field_id, partition_specs};
 use crate::Error;
-
-const EXTERNAL_SPEC_ID_BASE: i32 = 1 << 30;
-const SPECS_PER_GENERATION: i32 = 1 << 16;
-const _: () = assert!(
-    EXTERNAL_SPEC_ID_BASE as i64 + (MAX_GENERATION as i64 + 1) * SPECS_PER_GENERATION as i64 - 1
-        <= i32::MAX as i64
-);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExternalSnapshot {
@@ -32,7 +25,7 @@ pub struct ExternalSnapshot {
     end_offsets: BTreeMap<i32, i64>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub(super) struct ExternalSpecs {
     partition_specs: Vec<PartitionSpec>,
     sort_orders: Vec<SortOrder>,
@@ -53,32 +46,17 @@ impl ExternalSnapshot {
         schema: &Schema,
         specs: &TimeSpecs,
     ) -> Result<Option<ExternalSnapshot>, Error> {
-        if !(1..=MAX_GENERATION).contains(&generation) {
-            return Err(Error::ExternalGeneration(generation));
-        }
-        let Some((snapshot_id, checked)) = checked_manifests(table, schema, specs).await? else {
+        let Some((snapshot_id, manifests)) = checked_manifests(table, schema, specs).await? else {
             return Ok(None);
         };
 
-        let mut manifests = Vec::with_capacity(checked.len());
-        for mut manifest in checked {
-            manifest.partition_spec_id = listed_spec_id(generation, manifest.partition_spec_id)?;
-            manifests.push(manifest);
-        }
-
         let metadata = table.metadata();
-        let mut partition_specs = Vec::new();
-        for spec in specs_by_id(metadata) {
-            let id = listed_spec_id(generation, spec.spec_id())?;
-            partition_specs.push(spec.with_spec_id(id));
-        }
-
         Ok(Some(ExternalSnapshot {
             generation,
             snapshot_id,
             manifests,
             specs: ExternalSpecs {
-                partition_specs,
+                partition_specs: specs_by_id(metadata),
                 sort_orders: sort_orders_by_id(metadata),
             },
             end_offsets: stored_end_offsets(metadata.properties())?,
@@ -86,7 +64,7 @@ impl ExternalSnapshot {
     }
 
     pub(super) fn listed_in(
-        declared: &BTreeMap<i32, ExternalSpecs>,
+        declared: &ExternalSpecs,
         manifests: Vec<ManifestFile>,
         summary: &Summary,
     ) -> Result<Option<ExternalSnapshot>, Error> {
@@ -95,20 +73,12 @@ impl ExternalSnapshot {
             return Ok(None);
         };
         let snapshot_id = summary_value(properties, EXTERNAL_SNAPSHOT_ID)?;
-        let specs = declared
-            .get(&generation)
-            .cloned()
-            .ok_or_else(|| {
-                Error::Corrupt(format!(
-                    "a snapshot lists external generation {generation}, which the metadata declares no specs of"
-                ))
-            })?;
 
         Ok(Some(ExternalSnapshot {
             generation,
             snapshot_id,
             manifests,
-            specs,
+            specs: declared.clone(),
             end_offsets: external_end_offsets(properties)?,
         }))
     }
@@ -197,40 +167,37 @@ impl ExternalSnapshot {
 }
 
 impl ExternalSpecs {
-    pub(super) fn declared_in(metadata: &TableMetadata) -> BTreeMap<i32, ExternalSpecs> {
-        let mut declared: BTreeMap<i32, ExternalSpecs> = BTreeMap::new();
-        for spec in specs_by_id(metadata) {
-            if let Some(generation) = generation_of(spec.spec_id()) {
-                declared
-                    .entry(generation)
-                    .or_insert_with(|| ExternalSpecs {
-                        partition_specs: Vec::new(),
-                        sort_orders: Vec::new(),
-                    })
-                    .partition_specs
-                    .push(spec);
-            }
+    pub(super) fn declared_in(metadata: &TableMetadata) -> ExternalSpecs {
+        ExternalSpecs {
+            partition_specs: specs_by_id(metadata)
+                .into_iter()
+                .filter(|spec| !is_time_spec(spec.spec_id()))
+                .collect(),
+            sort_orders: sort_orders_by_id(metadata),
         }
-
-        if let Some(newest) = declared.values_mut().next_back() {
-            newest.sort_orders = sort_orders_by_id(metadata);
-        }
-        declared
     }
 
-    pub(super) fn merge(&mut self, newer: &ExternalSpecs) {
-        for spec in &newer.partition_specs {
-            match self
+    pub(super) fn merge(&mut self, other: &ExternalSpecs) {
+        for spec in &other.partition_specs {
+            if !self
                 .partition_specs
-                .iter_mut()
-                .find(|known| known.spec_id() == spec.spec_id())
+                .iter()
+                .any(|known| known.spec_id() == spec.spec_id())
             {
-                Some(known) => *known = spec.clone(),
-                None => self.partition_specs.push(spec.clone()),
+                self.partition_specs.push(spec.clone());
+            }
+        }
+        for order in &other.sort_orders {
+            if !self
+                .sort_orders
+                .iter()
+                .any(|known| known.order_id == order.order_id)
+            {
+                self.sort_orders.push(order.clone());
             }
         }
         self.partition_specs.sort_by_key(PartitionSpec::spec_id);
-        self.sort_orders = newer.sort_orders.clone();
+        self.sort_orders.sort_by_key(|order| order.order_id);
     }
 
     pub(super) fn partition_specs(&self) -> &[PartitionSpec] {
@@ -272,22 +239,6 @@ pub fn check_schema(schema: &Schema, external: &Schema) -> Result<(), Error> {
     Ok(())
 }
 
-pub(super) fn is_listed_spec_id(spec_id: i32) -> bool {
-    spec_id >= EXTERNAL_SPEC_ID_BASE
-}
-
-fn listed_spec_id(generation: i32, external_spec_id: i32) -> Result<i32, Error> {
-    if !(0..SPECS_PER_GENERATION).contains(&external_spec_id) {
-        return Err(Error::ExternalSpecId(external_spec_id));
-    }
-
-    Ok(EXTERNAL_SPEC_ID_BASE + generation * SPECS_PER_GENERATION + external_spec_id)
-}
-
-fn generation_of(spec_id: i32) -> Option<i32> {
-    is_listed_spec_id(spec_id).then(|| (spec_id - EXTERNAL_SPEC_ID_BASE) / SPECS_PER_GENERATION)
-}
-
 fn files(manifest: &ManifestFile) -> Option<u64> {
     Some(u64::from(manifest.added_files_count?) + u64::from(manifest.existing_files_count?))
 }
@@ -325,6 +276,7 @@ async fn checked_manifests(
     let metadata = table.metadata();
     FormatVersion::from_iceberg(metadata.format_version())?;
     check_schema(schema, metadata.current_schema())?;
+    check_spec_ids(metadata)?;
     check_partition_fields(metadata, specs)?;
 
     let Some(current) = metadata.current_snapshot() else {
@@ -352,6 +304,16 @@ async fn checked_manifests(
     }
 
     Ok(Some((current.snapshot_id(), manifests)))
+}
+
+fn check_spec_ids(metadata: &TableMetadata) -> Result<(), Error> {
+    match metadata
+        .partition_specs_iter()
+        .find(|spec| is_time_spec(spec.spec_id()))
+    {
+        Some(spec) => Err(Error::ExternalSpecId(spec.spec_id())),
+        None => Ok(()),
+    }
 }
 
 fn check_partition_fields(metadata: &TableMetadata, specs: &TimeSpecs) -> Result<(), Error> {
@@ -515,20 +477,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn generations_run_from_one_to_the_last_that_fits_a_spec_id() {
+    async fn a_spec_id_a_time_spec_takes_is_rejected() {
         let table = tiered().await;
-        let read = async |generation: i32| {
-            ExternalSnapshot::read(&table, generation, binary_schema(), &specs()).await
-        };
+        let mut metadata = serde_json::to_value(table.metadata()).unwrap();
+        metadata["partition-specs"][1]["spec-id"] = (1 << 30).into();
+        metadata["default-spec-id"] = (1 << 30).into();
+        let metadata: TableMetadata = serde_json::from_value(metadata).unwrap();
 
-        let last = read(MAX_GENERATION).await.unwrap().unwrap();
+        let checked = check_spec_ids(&metadata);
 
-        assert!(matches!(read(0).await, Err(Error::ExternalGeneration(0))));
-        assert!(matches!(
-            read(MAX_GENERATION + 1).await,
-            Err(Error::ExternalGeneration(_))
-        ));
-        assert_eq!(last.generation(), 16383);
+        assert!(check_spec_ids(table.metadata()).is_ok());
+        assert!(
+            matches!(checked, Err(Error::ExternalSpecId(id)) if id == 1 << 30),
+            "{checked:?}"
+        );
     }
 
     #[tokio::test]
@@ -546,7 +508,6 @@ mod tests {
 
         declared.merge(&fewer);
 
-        assert_eq!(declared.partition_specs(), read.specs().partition_specs());
-        assert!(declared.sort_orders().is_empty());
+        assert_eq!(&declared, read.specs());
     }
 }

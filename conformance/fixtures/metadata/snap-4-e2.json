@@ -9,10 +9,10 @@
       "deleted_rows_count": 100,
       "existing_files_count": 0,
       "existing_rows_count": 0,
-      "manifest_length": 4118,
+      "manifest_length": 4127,
       "manifest_path": "s3://warehouse/orders/metadata/4-e2-m0.avro",
       "min_sequence_number": 4,
-      "partition_spec_id": 0,
+      "partition_spec_id": 1073741824,
       "partitions": [
         {
           "contains_nan": false,
@@ -32,10 +32,10 @@
       "deleted_rows_count": 0,
       "existing_files_count": 0,
       "existing_rows_count": 0,
-      "manifest_length": 4258,
+      "manifest_length": 4267,
       "manifest_path": "s3://warehouse/orders/metadata/3-e2-m0.avro",
       "min_sequence_number": 3,
-      "partition_spec_id": 0,
+      "partition_spec_id": 1073741824,
       "partitions": [
         {
           "contains_nan": false,
@@ -55,10 +55,10 @@
       "deleted_rows_count": 100,
       "existing_files_count": 1,
       "existing_rows_count": 50,
-      "manifest_length": 4259,
+      "manifest_length": 4268,
       "manifest_path": "s3://warehouse/orders/metadata/3-e2-m1.avro",
       "min_sequence_number": 1,
-      "partition_spec_id": 0,
+      "partition_spec_id": 1073741824,
       "partitions": [
         {
           "contains_nan": false,

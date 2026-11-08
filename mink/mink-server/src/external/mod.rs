@@ -104,7 +104,7 @@ impl Catalog {
         if assigned.is_err()
             && let Err(error) = iceberg::Catalog::purge_table(self, identifier).await
         {
-            tracing::warn!(catalog = %self.name, %error, "a created table whose ids were not assigned was not dropped");
+            tracing::warn!(catalog = %self.name, %error, "a created table whose ids were not assigned was not purged");
         }
         assigned
     }
@@ -122,7 +122,7 @@ impl Catalog {
             return Err(iceberg::Error::new(
                 ErrorKind::FeatureUnsupported,
                 format!(
-                    "external catalog {} numbered a new table's columns in another order than Iceberg's",
+                    "external catalog {} numbered the binary schema's columns differently than Mink",
                     self.name
                 ),
             ));

@@ -30,10 +30,7 @@ pub enum Error {
     ExternalTable(String),
     #[error("location {0} is not an s3:// location")]
     ExternalLocation(String),
-    #[error(
-        "attach generation {0} is outside 1..={max}, the attaches a table allows",
-        max = crate::MAX_GENERATION
-    )]
+    #[error("attach generation {0} is not positive")]
     Generation(i32),
     #[error("{0:?} is not a lease scope with a matching partition")]
     Scope(String),

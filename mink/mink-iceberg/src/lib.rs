@@ -26,7 +26,7 @@ pub use schema::{FileSchema, TypedSchema};
 pub use slice::{Extent, Slice, extent, extents, slices};
 pub use table::{
     Change, ExternalSnapshot, FIRST_TAIL_SNAPSHOT_ID, FormatVersion, ObjectReader, Table,
-    check_schema,
+    check_schema, iceberg_spec_id,
 };
 pub use tiered::{
     append, decode_data_files, encode_data_files, end_offsets, end_offsets_update,
@@ -58,10 +58,10 @@ pub enum Error {
     TableProperty { key: String, value: String },
     #[error("partition spec {0} is not a spec of the external table")]
     UnknownPartitionSpec(i32),
-    #[error("external generation {0} is outside the generations spec ids can hold")]
-    ExternalGeneration(i32),
-    #[error("external spec id {0} is outside the ids one generation can list")]
+    #[error("external spec id {0} is in the range of the table's time spec ids")]
     ExternalSpecId(i32),
+    #[error("snapshots through {through_id} list another external table")]
+    OtherGenerationListed { through_id: i64 },
     #[error("Iceberg format version {0} is not supported")]
     FormatVersion(u8),
     #[error("a snapshot of topic {snapshot} cannot be committed to the table of topic {table}")]

@@ -100,7 +100,11 @@ impl Writer {
         }
 
         let latest = store.snapshots().latest(name).await?;
-        let external = self.next_external_snapshot();
+        let listing_deferred = self.listing_deferred();
+        let external = match listing_deferred {
+            true => None,
+            false => self.next_external_snapshot(),
+        };
         let offsets = offsets
             .into_iter()
             .map(|offsets| match external {
@@ -143,13 +147,23 @@ impl Writer {
             return Ok(None);
         }
 
-        let expire_through_id = self.expire_through_id().await?;
+        let other_generations_through_id = match &self.external_update {
+            Some(ExternalUpdate::List(external)) if !listing_deferred => self
+                .table
+                .other_generations_through_id(external.generation())?,
+            _ => None,
+        };
+        let expire_through_id = self
+            .expire_through_id()
+            .await?
+            .max(other_generations_through_id);
         let mut table = match expire_through_id {
             Some(through_id) => self.table.expire(through_id)?,
             None => self.table.clone(),
         };
         table = match &self.external_update {
-            Some(ExternalUpdate::List(external)) => table.with_external_snapshot(external.clone()),
+            Some(ExternalUpdate::List(_)) if listing_deferred => table.without_external_snapshot(),
+            Some(ExternalUpdate::List(external)) => table.with_external_snapshot(external.clone())?,
             Some(ExternalUpdate::Unlist) => table.without_external_snapshot(),
             None => table,
         };
@@ -199,15 +213,26 @@ impl Writer {
             self.last_statistics = Some(Instant::now());
         }
         self.table = change.into_table();
-        self.external_update = None;
+        if !listing_deferred {
+            self.external_update = None;
+        }
         if expire_through_id.is_some() {
-            let listed = self.table.listed_generations();
+            let listed = self.table.listed_generations()?;
             store
                 .external_tables()
                 .forget_unlisted(&self.lease, &listed)
                 .await?;
         }
         Ok(Some(snapshot))
+    }
+
+    fn listing_deferred(&self) -> bool {
+        match (&self.external_update, self.table.external_snapshot()) {
+            (Some(ExternalUpdate::List(external)), Some(listed)) => {
+                listed.generation() != external.generation()
+            }
+            _ => false,
+        }
     }
 
     fn next_external_snapshot(&self) -> Option<&ExternalSnapshot> {
