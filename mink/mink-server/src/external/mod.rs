@@ -401,23 +401,8 @@ impl iceberg::Catalog for Catalog {
         namespace: &NamespaceIdent,
         creation: TableCreation,
     ) -> Result<IcebergTable> {
-        let mut properties = creation.properties;
-        properties.insert(
-            "format-version".to_owned(),
-            (creation.format_version as u8).to_string(),
-        );
-        let request = CreateTableRequest {
-            name: creation.name.clone(),
-            location: creation.location,
-            schema: creation.schema,
-            partition_spec: creation.partition_spec.map(|spec| match spec.spec_id() {
-                Some(_) => spec,
-                None => spec.with_spec_id(0),
-            }),
-            write_order: creation.sort_order,
-            stage_create: None,
-            properties,
-        };
+        let name = creation.name.clone();
+        let request = create_request(creation);
 
         let url = self
             .url(&["namespaces", &namespace.to_url_string(), "tables"])
@@ -427,7 +412,7 @@ impl iceberg::Catalog for Catalog {
             .send(Method::POST, url, Some(body), ErrorKind::NamespaceNotFound)
             .await?;
 
-        let identifier = TableIdent::new(namespace.clone(), creation.name);
+        let identifier = TableIdent::new(namespace.clone(), name);
         self.table(identifier, created.metadata, created.metadata_location)
     }
 
@@ -482,6 +467,27 @@ pub(crate) fn identifier(table: &CatalogTable) -> TableIdent {
         NamespaceIdent::new(table.namespace().to_owned()),
         table.name().to_owned(),
     )
+}
+
+fn create_request(creation: TableCreation) -> CreateTableRequest {
+    let mut properties = creation.properties;
+    properties.insert(
+        "format-version".to_owned(),
+        (creation.format_version as u8).to_string(),
+    );
+
+    CreateTableRequest {
+        name: creation.name,
+        location: creation.location,
+        schema: creation.schema,
+        partition_spec: creation.partition_spec.map(|spec| match spec.spec_id() {
+            Some(_) => spec,
+            None => spec.with_spec_id(0),
+        }),
+        write_order: creation.sort_order,
+        stage_create: Some(false),
+        properties,
+    }
 }
 
 pub(crate) async fn delete_data_files(table: &IcebergTable, files: &[DataFile]) {
@@ -629,7 +635,7 @@ mod tests {
     use serde_json::json;
     use uuid::Uuid;
 
-    use super::Catalog;
+    use super::{Catalog, create_request};
     use crate::buckets::Buckets;
     use crate::config::{ExternalCatalog, ExternalCatalogAuth};
     use crate::testing::storage;
@@ -678,6 +684,19 @@ mod tests {
             .set(key.to_owned(), value.to_owned());
         let transaction = action.apply(transaction).unwrap();
         transaction.commit(catalog).await.unwrap();
+    }
+
+    #[test]
+    fn a_create_request_creates_the_table_now() {
+        let creation = TableCreation::builder()
+            .name("orders".to_owned())
+            .schema(mink_schema::binary_schema().clone())
+            .build();
+
+        let request = serde_json::to_value(create_request(creation)).unwrap();
+
+        assert_eq!(request["stage-create"], json!(false));
+        assert_eq!(request["properties"]["format-version"], json!("2"));
     }
 
     #[tokio::test]
