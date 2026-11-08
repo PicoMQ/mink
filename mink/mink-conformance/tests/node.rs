@@ -1040,7 +1040,7 @@ async fn pyiceberg_reads_the_statistics_file() {
     let sketches = python(&interpreter, &script).await;
 
     assert_eq!(sketches["2"], json!([4, 4]));
-    assert_eq!(sketches["9"], json!([3, 3]));
+    assert_eq!(sketches["6"], json!([3, 3]));
     for (field, estimates) in sketches.as_object().unwrap() {
         assert_eq!(estimates[0], estimates[1], "field {field}");
     }

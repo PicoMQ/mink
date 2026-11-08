@@ -19,6 +19,7 @@ use iceberg_catalog_rest::{
     CommitTableRequest, CommitTableResponse, CreateTableRequest, ErrorResponse, LoadTableResult,
 };
 use mink_core::{CatalogTable, ExternalTable};
+use mink_schema::binary_schema;
 use reqwest::header::CONTENT_TYPE;
 use reqwest::{Method, Response, StatusCode, Url};
 use serde::de::DeserializeOwned;
@@ -93,13 +94,40 @@ impl Catalog {
         let creation = TableCreation::builder()
             .name(identifier.name().to_owned())
             .location_opt(location)
-            .schema(schema.clone())
+            .schema(binary_schema().clone())
             .properties(properties)
             .build();
         let created =
             iceberg::Catalog::create_table(self, identifier.namespace(), creation).await?;
 
+        let assigned = self.assign(identifier, created, schema, spec, order).await;
+        if assigned.is_err()
+            && let Err(error) = iceberg::Catalog::purge_table(self, identifier).await
+        {
+            tracing::warn!(catalog = %self.name, %error, "a created table whose ids were not assigned was not dropped");
+        }
+        assigned
+    }
+
+    async fn assign(
+        &self,
+        identifier: &TableIdent,
+        created: IcebergTable,
+        schema: Schema,
+        spec: UnboundPartitionSpec,
+        order: SortOrder,
+    ) -> Result<IcebergTable> {
         let metadata = created.metadata();
+        if metadata.current_schema().as_struct() != binary_schema().as_struct() {
+            return Err(iceberg::Error::new(
+                ErrorKind::FeatureUnsupported,
+                format!(
+                    "external catalog {} numbered a new table's columns in another order than Iceberg's",
+                    self.name
+                ),
+            ));
+        }
+
         let requirements = vec![
             TableRequirement::UuidMatch {
                 uuid: metadata.uuid(),
@@ -112,7 +140,7 @@ impl Catalog {
             },
         ];
         let mut updates = Vec::new();
-        if metadata.current_schema().as_struct() != schema.as_struct() {
+        if schema.as_struct() != binary_schema().as_struct() {
             updates.push(TableUpdate::AddSchema { schema });
             updates.push(TableUpdate::SetCurrentSchema { schema_id: -1 });
         }
@@ -140,13 +168,7 @@ impl Catalog {
         if updates.is_empty() {
             return Ok(created);
         }
-        let assigned = self.commit(identifier, requirements, updates).await;
-        if assigned.is_err()
-            && let Err(error) = iceberg::Catalog::purge_table(self, identifier).await
-        {
-            tracing::warn!(catalog = %self.name, %error, "a created table whose ids were not assigned was not dropped");
-        }
-        assigned
+        self.commit(identifier, requirements, updates).await
     }
 
     pub(crate) async fn commit(

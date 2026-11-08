@@ -12,12 +12,14 @@ Schema id `0`.
 | 2 | `_kafka_offset` | `long` | yes |
 | 3 | `_kafka_timestamp` | `timestamptz` (microseconds) | yes |
 | 4 | `_kafka_key` | `binary` | no |
-| 5 | `_kafka_headers` | `list<struct>`, element id 6 | yes |
-| 7 | `_kafka_headers.element.key` | `string` | yes |
-| 8 | `_kafka_headers.element.value` | `binary` | no |
-| 9 | `_kafka_value` | `binary` | no |
+| 5 | `_kafka_headers` | `list<struct>`, element id 7 | yes |
+| 6 | `_kafka_value` | `binary` | no |
+| 8 | `_kafka_headers.element.key` | `string` | yes |
+| 9 | `_kafka_headers.element.value` | `binary` | no |
 
-The list element (id 6) is required: a header is never null, but its value can be. How each column is filled from a Kafka record is in `records.md`.
+The list element (id 7) is required: a header is never null, but its value can be. How each column is filled from a Kafka record is in `records.md`.
+
+The ids follow the order an Iceberg catalog gives a new table: every field of a struct first, then the fields nested in them. A catalog that creates a table with this schema stores these same ids.
 
 ## Typed schemas
 

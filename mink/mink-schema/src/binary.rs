@@ -8,10 +8,10 @@ pub const OFFSET_ID: i32 = 2;
 pub const TIMESTAMP_ID: i32 = 3;
 pub const KEY_ID: i32 = 4;
 pub const HEADERS_ID: i32 = 5;
-const HEADER_ID: i32 = 6;
-const HEADER_KEY_ID: i32 = 7;
-const HEADER_VALUE_ID: i32 = 8;
-pub const VALUE_ID: i32 = 9;
+pub const VALUE_ID: i32 = 6;
+const HEADER_ID: i32 = 7;
+const HEADER_KEY_ID: i32 = 8;
+const HEADER_VALUE_ID: i32 = 9;
 
 pub const PARTITION: &str = "_kafka_partition";
 pub(crate) const OFFSET: &str = "_kafka_offset";
@@ -90,6 +90,6 @@ mod tests {
         let schema = binary_schema();
 
         assert_eq!(schema, &fixture);
-        assert_eq!(schema.highest_field_id(), VALUE_ID);
+        assert_eq!(schema.highest_field_id(), HEADER_VALUE_ID);
     }
 }

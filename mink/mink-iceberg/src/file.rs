@@ -604,8 +604,8 @@ mod tests {
             .with_nulls(2, 0)
             .with_nulls(3, 0)
             .with_nulls(4, 2)
-            .with_nulls(7, 0)
-            .with_nulls(8, 2)
+            .with_nulls(6, 2)
+            .with_nulls(8, 0)
             .with_nulls(9, 2);
         assert_eq!(stats, expected);
     }
@@ -669,7 +669,7 @@ mod tests {
 
         assert_eq!(read, records.len());
         assert_eq!(row_groups, [131_072, 1]);
-        assert_eq!(ids, [1, 2, 3, 4, 7, 8, 9]);
+        assert_eq!(ids, [1, 2, 3, 4, 8, 9, 6]);
         assert!(
             compressions
                 .iter()
@@ -787,7 +787,7 @@ mod tests {
         assert_eq!(stats.lower()[&11], 2.5f64.to_le_bytes());
         assert_eq!(stats.nulls()[&12], 1);
         assert_eq!(stats.upper()[&12], 7i64.to_le_bytes());
-        assert_eq!(stats.nulls()[&9], 2);
+        assert_eq!(stats.nulls()[&6], 2);
     }
 
     #[test]
@@ -851,7 +851,7 @@ mod tests {
 
         assert_eq!(by_field[&2], expected(offsets).as_slice());
         assert_eq!(by_field[&3], expected(timestamps).as_slice());
-        assert_eq!(by_field[&9], expected(values).as_slice());
+        assert_eq!(by_field[&6], expected(values).as_slice());
         assert_eq!(by_field[&1], expected(vec![Datum::int(0)]).as_slice());
         assert!(!by_field.contains_key(&4));
     }

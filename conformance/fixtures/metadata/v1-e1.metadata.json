@@ -64,13 +64,13 @@
             "element": {
               "fields": [
                 {
-                  "id": 7,
+                  "id": 8,
                   "name": "key",
                   "required": true,
                   "type": "string"
                 },
                 {
-                  "id": 8,
+                  "id": 9,
                   "name": "value",
                   "required": false,
                   "type": "binary"
@@ -78,13 +78,13 @@
               ],
               "type": "struct"
             },
-            "element-id": 6,
+            "element-id": 7,
             "element-required": true,
             "type": "list"
           }
         },
         {
-          "id": 9,
+          "id": 6,
           "name": "_kafka_value",
           "required": false,
           "type": "binary"

@@ -494,7 +494,7 @@ mod tests {
         };
         assert_eq!(file.file().schema_id(), 2);
         assert_eq!(file.stats().records(), 2);
-        assert_eq!(file.stats().nulls()[&9], 2);
+        assert_eq!(file.stats().nulls()[&6], 2);
         assert_eq!(file.stats().nulls()[&11], 1);
     }
 }

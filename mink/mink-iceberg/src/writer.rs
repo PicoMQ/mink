@@ -554,13 +554,13 @@ mod tests {
         let files = write_data_files(&table, rows, "0-0-6").await.unwrap();
 
         let file = &files[0];
-        let value = file.lower_bounds()[&9].literal().clone();
+        let value = file.lower_bounds()[&6].literal().clone();
         assert!(!file.null_value_counts().contains_key(&1));
         assert!(file.null_value_counts().contains_key(&2));
         assert!(!file.lower_bounds().contains_key(&2));
         assert_eq!(value, PrimitiveLiteral::Binary(b"valu".to_vec()));
         assert_eq!(
-            file.upper_bounds()[&9].literal(),
+            file.upper_bounds()[&6].literal(),
             &PrimitiveLiteral::Binary(b"valv".to_vec())
         );
     }
