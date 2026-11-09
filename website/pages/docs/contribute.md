@@ -10,14 +10,14 @@ The project lives at [github.com/PicoMQ/mink](https://github.com/PicoMQ/mink). B
 | `mink/mink-kafka` | The Kafka client: topic discovery, offsets, and the committed records of an offset range |
 | `mink/mink-schema` | Schema Registry schemas, decoding Avro, Protobuf and JSON payloads, and merging them into the table schema |
 | `mink/mink-iceberg` | Kafka records as rows, the Parquet files that hold them, and the Iceberg metadata over those files |
-| `mink/mink-store` | State in Postgres: tables, indexed ranges, files, snapshots, leases and metadata objects |
+| `mink/mink-store` | State in Postgres: tables, indexed ranges, files, snapshots, leases, metadata objects, external tables and tiered ranges |
 | `mink/mink-metrics` | The Prometheus metrics |
-| `mink/mink-server` | A node: config and roles, indexers and writers, the catalog, the S3 endpoint and the admin API |
+| `mink/mink-server` | A node: config and roles, indexers, writers and tier workers, the catalog, the S3 endpoint and the admin API |
 | `mink/mink-cli` | The `mink` binary |
 | `mink/mink-conformance` | The fixture generator, and end-to-end tests against Kafka, DuckDB, PyIceberg, Spark and Trino |
 | `console/` | The admin console, embedded in the binary |
 | `conformance/fixtures/` | The fixtures each [file format](/docs/formats) is checked against |
-| `harness/` | Compose files for Kafka, Schema Registry, Postgres, RustFS, Spark and Trino |
+| `harness/` | Compose files for Kafka, Schema Registry, Postgres, RustFS, Spark and Trino, the datasets loader, the Athena connector and the AWS Terraform |
 | `website/` | This site |
 
 ## Build and test

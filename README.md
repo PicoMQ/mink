@@ -1,6 +1,6 @@
 # Mink
 
-Mink serves Kafka topics as Iceberg tables, through a read-only Iceberg REST catalog and an S3 endpoint. The records stay in Kafka.
+Mink serves Kafka topics as Iceberg tables, through a read-only Iceberg REST catalog and an S3 endpoint, with older records tiered into Iceberg and read as one table.
 
 [Documentation](https://minkdb.com/docs/) · [Quick start](https://minkdb.com/docs/quick-start) · [Contribute](https://minkdb.com/docs/contribute)
 

@@ -18,7 +18,7 @@ A node runs any of five roles, all five by default.
 | Role | Runs | Listens on |
 | --- | --- | --- |
 | `catalog` | The Iceberg REST catalog | `catalog_address` |
-| `s3` | The S3 endpoint that serves metadata objects and builds data files | `s3_address` |
+| `s3` | The S3 endpoint that serves metadata objects and external table files, and builds data files | `s3_address` |
 | `indexer` | Indexers, writers and topic following | |
 | `tier` | Tier workers | |
 | `admin` | The [admin API](/docs/operations/admin), the [console](/docs/operations/console) and `/metrics` | `admin_address` |

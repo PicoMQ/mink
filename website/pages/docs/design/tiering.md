@@ -1,6 +1,6 @@
 # Tiering
 
-Tiering moves a table's older records into an Iceberg table in another REST catalog, the table's external table. The table lists the external table's files before its own, so it reaches further back than Kafka's retention. Each part can also be queried alone, see [Namespaces](/docs/design/tables#namespaces). The external table stays an ordinary Iceberg table that any engine reads, writes and maintains.
+Tiering writes a table's records past `tier_after` into an Iceberg table in an external REST catalog, the table's external table. The table lists the external table's files, then its own. Each part can also be queried alone, see [Namespaces](/docs/design/tables#namespaces). The external table stays an ordinary Iceberg table that any engine reads, writes and maintains.
 
 <div class="mink-diagram">
 <svg viewBox="0 0 660 160" width="660" role="img" aria-label="Each partition reads left to right in offsets: the external table, then Mink's files from the external table's end offset, then the tail. A partition whose records Kafka deleted before they were tiered has a skipped span between the external table and Mink's files.">

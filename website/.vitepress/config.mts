@@ -117,6 +117,7 @@ export default defineConfig({
     nav: [
       { text: 'Docs', link: '/docs' },
       { text: 'Contribute', link: '/docs/contribute' },
+      { text: 'Discord', link: 'https://discord.gg/qsMy5sSpYX' },
       { text: 'GitHub', link: 'https://github.com/PicoMQ/mink' },
     ],
     sidebar: docsSidebar,

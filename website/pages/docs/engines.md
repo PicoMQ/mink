@@ -1,6 +1,6 @@
 # Engines
 
-Any engine with an Iceberg REST catalog connects to Mink with two addresses: the catalog and the S3 endpoint. No plugin and no client library. The console's Connect page fills in the snippets below for a running cluster.
+Any engine with an Iceberg REST catalog connects to Mink with two addresses: the catalog and the S3 endpoint. The console's Connect page fills in the snippets below for a running cluster.
 
 | Engine | Version | Catalog |
 | --- | --- | --- |

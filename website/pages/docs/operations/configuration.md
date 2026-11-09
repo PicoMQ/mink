@@ -4,7 +4,7 @@ A node reads its settings from the defaults, then a TOML file given with `-c`, t
 
 ```toml
 postgres = "postgres://mink:mink@db:5432/mink"
-warehouse = "s3://lake/mink"
+warehouse = "s3://data/mink"
 
 [kafka]
 bootstrap = ["kafka-1:9092", "kafka-2:9092"]

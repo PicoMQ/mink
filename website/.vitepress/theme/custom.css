@@ -348,6 +348,11 @@ html {
   color: var(--vp-c-text-2);
 }
 
+.VPHero .tagline .balanced {
+  display: block;
+  text-wrap: balance;
+}
+
 .mink-hero-tags {
   display: flex;
   flex-wrap: wrap;

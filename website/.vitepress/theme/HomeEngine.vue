@@ -4,23 +4,23 @@ import { computed, ref } from 'vue';
 const features = [
   {
     name: 'Topics as tables',
-    body: 'Add a topic and query it as an Iceberg table. Every row carries its partition, offset, timestamp, key, headers and value. Schema Registry fields become typed columns.',
+    body: 'Query Kafka topics as Iceberg tables from any Iceberg-compatible engine, with typed columns from Schema Registry and support for schema evolution.',
   },
   {
-    name: 'No data copies',
-    body: 'Data files are built from Kafka on read, the same bytes every time. Kafka keeps the only copy of the records. Built files are cached in memory, and on disk when configured.',
+    name: 'Virtual files',
+    body: 'Kafka records form Iceberg data files on read, served from an S3-compatible endpoint, with only metadata stored and built files cached in memory and on disk.',
+  },
+  {
+    name: 'Tiering',
+    body: 'Kafka records past a configurable age tier into an Iceberg table in an external REST catalog, with <code>merged</code>, <code>stream</code> and <code>lake</code> namespaces for the whole table and each part.',
   },
   {
     name: 'Real time',
-    body: 'A table load covers every record committed up to that moment. No commit interval to wait for.',
-  },
-  {
-    name: 'Kafka semantics',
-    body: 'Committed records only. Aborted transactions and control records never show up. Exact row counts and one consistent snapshot across partitions.',
+    body: 'A true real-time lakehouse. Kafka records are queryable as Iceberg tables as soon as they\'re published, consistent across partitions.',
   },
   {
     name: 'Stateless nodes',
-    body: 'An Iceberg REST catalog and an S3-compatible endpoint. Engines plan and run every query. Postgres holds the metadata, and every cache rebuilds from Kafka and Postgres.',
+    body: 'Mink nodes hold only caches, with metadata in Postgres. Indexing and tiering of each Kafka partition move between nodes through leases, and every cache rebuilds from Kafka and Postgres.',
   },
 ] as const;
 
