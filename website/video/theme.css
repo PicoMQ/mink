@@ -1,0 +1,23 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=block");
+
+:root {
+  --ink-1: #0f1620; --ink-2: #1f2a37; --ink-3: #3d4856; --ink-4: #5e6878; --ink-6: #c8cdd5; --ink-7: #dfe2e8;
+  --surface-0: #f6f7f9; --surface-1: #ffffff; --surface-2: #eef0f3;
+  --red: #b42318; --red-low: #fde8e7; --green: #1a7f37; --green-low: #e6f4ea;
+  --blue: #2f6fed; --aws: #232f3e;
+  --night: #0a0a0a; --night-2: #a3a3a3; --night-3: #4a4a4a;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--surface-0); }
+body { font-family: Inter, sans-serif; color: var(--ink-1); position: relative; }
+.abs { position: absolute; will-change: transform, opacity; }
+.mono { font-family: "JetBrains Mono", monospace; }
+.card { background: var(--surface-1); border: 1px solid var(--ink-7); border-radius: 18px;
+        box-shadow: 0 1px 2px rgb(15 22 32 / 0.05), 0 18px 48px rgb(15 22 32 / 0.08); }
+.dark { background: var(--ink-1); border-color: var(--ink-1); color: var(--surface-0); box-shadow: 0 24px 64px rgb(15 22 32 / 0.25); }
+.tag { font-size: 18px; letter-spacing: 1.5px; color: var(--ink-4); }
+
+.wires { left: 0; top: 0; width: 1920px; height: 1080px; pointer-events: none; }
+.wire { fill: none; stroke: #d3d8de; stroke-width: 2; }
+.beam { fill: none; stroke-width: 3; stroke-linecap: round; }
+.port { fill: var(--surface-1); stroke: var(--ink-6); stroke-width: 2; }
