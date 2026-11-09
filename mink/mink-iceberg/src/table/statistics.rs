@@ -104,6 +104,7 @@ mod tests {
     use iceberg::io::FileIO;
     use iceberg::spec::TableMetadata;
     use mink_conformance::WAREHOUSE;
+    use mink_core::View;
 
     use super::super::FormatVersion;
     use super::super::testing::{file, snapshot, specs, topic};
@@ -146,7 +147,8 @@ mod tests {
         let reader = iceberg::puffin::PuffinReader::new(io.new_input(object.path()).unwrap());
         let metadata = reader.file_metadata().await.unwrap().clone();
         let blob = reader.blob(&metadata.blobs()[0]).await.unwrap();
-        let rendered: TableMetadata = serde_json::from_slice(&first.metadata().1).unwrap();
+        let rendered: TableMetadata =
+            serde_json::from_slice(&first.metadata(View::Merged).unwrap().1).unwrap();
         let listed = rendered.statistics_iter().next().unwrap();
 
         assert_eq!(blob.blob_type(), APACHE_DATASKETCHES_THETA_V1);

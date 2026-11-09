@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::routing::get;
 use axum::{Json, Router};
-use mink_core::{Snapshot, TableLocation};
+use mink_core::{Snapshot, TableLocation, View};
 use mink_store::SnapshotTotals;
 use serde_json::{Value, json};
 
@@ -68,7 +68,7 @@ async fn snapshot(
             })
         })
         .collect();
-    detail["metadataLocation"] = json!(location.metadata_file(&snapshot.key()));
+    detail["metadataLocation"] = json!(location.metadata_file(&snapshot.key(), View::Merged));
     Ok(Json(detail))
 }
 

@@ -111,7 +111,8 @@ mod tests {
         let unsnapshotted = registered(&node.services, 1).await;
 
         let (_, namespaces) = get(&node, "/v1/namespaces").await;
-        let (_, tables) = get(&node, "/v1/namespaces/kafka/tables").await;
+        let (_, tables) = get(&node, "/v1/namespaces/merged/tables").await;
+        let (_, lake) = get(&node, "/v1/namespaces/lake/tables").await;
         let (missing, _) = get(&node, "/v1/namespaces/other/tables").await;
 
         let names: Vec<_> = tables["identifiers"]
@@ -120,8 +121,12 @@ mod tests {
             .iter()
             .map(|identifier| identifier["name"].as_str().unwrap().to_owned())
             .collect();
-        assert_eq!(namespaces["namespaces"], serde_json::json!([["kafka"]]));
+        assert_eq!(
+            namespaces["namespaces"],
+            serde_json::json!([["merged"], ["stream"], ["lake"]])
+        );
         assert!(names.contains(&topic.name().to_owned()));
+        assert_eq!(lake["identifiers"].as_array().unwrap().len(), names.len());
         assert!(!names.contains(&unsnapshotted.name().to_owned()));
         assert_eq!(missing, StatusCode::NOT_FOUND);
         node.shutdown().await.unwrap();
@@ -136,7 +141,7 @@ mod tests {
 
         let (status, error) = get(
             &node,
-            &format!("/v1/namespaces/kafka/tables/{}", topic.name()),
+            &format!("/v1/namespaces/merged/tables/{}", topic.name()),
         )
         .await;
 
@@ -154,7 +159,7 @@ mod tests {
 
         let (status, loaded) = get(
             &node,
-            &format!("/v1/namespaces/kafka/tables/{}", topic.name()),
+            &format!("/v1/namespaces/merged/tables/{}", topic.name()),
         )
         .await;
 
@@ -177,7 +182,7 @@ mod tests {
         };
         let topic = committed(&node, &bootstrap, 3).await;
         mink_conformance::produce_values(&bootstrap, topic.name(), 0, &["d", "e"]);
-        let path = format!("/v1/namespaces/kafka/tables/{}", topic.name());
+        let path = format!("/v1/namespaces/merged/tables/{}", topic.name());
 
         let (status, first) = get(&node, &path).await;
         let (_, second) = get(&node, &path).await;
@@ -201,7 +206,52 @@ mod tests {
         assert_eq!(summary["mink.partition.0.end-offset"], "5");
         assert_eq!(summary["total-records"], "5");
         assert_eq!(first, second);
-        assert_eq!(unreferenced.len(), 3);
+        assert_eq!(unreferenced.len(), 5);
+        node.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn each_namespace_loads_its_view_of_the_table() {
+        let Some((node, bootstrap)) = catalog().await else {
+            return;
+        };
+        let topic = committed(&node, &bootstrap, 3).await;
+        mink_conformance::produce_values(&bootstrap, topic.name(), 0, &["d", "e"]);
+        let load = async |namespace: &str| {
+            get(
+                &node,
+                &format!("/v1/namespaces/{namespace}/tables/{}", topic.name()),
+            )
+            .await
+        };
+
+        let (_, stream) = load("stream").await;
+        let (_, lake) = load("lake").await;
+        let (unknown, _) = load("kafka").await;
+
+        let location = |loaded: &Value| loaded["metadata-location"].as_str().unwrap().to_owned();
+        let records = |loaded: &Value| {
+            loaded["metadata"]["snapshots"]
+                .as_array()
+                .unwrap()
+                .last()
+                .unwrap()["summary"]["total-records"]
+                .clone()
+        };
+        assert!(
+            location(&stream).ends_with("-stream.metadata.json"),
+            "{}",
+            location(&stream)
+        );
+        assert!(
+            location(&stream).contains("/metadata/v1-e1-t"),
+            "{}",
+            location(&stream)
+        );
+        assert_eq!(records(&stream), "5");
+        assert!(location(&lake).ends_with("/metadata/v1-e1-lake.metadata.json"));
+        assert_eq!(records(&lake), "0");
+        assert_eq!(unknown, StatusCode::NOT_FOUND);
         node.shutdown().await.unwrap();
     }
 }

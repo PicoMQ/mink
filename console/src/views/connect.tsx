@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/preact-query'
 import { Plug } from 'lucide-preact'
 import { useLocation } from 'preact-iso'
 
-import { cluster, type Cluster } from '../api/cluster'
+import { cluster, MERGED, type Cluster } from '../api/cluster'
 import { REFRESH_MS } from '../api/query'
 import { Code } from '../components/code'
 import { Heading } from '../components/heading'
@@ -36,7 +36,7 @@ export default function Connect() {
       {state.error && <Notice kind="danger">{state.error.message}</Notice>}
       <div class="connect">
         <Code label="Catalog URL" text={data.catalogUrl} />
-        <Code label="Namespace" text={data.namespace} />
+        <Code label="Namespaces" text={data.namespaces.join(', ')} />
         <Code label="Warehouse" text={data.warehouse} />
         <Code label="S3 endpoint" text={data.s3Endpoint} />
       </div>
@@ -67,7 +67,7 @@ function duckdb(data: Cluster, table: string): string {
     'INSTALL iceberg; LOAD iceberg; INSTALL httpfs; LOAD httpfs;',
     `CREATE SECRET mink (TYPE S3, KEY_ID 'mink', SECRET 'mink', REGION 'us-east-1', ENDPOINT '${host(data.s3Endpoint)}', URL_STYLE 'path', USE_SSL ${data.s3Endpoint.startsWith('https') ? 'true' : 'false'});`,
     `ATTACH 'warehouse' AS mink (TYPE iceberg, ENDPOINT '${data.catalogUrl}', AUTHORIZATION_TYPE 'none');`,
-    `SELECT count(*) FROM mink.${data.namespace}."${table}";`,
+    `SELECT count(*) FROM mink.${MERGED}."${table}";`,
   ].join('\n')
 }
 
@@ -76,7 +76,7 @@ function pyiceberg(data: Cluster, table: string): string {
     'from pyiceberg.catalog.rest import RestCatalog',
     '',
     `catalog = RestCatalog('mink', uri='${data.catalogUrl}', **{'s3.access-key-id': 'mink', 's3.secret-access-key': 'mink'})`,
-    `table = catalog.load_table('${data.namespace}.${table}')`,
+    `table = catalog.load_table('${MERGED}.${table}')`,
     'print(table.scan().to_arrow().num_rows)',
   ].join('\n')
 }
@@ -93,7 +93,7 @@ function spark(data: Cluster, table: string): string {
     '  --conf spark.sql.catalog.mink.s3.path-style-access=true \\',
     '  --conf spark.sql.catalog.mink.s3.access-key-id=mink \\',
     '  --conf spark.sql.catalog.mink.s3.secret-access-key=mink \\',
-    `  -e 'SELECT count(*) FROM mink.${data.namespace}.\`${table}\`'`,
+    `  -e 'SELECT count(*) FROM mink.${MERGED}.\`${table}\`'`,
   ].join('\n')
 }
 

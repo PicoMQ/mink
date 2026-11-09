@@ -5,8 +5,7 @@ use iceberg::io::FileIO;
 use iceberg::spec::ManifestList;
 use iceberg::table::Table as IcebergTable;
 use mink_core::{
-    Granularity, IndexedFile, Object, ObjectKind, Offsets, Partition, Record, Snapshot, TimeSpecs,
-    Topic,
+    Granularity, IndexedFile, Object, Offsets, Partition, Record, Snapshot, TimeSpecs, Topic, View,
 };
 use uuid::Uuid;
 
@@ -75,10 +74,16 @@ pub(super) fn written(change: &Change) -> Vec<Object> {
     change.objects().map(|(object, _)| object.clone()).collect()
 }
 
-pub(super) fn listed(change: &Change) -> Vec<String> {
+pub(super) fn listed(change: &Change, view: View) -> Vec<String> {
+    let (_, metadata) = change.metadata(view).unwrap();
+    let metadata: serde_json::Value = serde_json::from_slice(metadata).unwrap();
+    let list = metadata["snapshots"].as_array().unwrap().last().unwrap()["manifest-list"]
+        .as_str()
+        .unwrap()
+        .to_owned();
     let (_, bytes) = change
         .objects()
-        .find(|(object, _)| object.kind() == ObjectKind::ManifestList)
+        .find(|(object, _)| object.path() == list)
         .unwrap();
 
     ManifestList::parse_with_version(bytes, FormatVersion::V2.iceberg())

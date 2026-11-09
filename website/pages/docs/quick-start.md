@@ -86,7 +86,7 @@ CREATE SECRET mink (TYPE S3, KEY_ID 'mink', SECRET 'mink', REGION 'us-east-1',
   ENDPOINT '127.0.0.1:9100', URL_STYLE 'path', USE_SSL false);
 ATTACH 'warehouse' AS mink (TYPE iceberg, ENDPOINT 'http://127.0.0.1:8181', AUTHORIZATION_TYPE 'none');
 
-SELECT _kafka_offset, id, item, amount FROM mink.kafka.payments ORDER BY id;
+SELECT _kafka_offset, id, item, amount FROM mink.merged.payments ORDER BY id;
 ```
 
 | `_kafka_offset` | `id` | `item` | `amount` |

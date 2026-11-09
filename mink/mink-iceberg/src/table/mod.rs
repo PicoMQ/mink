@@ -7,6 +7,7 @@ mod specs;
 mod statistics;
 #[cfg(test)]
 mod testing;
+mod views;
 
 use std::future::Future;
 
@@ -18,12 +19,12 @@ use iceberg::spec::{
 };
 use mink_core::{
     FieldSketches, File, IndexedFile, Object, ObjectKind, Offsets, Snapshot, TableLocation,
-    TimeSpecs, Topic,
+    TimeSpecs, Topic, View,
 };
 use uuid::Uuid;
 
 use crate::Error;
-use commit::{Commit, CommitOutput, Counts, summary};
+use commit::{Commit, CommitOutput, Counts};
 use manifests::Manifest;
 
 pub use commit::FIRST_TAIL_SNAPSHOT_ID;
@@ -52,13 +53,14 @@ pub struct Table {
     manifests: Vec<Manifest>,
     external_snapshot: Option<ExternalSnapshot>,
     external_specs: ExternalSpecs,
+    latest_key: Option<String>,
 }
 
 #[derive(Debug)]
 pub struct Change {
     table: Table,
     objects: Vec<(Object, Bytes)>,
-    metadata: (Object, Bytes),
+    metadata: Vec<(View, (Object, Bytes))>,
     released: Vec<Object>,
 }
 
@@ -89,11 +91,16 @@ impl FormatVersion {
 
 impl Change {
     pub fn objects(&self) -> impl Iterator<Item = &(Object, Bytes)> {
-        self.objects.iter().chain([&self.metadata])
+        self.objects
+            .iter()
+            .chain(self.metadata.iter().map(|(_, metadata)| metadata))
     }
 
-    pub fn metadata(&self) -> &(Object, Bytes) {
-        &self.metadata
+    pub fn metadata(&self, view: View) -> Option<&(Object, Bytes)> {
+        self.metadata
+            .iter()
+            .find(|(rendered, _)| *rendered == view)
+            .map(|(_, metadata)| metadata)
     }
 
     pub fn released(&self) -> &[Object] {
@@ -118,6 +125,7 @@ impl Table {
             manifests: Vec::new(),
             external_snapshot: None,
             external_specs: ExternalSpecs::default(),
+            latest_key: None,
         }
     }
 
@@ -127,7 +135,8 @@ impl Table {
         topic: &Topic,
         snapshot: &Snapshot,
     ) -> Result<Table, Error> {
-        let location = TableLocation::new(warehouse, topic.name()).metadata_file(&snapshot.key());
+        let location = TableLocation::new(warehouse, topic.name())
+            .metadata_file(&snapshot.key(), View::Merged);
         let bytes = reader.read(&location).await?;
         let metadata: TableMetadata = serde_json::from_slice(&bytes)?;
 
@@ -189,6 +198,7 @@ impl Table {
             metadata_file: location,
             timestamp_ms: current.timestamp_ms(),
         });
+        table.latest_key = Some(snapshot.key());
 
         Ok(table)
     }
@@ -197,8 +207,8 @@ impl Table {
         TableLocation::new(&self.warehouse, &self.topic)
     }
 
-    pub fn metadata_location(&self, snapshot: &Snapshot) -> String {
-        self.location().metadata_file(&snapshot.key())
+    pub fn metadata_location(&self, snapshot: &Snapshot, view: View) -> String {
+        self.location().metadata_file(&snapshot.key(), view)
     }
 
     pub fn snapshot_id(&self) -> Option<i64> {
@@ -272,7 +282,9 @@ impl Table {
         self.validate(snapshot, added)?;
 
         let commit = Commit::committed(snapshot, specs, schemas);
-        let mut change = self.write(&commit, added, replaced, sketches).await?;
+        let mut change = self
+            .write(&commit, added, replaced, sketches, &View::ALL)
+            .await?;
 
         change.released.splice(0..0, self.released_by_next());
         Ok(change)
@@ -319,7 +331,9 @@ impl Table {
             return Err(Error::FileOutsideSnapshot(indexed.file().clone()));
         }
 
-        let change = self.write(&commit, added, &[], None).await?;
+        let change = self
+            .write(&commit, added, &[], None, &[View::Merged, View::Stream])
+            .await?;
 
         Ok(Change {
             released: Vec::new(),
@@ -333,6 +347,7 @@ impl Table {
         added: &[IndexedFile],
         replaced: &[File],
         sketches: Option<&FieldSketches>,
+        views: &[View],
     ) -> Result<Change, Error> {
         let io = FileIO::new_with_memory();
         let mut output = CommitOutput::default();
@@ -351,18 +366,42 @@ impl Table {
             deletions,
         } = output;
         manifests.extend(reused);
-        objects.push(self.write_list(&io, commit, &mut manifests).await?);
+        objects.push(
+            self.write_list(&io, commit, View::Merged, &mut manifests)
+                .await?,
+        );
+        for view in views.iter().filter(|view| **view != View::Merged) {
+            objects.push(self.write_list(&io, commit, *view, &mut manifests).await?);
+        }
 
-        let mut table = self.with_snapshot(commit, manifests, &additions, &deletions);
+        let totals = Counts::live(&manifests);
+        let snapshots: Vec<(View, IcebergSnapshot)> = views
+            .iter()
+            .map(|view| {
+                let snapshot = self.snapshot_of(*view, commit, &additions, &deletions, &totals);
+                (*view, snapshot)
+            })
+            .collect();
+        let merged = snapshots
+            .iter()
+            .find(|(view, _)| *view == View::Merged)
+            .map(|(_, snapshot)| snapshot.clone())
+            .expect("every write renders the merged view");
+
+        let mut table = self.with_snapshot(commit, manifests, merged);
         table.statistics = statistics;
 
-        let metadata = (
-            Object::new(
-                self.location().metadata_file(&commit.key),
+        let mut metadata = Vec::with_capacity(snapshots.len());
+        for (view, snapshot) in &snapshots {
+            let object = Object::new(
+                self.location().metadata_file(&commit.key, *view),
                 ObjectKind::TableMetadata,
-            ),
-            Bytes::from(table.render(commit)?),
-        );
+            );
+            metadata.push((
+                *view,
+                (object, Bytes::from(table.render(commit, *view, snapshot)?)),
+            ));
+        }
 
         Ok(Change {
             table,
@@ -373,60 +412,36 @@ impl Table {
     }
 
     fn released_by_next(&self) -> Vec<Object> {
-        let mut released = Vec::new();
+        let Some(key) = &self.latest_key else {
+            return Vec::new();
+        };
 
-        if let Some(metadata) = self.metadata_log.last() {
-            released.push(Object::new(
-                &metadata.metadata_file,
-                ObjectKind::TableMetadata,
-            ));
-        }
-
-        if let Some(latest) = self.snapshots.last() {
-            released.push(Object::new(
-                latest.manifest_list(),
-                ObjectKind::ManifestList,
-            ));
-        }
-
-        released
+        let location = self.location();
+        View::ALL
+            .into_iter()
+            .flat_map(|view| {
+                [
+                    Object::new(location.metadata_file(key, view), ObjectKind::TableMetadata),
+                    Object::new(location.manifest_list(key, view), ObjectKind::ManifestList),
+                ]
+            })
+            .collect()
     }
 
     fn with_snapshot(
         &self,
         commit: &Commit<'_>,
         manifests: Vec<Manifest>,
-        additions: &Counts,
-        deletions: &Counts,
+        snapshot: IcebergSnapshot,
     ) -> Table {
-        let mut totals = Counts::default();
-        for (_, entry) in manifests.iter().flat_map(|manifest| &manifest.live) {
-            totals.add(entry.data_file());
-        }
-
-        let iceberg_snapshot = IcebergSnapshot::builder()
-            .with_snapshot_id(commit.snapshot_id)
-            .with_parent_snapshot_id(self.snapshot_id())
-            .with_sequence_number(commit.sequence_number)
-            .with_timestamp_ms(commit.timestamp_ms)
-            .with_manifest_list(self.location().manifest_list(&commit.key))
-            .with_summary(summary(
-                &commit.offsets,
-                additions,
-                deletions,
-                &totals,
-                self.external_snapshot.as_ref(),
-            ))
-            .with_schema_id(commit.current_schema().schema_id())
-            .build();
-
         let mut table = self.clone();
-        table.snapshots.push(iceberg_snapshot);
+        table.snapshots.push(snapshot);
         table.metadata_log.push(MetadataLog {
-            metadata_file: self.location().metadata_file(&commit.key),
+            metadata_file: self.location().metadata_file(&commit.key, View::Merged),
             timestamp_ms: commit.timestamp_ms,
         });
         table.manifests = manifests;
+        table.latest_key = Some(commit.key.clone());
         table
     }
 
@@ -568,8 +583,8 @@ mod tests {
 
             assert_eq!(change.released(), step.released(), "snapshot {id}");
             assert_eq!(
-                Some(change.metadata()),
-                Some(again.metadata()),
+                Some(change.metadata(View::Merged).unwrap()),
+                Some(again.metadata(View::Merged).unwrap()),
                 "snapshot {id}"
             );
             table = change.into_table();
@@ -592,7 +607,8 @@ mod tests {
         let latest = table.expire(3);
         let expired = table.expire(2).unwrap();
         let next = applied(expired.clone(), [(0, 30), (0, 0)], &[]).await;
-        let metadata: Value = serde_json::from_slice(&next.metadata().1).unwrap();
+        let metadata: Value =
+            serde_json::from_slice(&next.metadata(View::Merged).unwrap().1).unwrap();
 
         assert!(
             matches!(latest, Err(Error::LatestSnapshot { id: 3 })),
@@ -617,7 +633,7 @@ mod tests {
             [json!("s3://warehouse/orders/metadata/v3-e1.metadata.json")]
         );
         assert_eq!(
-            listed(&next),
+            listed(&next, View::Merged),
             ["3-e1-m0.avro", "2-e1-m0.avro", "1-e1-m0.avro"]
         );
     }
@@ -644,7 +660,7 @@ mod tests {
 
             let location = TableLocation::new(fixture.warehouse(), fixture.topic().name());
             let bytes = io
-                .new_input(location.metadata_file(&step.snapshot().key()))
+                .new_input(location.metadata_file(&step.snapshot().key(), View::Merged))
                 .unwrap()
                 .read()
                 .await
@@ -801,7 +817,7 @@ mod tests {
             .unwrap();
         let ending_early = FileIO::new_with_memory();
         ending_early
-            .new_output(table.location().metadata_file(&latest.key()))
+            .new_output(table.location().metadata_file(&latest.key(), View::Merged))
             .unwrap()
             .write(earlier.read().await.unwrap())
             .await
@@ -949,7 +965,12 @@ mod tests {
             "{paths:?}"
         );
         assert!(tail.released().is_empty());
-        assert_eq!(tail.metadata(), again.metadata());
+        assert_eq!(
+            tail.metadata(View::Merged).unwrap(),
+            again.metadata(View::Merged).unwrap()
+        );
+        assert!(tail.metadata(View::Stream).is_some());
+        assert!(tail.metadata(View::Lake).is_none());
         assert!(
             matches!(
                 stale,
@@ -967,7 +988,7 @@ mod tests {
         );
 
         store(&io, &tail).await;
-        let (metadata_object, _) = tail.metadata();
+        let (metadata_object, _) = tail.metadata(View::Merged).unwrap();
         let bytes = io
             .new_input(metadata_object.path())
             .unwrap()
@@ -1025,7 +1046,8 @@ mod tests {
                 .iter()
                 .map(|manifest| manifest.partition_spec_id)
                 .collect();
-        let metadata: Value = serde_json::from_slice(&change.metadata().1).unwrap();
+        let metadata: Value =
+            serde_json::from_slice(&change.metadata(View::Merged).unwrap().1).unwrap();
         let current = &metadata["snapshots"][1];
         let ids = |key: &str, field: &str| {
             metadata[key]
@@ -1036,8 +1058,11 @@ mod tests {
                 .collect::<Vec<_>>()
         };
 
-        assert_eq!(listed(&change)[..2], ["2-e1-m0.avro", "2-e1-m1.avro"]);
-        assert!(listed(&change)[2].ends_with("-m0.avro"));
+        assert_eq!(
+            listed(&change, View::Merged)[..2],
+            ["2-e1-m0.avro", "2-e1-m1.avro"]
+        );
+        assert!(listed(&change, View::Merged)[2].ends_with("-m0.avro"));
         assert_eq!(spec_ids, [TIME_SPEC_ID_BASE, TIME_SPEC_ID_BASE, 1]);
         assert_eq!(
             ids("partition-specs", "spec-id"),
@@ -1107,7 +1132,8 @@ mod tests {
     async fn an_unlisted_external_table_keeps_its_specs_until_its_snapshots_expire() {
         let (_, _, _, change) = listing_external().await;
         let spec_ids = |change: &Change| -> Vec<Value> {
-            let metadata: Value = serde_json::from_slice(&change.metadata().1).unwrap();
+            let metadata: Value =
+                serde_json::from_slice(&change.metadata(View::Merged).unwrap().1).unwrap();
             metadata["partition-specs"]
                 .as_array()
                 .unwrap()
@@ -1134,11 +1160,56 @@ mod tests {
         let expired = unlisted.into_table().expire(2).unwrap();
         let undeclared = apply(expired, 4).await;
 
-        assert_eq!(
-            declared,
-            [json!(TIME_SPEC_ID_BASE), json!(0), json!(1)]
-        );
+        assert_eq!(declared, [json!(TIME_SPEC_ID_BASE), json!(0), json!(1)]);
         assert_eq!(spec_ids(&undeclared), [json!(TIME_SPEC_ID_BASE)]);
+    }
+
+    #[tokio::test]
+    async fn each_view_lists_its_part_of_one_snapshot() {
+        let (_, _, _, change) = listing_external().await;
+        let rendered = |view: View| -> Value {
+            serde_json::from_slice(&change.metadata(view).unwrap().1).unwrap()
+        };
+        let (merged, stream, lake) = (
+            rendered(View::Merged),
+            rendered(View::Stream),
+            rendered(View::Lake),
+        );
+        let current = |metadata: &Value| {
+            metadata["snapshots"]
+                .as_array()
+                .unwrap()
+                .last()
+                .unwrap()
+                .clone()
+        };
+        let records = |metadata: &Value| -> u64 {
+            current(metadata)["summary"]["total-records"]
+                .as_str()
+                .unwrap()
+                .parse()
+                .unwrap()
+        };
+
+        let merged_list = listed(&change, View::Merged);
+
+        assert_eq!(listed(&change, View::Stream), merged_list[..2]);
+        assert_eq!(listed(&change, View::Lake), merged_list[2..]);
+        assert_eq!(records(&stream) + records(&lake), records(&merged));
+        assert_eq!(merged["snapshots"].as_array().unwrap().len(), 2);
+        for view in [&stream, &lake] {
+            assert_eq!(view["snapshots"].as_array().unwrap().len(), 1);
+            assert_eq!(
+                current(view)["snapshot-id"],
+                current(&merged)["snapshot-id"]
+            );
+            assert_eq!(
+                current(view)["sequence-number"],
+                current(&merged)["sequence-number"]
+            );
+            assert_ne!(view["table-uuid"], merged["table-uuid"]);
+        }
+        assert_ne!(stream["table-uuid"], lake["table-uuid"]);
     }
 
     #[tokio::test]
@@ -1162,7 +1233,10 @@ mod tests {
         }
 
         assert_eq!(named.len(), 3);
-        assert!(named.iter().all(|(listed, header)| listed == header), "{named:?}");
+        assert!(
+            named.iter().all(|(listed, header)| listed == header),
+            "{named:?}"
+        );
     }
 
     #[tokio::test]
@@ -1199,7 +1273,8 @@ mod tests {
             .await
             .unwrap();
 
-        let metadata: Value = serde_json::from_slice(&next.metadata().1).unwrap();
+        let metadata: Value =
+            serde_json::from_slice(&next.metadata(View::Merged).unwrap().1).unwrap();
         let snapshot_ids: Vec<Value> = metadata["snapshots"]
             .as_array()
             .unwrap()
@@ -1240,7 +1315,7 @@ mod tests {
         let (external, _, _, change) = listing_external().await;
         let io = external.file_io();
         store(io, &change).await;
-        let (object, bytes) = change.metadata();
+        let (object, bytes) = change.metadata(View::Merged).unwrap();
         let metadata: TableMetadata = serde_json::from_slice(bytes).unwrap();
         let table = IcebergTable::builder()
             .identifier(iceberg::TableIdent::from_strs(["mink", "orders"]).unwrap())

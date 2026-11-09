@@ -8,6 +8,7 @@ use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use iceberg_catalog_rest::ErrorModel;
+use mink_core::View;
 use mink_metrics::{Metrics, Route};
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -113,30 +114,29 @@ async fn config(State(catalog): State<Arc<Catalog>>) -> Response {
     .into_response()
 }
 
-async fn namespaces(State(catalog): State<Arc<Catalog>>) -> Response {
-    Json(json!({ "namespaces": [[catalog.services.config.namespace]] })).into_response()
+async fn namespaces() -> Response {
+    let namespaces: Vec<[&str; 1]> = View::ALL.iter().map(|view| [view.name()]).collect();
+
+    Json(json!({ "namespaces": namespaces })).into_response()
 }
 
-async fn namespace(State(catalog): State<Arc<Catalog>>, Path(namespace): Path<String>) -> Response {
-    match require_namespace(&catalog, &namespace) {
-        Ok(()) => Json(json!({ "namespace": [namespace], "properties": {} })).into_response(),
+async fn namespace(Path(namespace): Path<String>) -> Response {
+    match view(&namespace) {
+        Ok(_) => Json(json!({ "namespace": [namespace], "properties": {} })).into_response(),
         Err(error) => failure(&error),
     }
 }
 
-async fn namespace_exists(
-    State(catalog): State<Arc<Catalog>>,
-    Path(namespace): Path<String>,
-) -> Response {
-    match require_namespace(&catalog, &namespace) {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+async fn namespace_exists(Path(namespace): Path<String>) -> Response {
+    match view(&namespace) {
+        Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(error) => failure(&error),
     }
 }
 
 async fn tables(State(catalog): State<Arc<Catalog>>, Path(namespace): Path<String>) -> Response {
     let listed = async {
-        require_namespace(&catalog, &namespace)?;
+        view(&namespace)?;
 
         catalog.tables.names().await
     };
@@ -157,11 +157,7 @@ async fn load(
     State(catalog): State<Arc<Catalog>>,
     Path((namespace, table)): Path<(String, String)>,
 ) -> Response {
-    let loaded = async {
-        require_namespace(&catalog, &namespace)?;
-
-        catalog.tables.load(&table).await
-    };
+    let loaded = async { catalog.tables.load(&table, view(&namespace)?).await };
 
     match loaded.await {
         Ok(loaded) => match serde_json::from_slice::<Value>(loaded.bytes()) {
@@ -182,7 +178,7 @@ async fn table_exists(
     Path((namespace, table)): Path<(String, String)>,
 ) -> Response {
     let exists = async {
-        require_namespace(&catalog, &namespace)?;
+        view(&namespace)?;
 
         match catalog.tables.exists(&table).await? {
             true => Ok(()),
@@ -196,9 +192,9 @@ async fn table_exists(
     }
 }
 
-async fn views(State(catalog): State<Arc<Catalog>>, Path(namespace): Path<String>) -> Response {
-    match require_namespace(&catalog, &namespace) {
-        Ok(()) => Json(json!({ "identifiers": [] })).into_response(),
+async fn views(Path(namespace): Path<String>) -> Response {
+    match view(&namespace) {
+        Ok(_) => Json(json!({ "identifiers": [] })).into_response(),
         Err(error) => failure(&error),
     }
 }
@@ -219,11 +215,8 @@ async fn forbidden() -> Response {
     )
 }
 
-fn require_namespace(catalog: &Catalog, namespace: &str) -> Result<(), Error> {
-    match namespace == catalog.services.config.namespace {
-        true => Ok(()),
-        false => Err(Error::NoSuchNamespace(namespace.to_owned())),
-    }
+fn view(namespace: &str) -> Result<View, Error> {
+    View::parse(namespace).ok_or_else(|| Error::NoSuchNamespace(namespace.to_owned()))
 }
 
 fn s3_config(services: &Services) -> Value {

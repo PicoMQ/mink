@@ -43,8 +43,8 @@ mink table list -c mink.toml
 | `--end-offset <p=o>` | `existing` | the table's properties | The table holds every record of partition `p` before offset `o`, repeatable |
 
 ```bash
-mink table attach new orders -c mink.toml --catalog lake --namespace kafka --table orders \
+mink table attach new orders -c mink.toml --catalog tables --namespace kafka --table orders \
   --partition "day(_kafka_timestamp)" --sort "_kafka_key"
 mink table detach orders -c mink.toml
-mink table attach existing orders -c mink.toml --catalog lake --namespace kafka --table orders
+mink table attach existing orders -c mink.toml --catalog tables --namespace kafka --table orders
 ```

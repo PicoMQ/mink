@@ -29,7 +29,7 @@ Every node with the `admin` role serves the admin API, the [console](/docs/opera
 
 | Route | Returns |
 | --- | --- |
-| `GET /admin/cluster` | This node's id, roles and version, the namespace, catalog URL, S3 endpoint and warehouse, and whether the registry answers |
+| `GET /admin/cluster` | This node's id, roles and version, the namespaces, catalog URL, S3 endpoint and warehouse, and whether the registry answers |
 | `GET /admin/overview` | Table, node, record and byte counts, and the tables with the most lag, the most bytes and the oldest snapshot. Computed at most once a minute. |
 | `GET /admin/nodes` | Live nodes with their roles, addresses and lease counts |
 | `GET /admin/nodes/{id}` | One node, with its settings, secrets redacted, and its cache usage |
@@ -70,7 +70,7 @@ Every node with the `admin` role serves the admin API, the [console](/docs/opera
 
 ```json
 {
-  "catalog": "lake",
+  "catalog": "tables",
   "namespace": "kafka",
   "name": "orders",
   "source": { "new": { "partitioning": { "fields": ["day(_kafka_timestamp)"] } } }

@@ -102,6 +102,15 @@ impl<'a> Commit<'a> {
 }
 
 impl Counts {
+    pub(super) fn live(manifests: &[Manifest]) -> Counts {
+        let mut counts = Counts::default();
+        for (_, entry) in manifests.iter().flat_map(|manifest| &manifest.live) {
+            counts.add(entry.data_file());
+        }
+
+        counts
+    }
+
     pub(super) fn add(&mut self, data_file: &DataFile) {
         self.files += 1;
         self.records += data_file.record_count();

@@ -24,7 +24,7 @@ CREATE SECRET mink (TYPE S3, KEY_ID 'mink', SECRET 'mink', REGION 'us-east-1',
   ENDPOINT '127.0.0.1:9100', URL_STYLE 'path', USE_SSL false);
 ATTACH 'warehouse' AS mink (TYPE iceberg, ENDPOINT 'http://127.0.0.1:8181', AUTHORIZATION_TYPE 'none');
 
-SELECT count(*) FROM mink.kafka."orders";
+SELECT count(*) FROM mink.merged."orders";
 ```
 
 ## PyIceberg
@@ -34,7 +34,7 @@ from pyiceberg.catalog.rest import RestCatalog
 
 catalog = RestCatalog('mink', uri='http://127.0.0.1:8181',
                       **{'s3.access-key-id': 'mink', 's3.secret-access-key': 'mink'})
-table = catalog.load_table('kafka.orders')
+table = catalog.load_table('merged.orders')
 print(table.scan().to_arrow().num_rows)
 ```
 
@@ -51,7 +51,7 @@ spark-sql \
   --conf spark.sql.catalog.mink.s3.path-style-access=true \
   --conf spark.sql.catalog.mink.s3.access-key-id=mink \
   --conf spark.sql.catalog.mink.s3.secret-access-key=mink \
-  -e 'SELECT count(*) FROM mink.kafka.`orders`'
+  -e 'SELECT count(*) FROM mink.merged.`orders`'
 ```
 
 The same settings work for a Spark Connect session, set with `spark.conf.set` before the first query.
@@ -73,7 +73,7 @@ s3.aws-secret-key=mink
 ```
 
 ```sql
-SELECT count(*) FROM mink.kafka."orders";
+SELECT count(*) FROM mink.merged."orders";
 ```
 
 ## Table names
@@ -82,6 +82,6 @@ A table has its topic's name. Names with `-` or `.` need quoting.
 
 | Engine | Quoted |
 | --- | --- |
-| DuckDB, Trino | `mink.kafka."demo-events"` |
-| Spark | ``mink.kafka.`demo-events` `` |
-| PyIceberg | `catalog.load_table('kafka.demo-events')` |
+| DuckDB, Trino | `mink.merged."demo-events"` |
+| Spark | ``mink.merged.`demo-events` `` |
+| PyIceberg | `catalog.load_table('merged.demo-events')` |

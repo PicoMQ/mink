@@ -1,4 +1,7 @@
-use iceberg::spec::{PartitionSpec, Schema, Snapshot as IcebergSnapshot, SortOrder};
+use iceberg::spec::{
+    MetadataLog, PartitionSpec, Schema, Snapshot as IcebergSnapshot, SortOrder, StatisticsFile,
+};
+use mink_core::View;
 use mink_schema::binary_schema;
 use serde_json::{Map, Value, json};
 
@@ -8,11 +11,25 @@ use super::{FormatVersion, Table};
 use crate::Error;
 
 impl Table {
-    pub(super) fn render(&self, commit: &Commit<'_>) -> Result<Vec<u8>, Error> {
-        let latest = self
-            .snapshots
-            .last()
-            .expect("a rendered table has the snapshot of its commit");
+    pub(super) fn render(
+        &self,
+        commit: &Commit<'_>,
+        view: View,
+        snapshot: &IcebergSnapshot,
+    ) -> Result<Vec<u8>, Error> {
+        let (snapshots, metadata_log, statistics): (
+            Vec<&IcebergSnapshot>,
+            &[MetadataLog],
+            Vec<&StatisticsFile>,
+        ) = match view {
+            View::Merged => (
+                self.snapshots.iter().collect(),
+                &self.metadata_log[..self.metadata_log.len() - 1],
+                self.statistics.iter().collect(),
+            ),
+            View::Stream | View::Lake => (vec![snapshot], &[], Vec::new()),
+        };
+        let latest = snapshot;
         let schemas: Vec<&Schema> = [binary_schema()]
             .into_iter()
             .chain(commit.schemas)
@@ -29,7 +46,7 @@ impl Table {
         let metadata = match self.version {
             FormatVersion::V2 => json!({
                 "format-version": self.version.number(),
-                "table-uuid": self.uuid,
+                "table-uuid": self.uuid_of(view),
                 "location": self.location().path(),
                 "last-sequence-number": latest.sequence_number(),
                 "last-updated-ms": latest.timestamp_ms(),
@@ -43,13 +60,13 @@ impl Table {
                 "sort-orders": sort_orders,
                 "current-snapshot-id": latest.snapshot_id(),
                 "refs": { "main": { "snapshot-id": latest.snapshot_id(), "type": "branch" } },
-                "snapshots": self.snapshots.iter().map(render_snapshot).collect::<Vec<_>>(),
-                "snapshot-log": self.snapshots.iter().map(|snapshot| json!({
+                "snapshots": snapshots.iter().map(|snapshot| render_snapshot(snapshot)).collect::<Vec<_>>(),
+                "snapshot-log": snapshots.iter().map(|snapshot| json!({
                     "snapshot-id": snapshot.snapshot_id(),
                     "timestamp-ms": snapshot.timestamp_ms(),
                 })).collect::<Vec<_>>(),
-                "metadata-log": &self.metadata_log[..self.metadata_log.len() - 1],
-                "statistics": self.statistics.iter().collect::<Vec<_>>(),
+                "metadata-log": metadata_log,
+                "statistics": statistics,
             }),
         };
 

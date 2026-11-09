@@ -1,7 +1,7 @@
 import * as duckdb from '@duckdb/duckdb-wasm'
 import { DataType, TimeUnit, type RecordBatch } from 'apache-arrow'
 
-import type { Cluster, Sql } from './api/cluster'
+import { MERGED, type Cluster, type Sql } from './api/cluster'
 import { hex, type Value } from './components/field'
 import * as format from './format'
 
@@ -100,7 +100,7 @@ async function open(cluster: Cluster, sql: Sql): Promise<Session> {
 
     return {
       run: (statement) => Promise.race([run(connection, statement), stopped]),
-      profile: (statement) => Promise.race([profile(connection, cluster, statement), stopped]),
+      profile: (statement) => Promise.race([profile(connection, statement), stopped]),
     }
   } catch (error) {
     await db.terminate()
@@ -149,21 +149,21 @@ export function setup(cluster: Cluster, sql: Sql, at: Origin): string[] {
     'LOAD httpfs',
     `CREATE SECRET mink (TYPE S3, KEY_ID 'mink', SECRET 'mink', ENDPOINT ${literal(`${at.host}/s3`)}, URL_STYLE 'path', USE_SSL ${secure})`,
     `ATTACH ${literal(cluster.warehouse)} AS ${CATALOG} (TYPE iceberg, ENDPOINT ${literal(`${at.origin}/catalog`)}, AUTHORIZATION_TYPE 'none', ACCESS_DELEGATION_MODE 'none')`,
-    `USE ${CATALOG}.${identifier(cluster.namespace)}`,
+    `USE ${CATALOG}.${identifier(MERGED)}`,
   ]
 }
 
-async function profile(connection: duckdb.AsyncDuckDBConnection, cluster: Cluster, statement: string): Promise<Profile> {
+async function profile(connection: duckdb.AsyncDuckDBConnection, statement: string): Promise<Profile> {
   try {
-    return await measure(connection, cluster, statement)
+    return await measure(connection, statement)
   } catch (error) {
     throw new Error(failure(error))
   }
 }
 
-async function measure(connection: duckdb.AsyncDuckDBConnection, cluster: Cluster, statement: string): Promise<Profile> {
+async function measure(connection: duckdb.AsyncDuckDBConnection, statement: string): Promise<Profile> {
   const serialized = await connection.query(`SELECT json_serialize_sql(${literal(statement)}) AS tree`)
-  const names = tables(String(serialized.getChildAt(0)?.get(0)), cluster.namespace)
+  const names = tables(String(serialized.getChildAt(0)?.get(0)), MERGED)
 
   const started = performance.now()
   const explained = await connection.query(`EXPLAIN (ANALYZE, FORMAT JSON) ${statement}`)
@@ -171,7 +171,7 @@ async function measure(connection: duckdb.AsyncDuckDBConnection, cluster: Cluste
 
   const files: TableFiles[] = []
   for (const name of names) {
-    const table = name.schema === cluster.namespace ? name.table : `${name.schema}.${name.table}`
+    const table = name.schema === MERGED ? name.table : `${name.schema}.${name.table}`
     files.push({ table, files: await dataFiles(connection, name) })
   }
 

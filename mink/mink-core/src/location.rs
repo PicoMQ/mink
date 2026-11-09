@@ -3,6 +3,7 @@ use crate::file::{AssemblyHash, File, FileVersion};
 use crate::granularity::TimePartition;
 use crate::offsets::OffsetRange;
 use crate::topic::Partition;
+use crate::view::View;
 
 const S3: &str = "s3://";
 
@@ -31,12 +32,16 @@ impl TableLocation {
         format!("{}/metadata/", self.path)
     }
 
-    pub fn metadata_file(&self, key: &str) -> String {
-        format!("{}/metadata/v{key}.metadata.json", self.path)
+    pub fn metadata_file(&self, key: &str, view: View) -> String {
+        format!(
+            "{}/metadata/v{key}{}.metadata.json",
+            self.path,
+            view.suffix()
+        )
     }
 
-    pub fn manifest_list(&self, key: &str) -> String {
-        format!("{}/metadata/snap-{key}.avro", self.path)
+    pub fn manifest_list(&self, key: &str, view: View) -> String {
+        format!("{}/metadata/snap-{key}{}.avro", self.path, view.suffix())
     }
 
     pub fn manifest(&self, key: &str, index: usize) -> String {
@@ -346,9 +351,17 @@ mod tests {
     fn metadata_paths_name_their_topic() {
         let location = TableLocation::new("s3://mink/kafka/", "orders");
 
-        let path = location.metadata_file("3-e1");
+        let path = location.metadata_file("3-e1", View::Merged);
 
         assert_eq!(path, "s3://mink/kafka/orders/metadata/v3-e1.metadata.json");
+        assert_eq!(
+            location.metadata_file("3-e1", View::Stream),
+            "s3://mink/kafka/orders/metadata/v3-e1-stream.metadata.json"
+        );
+        assert_eq!(
+            location.manifest_list("3-e1", View::Lake),
+            "s3://mink/kafka/orders/metadata/snap-3-e1-lake.avro"
+        );
         assert_eq!(
             location.metadata_directory(),
             "s3://mink/kafka/orders/metadata/"

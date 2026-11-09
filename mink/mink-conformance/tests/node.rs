@@ -4,7 +4,7 @@ use std::ops::Range;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::Duration;
 
-use mink_core::{Member, Offsets, Partition, Scope};
+use mink_core::{Member, Offsets, Partition, Scope, View};
 use mink_iceberg::FIRST_TAIL_SNAPSHOT_ID;
 use mink_kafka::{Cluster, Config as KafkaConfig};
 use mink_metrics::Metrics;
@@ -178,8 +178,12 @@ async fn committed(bootstrap: &str, topic: &str, partitions: i32) -> u64 {
     records
 }
 
-async fn load_table(node: &TestNode, topic: &str) -> Option<Value> {
-    let url = format!("{}/v1/namespaces/kafka/tables/{topic}", node.catalog);
+async fn load_table(node: &TestNode, view: View, topic: &str) -> Option<Value> {
+    let url = format!(
+        "{}/v1/namespaces/{}/tables/{topic}",
+        node.catalog,
+        view.name()
+    );
     let response = reqwest::get(url).await.ok()?;
 
     match response.status().is_success() {
@@ -201,7 +205,7 @@ async fn wait_for(node: &TestNode, topic: &str, ready: impl Fn(&Value) -> bool) 
     let deadline = Instant::now() + WAIT;
 
     loop {
-        if let Some(table) = load_table(node, topic).await
+        if let Some(table) = load_table(node, View::Merged, topic).await
             && ready(&table)
         {
             return table;
@@ -505,7 +509,7 @@ async fn metrics_move_with_the_work_they_count() {
     wait_for_committed(&node, &topic, 9).await;
     let client = reqwest::Client::new();
 
-    load_table(&node, &topic).await.unwrap();
+    load_table(&node, View::Merged, &topic).await.unwrap();
     let files: Value = client
         .get(format!("{}/admin/tables/{topic}/files", node.admin))
         .send()
@@ -586,7 +590,7 @@ async fn duckdb_reads_a_mink_table() {
     wait_for_records(&node, &topic, 9).await;
 
     mink_conformance::produce_values(&bootstrap, &topic, 1, &["j", "k"]);
-    let table = load_table(&node, &topic).await.unwrap();
+    let table = load_table(&node, View::Merged, &topic).await.unwrap();
     let location = table["metadata-location"].as_str().unwrap();
 
     let stdout = duckdb_count(&duckdb, &node, location).await;
@@ -612,7 +616,7 @@ async fn pyiceberg_reads_every_committed_record() {
     mink_conformance::produce_values(&bootstrap, &topic, 0, &["j", "k", "l"]);
     let script = format!(
         "{}\
-         table = catalog.load_table(('kafka', '{topic}'))\n\
+         table = catalog.load_table(('merged', '{topic}'))\n\
          print(table.scan().to_arrow().num_rows)\n",
         mink_catalog(&node)
     );
@@ -741,7 +745,7 @@ async fn engines_read_typed_columns_across_schema_versions() {
     let script = format!(
         "import json\n\
          {}\
-         rows = catalog.load_table(('kafka', '{topic}')).scan().to_arrow().sort_by('_kafka_offset')\n\
+         rows = catalog.load_table(('merged', '{topic}')).scan().to_arrow().sort_by('_kafka_offset')\n\
          print(json.dumps(rows.select(['id', 'note', 'amount']).to_pylist()))\n",
         mink_catalog(&node)
     );
@@ -784,7 +788,7 @@ async fn engines_read_typed_columns_across_schema_versions() {
     let s3 = format!("http://{}:{}", env.host, node.s3_port);
     let select = |table: String| {
         format!(
-            "SELECT id, note, amount, _kafka_value IS NOT NULL AS raw FROM {catalog}.kafka.{table} ORDER BY _kafka_offset"
+            "SELECT id, note, amount, _kafka_value IS NOT NULL AS raw FROM {catalog}.merged.{table} ORDER BY _kafka_offset"
         )
     };
 
@@ -983,7 +987,7 @@ async fn assembled_files_build_only_the_parts_a_query_reads() {
     let counted = trino(
         &trino_url,
         &format!(
-            "SELECT count(*) FROM {catalog}.kafka.\"{topic}\" WHERE _kafka_offset >= {second}"
+            "SELECT count(*) FROM {catalog}.merged.\"{topic}\" WHERE _kafka_offset >= {second}"
         ),
     )
     .await;
@@ -1024,7 +1028,7 @@ async fn pyiceberg_reads_the_statistics_file() {
         "import json\n\
          import datasketches\n\
          {catalog}\
-         table = catalog.load_table(('kafka', '{topic}'))\n\
+         table = catalog.load_table(('merged', '{topic}'))\n\
          statistics = table.metadata.statistics[0]\n\
          data = table.io.new_input(statistics.statistics_path).open().read()\n\
          size = int.from_bytes(data[-12:-8], 'little')\n\
@@ -1143,7 +1147,7 @@ async fn three_nodes_survive_a_crash_and_a_postgres_restart() {
         );
     }
 
-    let table = load_table(&first, &topic).await.unwrap();
+    let table = load_table(&first, View::Merged, &topic).await.unwrap();
     let location = table["metadata-location"].as_str().unwrap();
 
     let read = duckdb_records(&duckdb, &first, location).await;
@@ -1284,11 +1288,11 @@ async fn tiered_records_read_once_through_every_engine() {
     let location = table["metadata-location"].as_str().unwrap();
     let duckdb_read = duckdb_records(&duckdb, &node, location).await;
     let pyiceberg_read =
-        pyiceberg_records(&interpreter, &mink_catalog(&node), "kafka", &topic).await;
+        pyiceberg_records(&interpreter, &mink_catalog(&node), "merged", &topic).await;
     let catalog = trino_catalog(&trino_url, &node, &env.host).await;
     let trino_read = trino(
         &trino_url,
-        &records_sql(&format!("{catalog}.kafka.\"{topic}\"")),
+        &records_sql(&format!("{catalog}.merged.\"{topic}\"")),
     )
     .await;
     trino(&trino_url, &format!("DROP CATALOG {catalog}")).await;
@@ -1297,7 +1301,7 @@ async fn tiered_records_read_once_through_every_engine() {
         &interpreter,
         &spark,
         &[(&catalog, spark_catalog(&node.catalog, &s3, "mink"))],
-        &[records_sql(&format!("{catalog}.kafka.{topic}"))],
+        &[records_sql(&format!("{catalog}.merged.{topic}"))],
     )
     .await;
 
@@ -1344,6 +1348,55 @@ async fn tiered_records_read_once_through_every_engine() {
             "{file}"
         );
     }
+}
+
+#[tokio::test]
+async fn the_stream_and_lake_namespaces_split_the_merged_table() {
+    let (Some(env), Some(uri), Some(duckdb), Some(interpreter)) = (
+        test_env().await,
+        mink_conformance::service("TEST_ICEBERG_REST"),
+        mink_conformance::service("TEST_DUCKDB"),
+        mink_conformance::service("TEST_PYICEBERG"),
+    ) else {
+        return;
+    };
+    let topic = format!("split_{}", Uuid::new_v4().simple());
+    mink_conformance::create_topic(&env.bootstrap, &topic, 2).await;
+    let node = start_node(&env, &topic, &Role::ALL, &external_catalogs(&uri)).await;
+    let old_ms = mink_core::now_ms() - 2 * 3_600_000;
+
+    for partition in 0..2 {
+        let values = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
+        mink_conformance::produce_at(&env.bootstrap, &topic, partition, &values, old_ms);
+    }
+    wait_for_committed(&node, &topic, 20).await;
+    for partition in 0..2 {
+        mink_conformance::produce_values(&env.bootstrap, &topic, partition, &["k", "l", "m"]);
+    }
+    attach(
+        &node,
+        &uri,
+        &topic,
+        Duration::from_secs(3600),
+        new_table(&[]),
+    )
+    .await;
+    wait_for_tiered(&node, &topic, 20, 26).await;
+
+    let catalog = mink_catalog(&node);
+    let mut pyiceberg = Vec::new();
+    let mut duckdb_reads = Vec::new();
+    for view in View::ALL {
+        pyiceberg.push(pyiceberg_records(&interpreter, &catalog, view.name(), &topic).await);
+        let table = load_table(&node, view, &topic).await.unwrap();
+        let location = table["metadata-location"].as_str().unwrap();
+        duckdb_reads.push(duckdb_records(&duckdb, &node, location).await);
+    }
+    node.shutdown().await;
+
+    let expected = [records(26), records(6), records(20)];
+    assert_eq!(pyiceberg, expected);
+    assert_eq!(duckdb_reads, expected);
 }
 
 #[tokio::test]
@@ -1417,7 +1470,7 @@ async fn external_changes_show_in_the_merged_table() {
         mink_conformance::delete_records(&env.bootstrap, &topic, partition, 15).await;
     }
     tokio::time::sleep(Duration::from_secs(2)).await;
-    let table = load_table(&node, &topic).await.unwrap();
+    let table = load_table(&node, View::Merged, &topic).await.unwrap();
     let after_kafka =
         duckdb_records(&duckdb, &node, table["metadata-location"].as_str().unwrap()).await;
     node.shutdown().await;
@@ -1536,7 +1589,7 @@ async fn detach_keeps_time_travel_and_reattaching_resumes() {
     let travelled = trino(
         &trino_url,
         &records_sql(&format!(
-            "{catalog}.kafka.\"{topic}\" FOR VERSION AS OF BIGINT '{listed}'"
+            "{catalog}.merged.\"{topic}\" FOR VERSION AS OF BIGINT '{listed}'"
         )),
     )
     .await;

@@ -304,7 +304,7 @@ pub(super) mod tests {
             .unwrap();
 
         let (config, _) = get(&base, "/catalog/v1/config").await;
-        let (tables, _) = get(&base, "/catalog/v1/namespaces/kafka/tables").await;
+        let (tables, _) = get(&base, "/catalog/v1/namespaces/merged/tables").await;
         let metadata = reqwest::get(format!("{base}/s3/mink/{path}"))
             .await
             .unwrap();

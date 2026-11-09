@@ -163,7 +163,9 @@ impl Writer {
         };
         table = match &self.external_update {
             Some(ExternalUpdate::List(_)) if listing_deferred => table.without_external_snapshot(),
-            Some(ExternalUpdate::List(external)) => table.with_external_snapshot(external.clone())?,
+            Some(ExternalUpdate::List(external)) => {
+                table.with_external_snapshot(external.clone())?
+            }
             Some(ExternalUpdate::Unlist) => table.without_external_snapshot(),
             None => table,
         };
@@ -504,7 +506,7 @@ mod tests {
             matches!(fenced, Err(Error::Store(mink_store::Error::Fenced(_)))),
             "{fenced:?}"
         );
-        assert_eq!(unrecorded.len(), 3);
+        assert_eq!(unrecorded.len(), 7);
         let recorded = setup.recorded().await;
         let warehouse = setup.in_warehouse().await;
         assert!(recorded.iter().all(|path| warehouse.contains(path)));

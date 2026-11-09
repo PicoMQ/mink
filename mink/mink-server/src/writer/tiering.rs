@@ -191,7 +191,7 @@ mod tests {
     use iceberg::{Catalog as _, ErrorKind, Runtime, TableIdent, TableUpdate};
     use mink_core::{
         CatalogTable, ExternalLocation, Offsets, Partition, Record, Scope, Snapshot, TableLocation,
-        TierSchedule, TieredFiles, TieredRange,
+        TierSchedule, TieredFiles, TieredRange, View,
     };
     use mink_iceberg::FileSchema;
     use uuid::Uuid;
@@ -317,7 +317,7 @@ mod tests {
                 .unwrap();
         }
         let bytes = io
-            .new_input(location.metadata_file(&snapshot.key()))
+            .new_input(location.metadata_file(&snapshot.key(), View::Merged))
             .unwrap()
             .read()
             .await

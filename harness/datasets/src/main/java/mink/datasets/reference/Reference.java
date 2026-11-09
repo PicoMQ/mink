@@ -58,7 +58,7 @@ public final class Reference implements AutoCloseable {
                     AUTHORIZATION_TYPE 'none', ACCESS_DELEGATION_MODE 'none')
                 """.formatted(mink.warehouse(), mink.catalog()));
 
-        return "mink." + mink.namespace();
+        return "mink." + Mink.NAMESPACE;
     }
 
     public List<List<Object>> query(String sql) throws SQLException {

@@ -62,6 +62,22 @@ Each committed snapshot `N`, under lease epoch `E`, writes a table metadata file
 
 Keys are sorted and arrays keep the orders above, so a snapshot renders to the same bytes on any node.
 
+## Views
+
+Each snapshot is rendered once per [namespace](/docs/design/tables#namespaces). A tail renders `merged` and `stream`.
+
+| | `merged` | `stream` | `lake` |
+| --- | --- | --- | --- |
+| Table metadata | `v{N}-e{E}.metadata.json` | `v{N}-e{E}-stream.metadata.json` | `v{N}-e{E}-lake.metadata.json` |
+| Manifest list | `snap-{N}-e{E}.avro` | `snap-{N}-e{E}-stream.avro` | `snap-{N}-e{E}-lake.avro` |
+| Lists | Mink's manifests, then the external entries | Mink's manifests | The external entries |
+| `table-uuid` | The topic's uuid | The name-based uuid (version 5) of the topic's uuid and `stream` | The same, with `lake` |
+| `snapshots`, `snapshot-log`, `metadata-log` | Every retained snapshot | The current snapshot | The current snapshot |
+| Summary totals | Both parts | Mink's files | The external entries |
+| `statistics` | The latest file | None | None |
+
+Schemas, specs, sort orders, snapshot ids and sequence numbers are the same in all three. Manifests are written once and listed by each view that holds them.
+
 ## Partition specs
 
 | Spec | Id | Fields |

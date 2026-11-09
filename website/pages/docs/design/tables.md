@@ -1,6 +1,47 @@
 # Tables
 
-A table is a Kafka topic added with `mink table add`. It has the topic's name and lives in the `kafka` namespace by default. Its schema grows as producers register new schema versions.
+A table is a Kafka topic added with `mink table add`. It has the topic's name in each of three namespaces. Its schema grows as producers register new schema versions.
+
+## Namespaces
+
+<div class="mink-diagram">
+<svg viewBox="0 0 570 170" width="570" role="img" aria-label="A partition reads left to right in offsets: the external table holds the tiered history, then Mink's files and the tail hold the records from Kafka. The lake namespace is the external table, the stream namespace is Mink's files and the tail, and the merged namespace is both.">
+  <defs>
+    <marker id="namespaces-offsets" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0.5 L7.5 4 L0 7.5 Z" class="arrow"/>
+    </marker>
+  </defs>
+  <text x="285" y="22" text-anchor="middle" class="label">merged</text>
+  <path d="M30 34 L30 28 L540 28 L540 34" class="edge"/>
+  <rect x="30" y="42" width="260" height="40" class="edge-soft"/>
+  <text x="160" y="67" text-anchor="middle" class="label">external table</text>
+  <rect x="290" y="42" width="180" height="40" class="box"/>
+  <text x="380" y="67" text-anchor="middle" class="label">Mink's files</text>
+  <rect x="470" y="42" width="70" height="40" class="box-accent"/>
+  <text x="505" y="67" text-anchor="middle" class="sub">tail</text>
+  <path d="M30 90 L30 96 L288 96 L288 90" class="edge"/>
+  <text x="160" y="114" text-anchor="middle" class="label">lake</text>
+  <path d="M292 90 L292 96 L540 96 L540 90" class="edge"/>
+  <text x="416" y="114" text-anchor="middle" class="label">stream</text>
+  <path d="M30 142 L536 142" class="edge" marker-end="url(#namespaces-offsets)"/>
+  <text x="30" y="162" class="sub">offsets</text>
+</svg>
+</div>
+
+| Namespace | Rows | Real time | Time travel |
+| --- | --- | --- | --- |
+| `merged` | Every record once: the [tiered](/docs/design/tiering) history, then the records from Kafka | Yes | Every retained snapshot |
+| `stream` | The records from Kafka, from the tier boundary on | Yes | The current snapshot |
+| `lake` | The tiered history in the external table | Moves with each tier commit | The current snapshot |
+
+- Every table is in all three. Without an external table, `stream` holds what `merged` holds and `lake` is empty.
+- `stream` and `lake` load separately, so a tier commit between the two loads moves the boundary. `merged` is the one consistent read of both.
+
+```sql
+SELECT count(*) FROM mink.merged.orders;
+SELECT count(*) FROM mink.stream.orders;
+SELECT count(*) FROM mink.lake.orders;
+```
 
 ## Columns
 

@@ -13,6 +13,7 @@ mod snapshot;
 mod tier;
 mod time;
 mod topic;
+mod view;
 
 pub use error::Error;
 pub use external::{CatalogTable, ExternalTable, TierSchedule};
@@ -29,3 +30,4 @@ pub use snapshot::Snapshot;
 pub use tier::{TierFlush, TieredFiles, TieredRange, oldest_untiered_ms, tier_flushes};
 pub use time::{millis, now_ms};
 pub use topic::{Partition, TableState, Topic};
+pub use view::View;

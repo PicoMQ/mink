@@ -32,7 +32,6 @@ pub struct Config {
     pub(crate) storage: Storage,
     pub(crate) schema_registry: Option<SchemaRegistry>,
     pub(crate) external_catalogs: BTreeMap<String, ExternalCatalog>,
-    pub(crate) namespace: String,
     pub(crate) history: History,
     pub(crate) file_bytes: u64,
     #[serde(with = "duration")]
@@ -217,7 +216,6 @@ impl Default for Config {
             },
             schema_registry: None,
             external_catalogs: BTreeMap::new(),
-            namespace: "kafka".to_owned(),
             history: History::All,
             file_bytes: 128 * 1024 * 1024,
             file_window: Duration::from_secs(60),
@@ -302,7 +300,6 @@ impl Config {
                     }
                 },
             ),
-            ("namespace", self.namespace.clone()),
             ("admin_address", self.admin_address.to_string()),
             ("catalog_endpoint", self.catalog_endpoint.clone()),
             ("granularity", self.granularity.name().to_owned()),

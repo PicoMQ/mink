@@ -67,7 +67,6 @@ Durations are a number and a unit: `ms`, `s`, `m` or `h`. Sizes are bytes. Every
 | `schema_registry.username`, `schema_registry.password` | none | For `confluent`: Basic authentication |
 | `schema_registry.name` | none | For `glue`: the registry's name. A record's schema must be a version of the schema named after its topic. |
 | `schema_registry.region` | none | For `glue`: the registry's region. Without it, the AWS SDK's own sources, such as `AWS_REGION`. Credentials come from AWS's own sources, as for `storage.credentials`. |
-| `namespace` | `kafka` | The catalog's one namespace |
 
 ## Indexing
 

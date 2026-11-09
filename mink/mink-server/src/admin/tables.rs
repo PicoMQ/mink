@@ -5,7 +5,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
-use mink_core::{Granularity, Scope, TableLocation, TableState, Topic};
+use mink_core::{Granularity, Scope, TableLocation, TableState, Topic, View};
 use mink_store::TableSummary;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -119,7 +119,7 @@ async fn table(
     let mut detail = item(&topic, state, &summary);
     detail["location"] = json!(location.path());
     detail["metadataLocation"] =
-        json!(latest.map(|snapshot| { location.metadata_file(&snapshot.key()) }));
+        json!(latest.map(|snapshot| { location.metadata_file(&snapshot.key(), View::Merged) }));
     detail["specs"] = specs
         .granularities()
         .iter()

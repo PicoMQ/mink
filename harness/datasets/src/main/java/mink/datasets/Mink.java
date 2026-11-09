@@ -12,7 +12,9 @@ import java.util.Optional;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-public record Mink(URI address, String warehouse, String namespace) {
+public record Mink(URI address, String warehouse) {
+    public static final String NAMESPACE = "merged";
+
     private static final HttpClient HTTP = HttpClient.newHttpClient();
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Duration ADDED_WITHIN = Duration.ofSeconds(30);
@@ -28,7 +30,7 @@ public record Mink(URI address, String warehouse, String namespace) {
         var uri = address.resolve("/admin/cluster");
         var cluster = get(uri).orElseThrow(() -> new IOException(uri + " answered 404"));
 
-        return new Mink(address, cluster.path("warehouse").asText(), cluster.path("namespace").asText());
+        return new Mink(address, cluster.path("warehouse").asText());
     }
 
     public URI catalog() {
@@ -67,7 +69,7 @@ public record Mink(URI address, String warehouse, String namespace) {
     }
 
     private long served(String table) throws IOException, InterruptedException {
-        var uri = URI.create("%s/v1/namespaces/%s/tables/%s".formatted(catalog(), namespace, table));
+        var uri = URI.create("%s/v1/namespaces/%s/tables/%s".formatted(catalog(), NAMESPACE, table));
         var loaded = get(uri);
         if (loaded.isEmpty()) {
             return 0;
