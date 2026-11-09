@@ -23,6 +23,10 @@ public sealed interface Dataset permits Tpch, Telematics, Events {
 
     Topic.Source generate(Reference reference, double scale) throws SQLException;
 
+    default Optional<Topic.Source> live(Reference reference, double scale) {
+        return Optional.empty();
+    }
+
     static Dataset of(String name) {
         return switch (name) {
             case "tpch" -> new Tpch();

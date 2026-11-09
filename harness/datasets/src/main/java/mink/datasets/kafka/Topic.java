@@ -3,8 +3,11 @@ package mink.datasets.kafka;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -22,7 +25,7 @@ public record Topic(Properties kafka, String name) {
         void each(Consumer<Row> sink) throws Exception;
     }
 
-    private static final long PROGRESS_EVERY = 250_000;
+    private static final long PROGRESS_SECONDS = 1;
 
     public void create(int partitions) throws ExecutionException, InterruptedException {
         try (var admin = Admin.create(kafka)) {
@@ -30,17 +33,22 @@ public record Topic(Properties kafka, String name) {
                     .configs(Map.of(TopicConfig.RETENTION_MS_CONFIG, "-1"));
             admin.createTopics(List.of(topic)).all().get();
         }
+        System.out.printf("created topic %s, %d partitions%n", name, partitions);
     }
 
-    public void write(Source source, Encoding encoding, long rows) throws Exception {
+    public void write(Source source, Encoding encoding, OptionalLong rows) throws Exception {
         var settings = new Properties();
         settings.putAll(kafka);
         settings.put(ProducerConfig.LINGER_MS_CONFIG, 100);
 
         var failure = new AtomicReference<Exception>();
         var written = new AtomicLong();
+        var reported = new AtomicLong();
+        var progress = Executors.newSingleThreadScheduledExecutor();
+        progress.scheduleAtFixedRate(() -> report(written.get(), reported.getAndSet(written.get()), rows),
+                PROGRESS_SECONDS, PROGRESS_SECONDS, TimeUnit.SECONDS);
 
-        try (var producer = new KafkaProducer<>(settings, new StringSerializer(), encoding.serializer(name))) {
+        try (progress; var producer = new KafkaProducer<>(settings, new StringSerializer(), encoding.serializer(name))) {
             source.each(row -> {
                 var record = new ProducerRecord<>(name, null, row.timestampMs(), row.key(), encoding.value(row.value()));
                 producer.send(record, (metadata, error) -> {
@@ -49,9 +57,7 @@ public record Topic(Properties kafka, String name) {
                     }
                 });
 
-                if (written.incrementAndGet() % PROGRESS_EVERY == 0) {
-                    System.out.printf("produced %,d of %,d%n", written.get(), rows);
-                }
+                written.incrementAndGet();
             });
             producer.flush();
         }
@@ -59,6 +65,14 @@ public record Topic(Properties kafka, String name) {
         if (failure.get() != null) {
             throw failure.get();
         }
-        System.out.printf("produced %,d of %,d%n", written.get(), rows);
+        report(written.get(), reported.get(), rows);
+    }
+
+    private static void report(long written, long reported, OptionalLong rows) {
+        if (rows.isPresent()) {
+            System.out.printf("produced %,d of %,d%n", written, rows.getAsLong());
+        } else {
+            System.out.printf("produced %,d, %,d a second%n", written, (written - reported) / PROGRESS_SECONDS);
+        }
     }
 }
