@@ -47,6 +47,14 @@ output "emr_application_id" {
   value = module.clients.emr_application_id
 }
 
+output "athena_repository_url" {
+  value = module.clients.athena_repository_url
+}
+
+output "athena_workgroup" {
+  value = module.clients.athena_workgroup
+}
+
 output "emr_role_arn" {
   value = module.clients.emr_role_arn
 }

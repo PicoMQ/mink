@@ -44,6 +44,10 @@ output "postgres_security_group" {
   value = var.create_postgres ? aws_security_group.postgres[0].id : null
 }
 
+output "athena_security_group" {
+  value = var.create_athena ? aws_security_group.athena[0].id : null
+}
+
 output "emr_security_group" {
   value = var.create_emr ? aws_security_group.emr[0].id : null
 }

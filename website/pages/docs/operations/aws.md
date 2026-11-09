@@ -21,7 +21,8 @@ This stack is a demo. It runs Mink on AWS end to end, and DuckDB, the console an
 | Client | With `create_client = true`, an EC2 instance with Docker, the Kafka CLI and DuckDB, reached only through SSM | |
 | Image repository | With `create_repository = true`, an ECR repository for images built from source | |
 | EMR | With `create_emr = true`, an EMR Serverless Spark application, `emr-7.14.0`, in the private subnets. Its job role reads and writes only the bucket's `emr/` prefix. | |
-| External catalog | With `create_external_catalog = "s3tables"`, an S3 Tables table bucket with a `kafka` namespace, Mink's catalog `lake` for [tiering](/docs/design/tiering). Nodes and EMR get access to it. | `external_catalog`: any Iceberg REST catalog |
+| Athena | With `create_athena = true`, the Athena connector as a Lambda in the private subnets, with the `mink` data catalog and workgroup. Results and spill go under the bucket's `athena/` prefix. | |
+| External catalog | With `create_external_catalog = "s3tables"`, an S3 Tables table bucket with a `kafka` namespace, Mink's catalog `tables` for [tiering](/docs/design/tiering). Nodes and EMR get access to it. | `external_catalog`: any Iceberg REST catalog |
 
 The Postgres URL and the Kafka and Schema Registry passwords reach the containers from Secrets Manager. Nothing in the stack accepts connections from the internet. The NAT gateway's address is for outbound traffic only.
 
@@ -190,7 +191,7 @@ for statement in [
     "ATTACH 'warehouse' AS mink (TYPE iceberg, ENDPOINT 'http://mink.internal:8181', AUTHORIZATION_TYPE 'none')",
 ]:
     db.execute(statement)
-db.sql("SELECT _kafka_partition, _kafka_offset, CAST(_kafka_value AS VARCHAR) FROM mink.kafka.payments").show()
+db.sql("SELECT _kafka_partition, _kafka_offset, CAST(_kafka_value AS VARCHAR) FROM mink.merged.payments").show()
 EOF
 ```
 
@@ -248,20 +249,18 @@ With `create_external_catalog = "s3tables"`, attach a table to a new S3 Tables t
 ```bash
 curl -X POST http://mink.internal:9180/admin/tables/vehicle_locations/external \
   -H 'content-type: application/json' \
-  -d '{"catalog": "lake", "namespace": "kafka", "name": "vehicle_locations",
+  -d '{"catalog": "tables", "namespace": "kafka", "name": "vehicle_locations",
        "source": {"new": {"partitioning": {"fields": ["day(_kafka_timestamp)"]}}},
        "tierAfter": "1h", "tierInterval": "2m"}'
-curl -s http://mink.internal:8181/v1/namespaces/kafka/tables/vehicle_locations | jq '.metadata.snapshots[-1].summary'
+curl -s http://mink.internal:8181/v1/namespaces/merged/tables/vehicle_locations | jq '.metadata.snapshots[-1].summary'
 ```
 
-The summary's `mink.external.partition.{p}.end-offset` is how far S3 Tables reaches in each partition. A few minutes after attaching the datasets above:
+The summary's `mink.external.partition.{p}.end-offset` is how far S3 Tables reaches in each partition. The [namespaces](/docs/design/tables#namespaces) split each table by where its records are. After both datasets tiered and 10 more events arrived:
 
-| Table | Records | In S3 Tables | Data files in S3 Tables, in Mink's bucket |
+| Table | `merged` | `stream` | `lake` |
 | --- | --- | --- | --- |
-| `vehicle_locations` | 50,000 | 49,750 | 6, 10 |
-| `events` | 10,000 | 9,949 | 6, 17 |
-
-DuckDB, as in [Try it](#try-it), reads each record once, older ones from S3 Tables and the last hour from Kafka. See [Tiering](/docs/design/tiering) for detach and attaching an existing table.
+| `vehicle_locations` | 50,000 | 0 | 50,000 |
+| `events` | 10,020 | 10 | 10,010 |
 
 ## Query from EMR Serverless
 
@@ -285,15 +284,15 @@ EOF
     --name telematics --job-driver file:///tmp/job.json --query jobRunId --output text \
     --configuration-overrides "{\"monitoringConfiguration\": {\"s3MonitoringConfiguration\": {\"logUri\": \"s3://$BUCKET/emr/logs/\"}}}"
 }
-JOB=$(job mink.kafka.vehicle_locations "$MINK")
+JOB=$(job mink.merged.vehicle_locations "$MINK")
 ```
 
 The same job reads the S3 Tables table directly through its own catalog:
 
 ```bash
 CATALOG=$(terraform output -json external_catalog)
-LAKE="--conf spark.sql.catalog.lake=org.apache.iceberg.spark.SparkCatalog --conf spark.sql.catalog.lake.type=rest --conf spark.sql.catalog.lake.uri=$(echo "$CATALOG" | jq -r .uri) --conf spark.sql.catalog.lake.warehouse=$(echo "$CATALOG" | jq -r .warehouse) --conf spark.sql.catalog.lake.rest.sigv4-enabled=true --conf spark.sql.catalog.lake.rest.signing-name=s3tables --conf spark.sql.catalog.lake.io-impl=org.apache.iceberg.aws.s3.S3FileIO"
-DIRECT=$(job lake.kafka.vehicle_locations "$LAKE")
+TABLES="--conf spark.sql.catalog.tables=org.apache.iceberg.spark.SparkCatalog --conf spark.sql.catalog.tables.type=rest --conf spark.sql.catalog.tables.uri=$(echo "$CATALOG" | jq -r .uri) --conf spark.sql.catalog.tables.warehouse=$(echo "$CATALOG" | jq -r .warehouse) --conf spark.sql.catalog.tables.rest.sigv4-enabled=true --conf spark.sql.catalog.tables.rest.signing-name=s3tables --conf spark.sql.catalog.tables.io-impl=org.apache.iceberg.aws.s3.S3FileIO"
+DIRECT=$(job tables.kafka.vehicle_locations "$TABLES")
 ```
 
 When `aws emr-serverless get-job-run --application-id "$APPLICATION" --job-run-id "$JOB"` reports `SUCCESS`, read the rows:
@@ -302,12 +301,35 @@ When `aws emr-serverless get-job-run --application-id "$APPLICATION" --job-run-i
 aws s3 cp "s3://$BUCKET/emr/logs/applications/$APPLICATION/jobs/$JOB/SPARK_DRIVER/stdout.gz" - | gunzip
 ```
 
-| Job | Positions per vehicle |
-| --- | --- |
-| On Mink's catalog | 1,000, all of them |
-| On S3 Tables | 995, the ones tiered so far |
+Both jobs print the same rows, 1,000 positions per vehicle, once every record has tiered. Before that, S3 Tables holds only the tiered ones. Each job takes about 2 minutes. The application allows 32 vCPU, so several jobs run at once and others wait their turn.
 
-Each job takes about 2 minutes. The application allows 32 vCPU, so several jobs run at once and others wait their turn.
+## Query from Athena
+
+With `create_athena = true`, Athena queries Mink's tables through the [connector](https://github.com/PicoMQ/mink/tree/main/harness/clients/athena), a Lambda that reads each table through Mink. Create its repository, push the image, then apply the rest:
+
+```bash
+terraform apply -target=module.clients.aws_ecr_repository.athena
+REPOSITORY=$(terraform output -raw athena_repository_url)
+aws ecr get-login-password | docker login --username AWS --password-stdin "${REPOSITORY%%/*}"
+docker buildx build --platform linux/arm64 --provenance=false -t "$REPOSITORY:latest" --push ../../clients/athena
+terraform apply
+```
+
+Lambda takes a single-platform image, hence `--provenance=false`. In the Athena console, choose the `mink` workgroup. The `mink` catalog has the three [namespaces](/docs/design/tables#namespaces):
+
+```sql
+SELECT count(*), count(DISTINCT (_kafka_partition, _kafka_offset)) FROM mink.merged.events;
+SELECT json_extract_scalar(from_utf8(_kafka_value), '$.kind') AS kind, count(*) FROM mink.stream.events GROUP BY 1;
+SELECT vehicle_id, lat, lon, speed FROM mink.merged.vehicle_locations ORDER BY located_at DESC, vehicle_id LIMIT 3;
+```
+
+| Query | Result |
+| --- | --- |
+| Records in `merged.events` | 10,020, each once |
+| Kinds in `stream.events` | `live`, 10: the events produced a moment before, read from Kafka |
+| Latest positions | The 3 newest, `vehicle-000` to `vehicle-002` |
+
+Each query takes 5 to 10 seconds. Athena plans, joins and aggregates, and the connector passes filters, `LIMIT` and `ORDER BY … LIMIT` to its reads.
 
 ## Destroy
 
@@ -341,6 +363,7 @@ With `force_destroy = false`, the default, the database keeps a final snapshot, 
 | `schema_registry` | none | An existing registry: `{ type = "confluent", url, username, password }` or `{ type = "glue", name, region }` |
 | `create_client`, `client_instance_type` | `false`, `t4g.small` | The client instance |
 | `create_emr` | `false` | An EMR Serverless Spark application |
+| `create_athena` | `false` | The Athena connector, data catalog and workgroup |
 | `create_external_catalog` | none | `s3tables` |
 | `external_catalog` | none | An existing Iceberg REST catalog: `{ uri, warehouse, auth = { type, service, region } }` |
 | `force_destroy` | `false` | Let destroy delete data |

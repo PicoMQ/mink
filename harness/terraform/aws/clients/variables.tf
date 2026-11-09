@@ -30,6 +30,22 @@ variable "emr_security_group" {
   type = string
 }
 
+variable "create_athena" {
+  type = bool
+}
+
+variable "athena_security_group" {
+  type = string
+}
+
+variable "catalog_endpoint" {
+  type = string
+}
+
+variable "force_destroy" {
+  type = bool
+}
+
 variable "bucket" {
   type = string
 }

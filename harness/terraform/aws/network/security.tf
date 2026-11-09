@@ -11,12 +11,12 @@ resource "aws_security_group" "alb" {
     for_each = local.alb_ports
 
     content {
-      description     = "${ingress.key} from allowed networks, nodes, the client and EMR"
+      description     = "${ingress.key} from allowed networks, nodes, the client, EMR and Athena"
       from_port       = ingress.value
       to_port         = ingress.value
       protocol        = "tcp"
       cidr_blocks     = local.allowed_cidrs
-      security_groups = concat([aws_security_group.node.id], aws_security_group.client[*].id, aws_security_group.emr[*].id)
+      security_groups = concat([aws_security_group.node.id], aws_security_group.client[*].id, aws_security_group.emr[*].id, aws_security_group.athena[*].id)
     }
   }
 
@@ -177,6 +177,29 @@ resource "aws_security_group" "emr" {
 
   tags = {
     Name = "${var.project}-emr"
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_security_group" "athena" {
+  count = var.create_athena ? 1 : 0
+
+  name_prefix = "${var.project}-athena-"
+  description = "Athena connector Lambda"
+  vpc_id      = local.vpc_id
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "${var.project}-athena"
   }
 
   lifecycle {

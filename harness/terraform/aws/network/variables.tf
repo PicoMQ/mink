@@ -46,6 +46,10 @@ variable "create_client" {
   type = bool
 }
 
+variable "create_athena" {
+  type = bool
+}
+
 variable "create_emr" {
   type = bool
 }

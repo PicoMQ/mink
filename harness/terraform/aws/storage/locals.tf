@@ -10,7 +10,7 @@ locals {
     "?sslmode=verify-full&sslrootcert=${local.rds_ca}",
   ]) : var.postgres_url
 
-  external_catalog_name = "lake"
+  external_catalog_name = "tables"
 
   external_catalog = var.create_external_catalog ? {
     uri       = "https://s3tables.${var.region}.amazonaws.com/iceberg"

@@ -22,6 +22,7 @@ module "network" {
   create_confluent_registry = local.create_confluent_registry
   create_client             = var.create_client
   create_emr                = var.create_emr
+  create_athena             = var.create_athena
 }
 
 module "storage" {
@@ -99,10 +100,14 @@ module "clients" {
   create_client         = var.create_client
   client_instance_type  = var.client_instance_type
   create_emr            = var.create_emr
+  create_athena         = var.create_athena
+  force_destroy         = var.force_destroy
+  catalog_endpoint      = "http://${var.domain}:${module.network.ports.catalog}"
   cpu_architecture      = var.cpu_architecture
   private_subnet_ids    = module.network.private_subnet_ids
   client_security_group = module.network.client_security_group
   emr_security_group    = module.network.emr_security_group
+  athena_security_group = module.network.athena_security_group
   bucket                = module.storage.bucket
   client_policies       = merge(module.streaming.policies.write, module.streaming.policies.secrets)
   emr_policies          = module.storage.policies.read
