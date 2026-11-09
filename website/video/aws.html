@@ -1,0 +1,568 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="theme.css">
+<style>
+  .card { z-index: 2; }
+
+  #lockup { position: absolute; left: 80px; top: 62px; display: flex; align-items: center; gap: 12px; font-size: 30px; z-index: 60; }
+  #lockup svg { display: block; width: 34px; height: 34px; }
+  #lockup span { font-weight: 600; letter-spacing: -0.5px; }
+
+  .headline { left: 160px; top: 150px; font-size: 76px; font-weight: 600; letter-spacing: -2.5px; line-height: 1; white-space: nowrap; }
+  .sub { left: 164px; top: 250px; font-size: 32px; color: var(--ink-4); white-space: nowrap; }
+
+  #cloud { left: 90px; top: 330px; width: 1740px; height: 690px; border: 2px solid var(--aws); border-radius: 4px; }
+  #cloud .label { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 12px; font-size: 20px; font-weight: 500; color: var(--aws); }
+  #cloud .label img { width: 40px; height: 40px; display: block; }
+
+  .service { width: 320px; height: 120px; padding: 0 24px; display: flex; align-items: center; gap: 20px; }
+  .service img { width: 64px; height: 64px; border-radius: 6px; display: block; flex: none; }
+  .service .name { font-size: 26px; font-weight: 600; letter-spacing: -0.4px; white-space: nowrap; }
+  .service .what { margin-top: 6px; font-size: 17px; color: var(--ink-4); white-space: nowrap; }
+  .dark .what { color: var(--ink-6); }
+  .brand { display: inline-flex; align-items: center; gap: 10px; }
+  .brand svg { width: 26px; height: 26px; display: block; }
+
+  #mink { width: 420px; height: 200px; padding: 0 28px; }
+  #mink .roles { position: absolute; left: 28px; bottom: 26px; display: flex; gap: 10px; }
+  #mink .roles span { padding: 6px 12px; border-radius: 7px; font-size: 16px; background: rgb(246 247 249 / 0.12); color: var(--surface-0); }
+
+  .hint { font-size: 17px; color: var(--ink-4); white-space: nowrap; }
+
+  .wires { z-index: 1; }
+
+  #stage { left: 0; top: 0; width: 1920px; height: 1080px; }
+  #screen { left: 0; top: 0; overflow: hidden; z-index: 20; background: var(--surface-1);
+            border: 1px solid var(--ink-7); box-shadow: 0 30px 90px rgb(15 22 32 / 0.28); }
+  #screen .bar { position: absolute; left: 0; right: 0; top: 0; height: 52px; background: var(--ink-2); display: flex; align-items: center; padding: 0 20px; }
+  #screen .dots { display: flex; gap: 9px; }
+  #screen .dots i { width: 13px; height: 13px; border-radius: 50%; }
+  #screen .dots i:nth-child(1) { background: #ff5f57; }
+  #screen .dots i:nth-child(2) { background: #febc2e; }
+  #screen .dots i:nth-child(3) { background: #28c840; }
+  #screen .address { position: absolute; left: 50%; transform: translateX(-50%); padding: 7px 18px; border-radius: 8px;
+                     background: var(--ink-1); font-size: 17px; color: var(--ink-6); white-space: nowrap; }
+  #screen .view { position: absolute; left: 0; right: 0; top: 52px; bottom: 0; overflow: hidden; background: var(--surface-1); }
+  #screen .view img { position: absolute; left: 0; top: 0; display: block; }
+  #screen .term { position: absolute; left: 0; right: 0; top: 52px; bottom: 0; overflow: hidden; padding: 24px 30px;
+                  background: #0b1017; color: #c9d1d9; font-size: 20px; line-height: 1.55; white-space: pre-wrap; word-break: break-all; }
+  #screen .term .cmd { color: #ffffff; }
+  #screen .term .prompt { color: #7ee787; }
+  #screen .term .caret { display: inline-block; width: 11px; height: 22px; background: #c9d1d9; vertical-align: -4px; }
+  #screen .speed { position: absolute; right: 20px; padding: 6px 13px; border-radius: 7px; background: var(--blue);
+                   color: #ffffff; font-size: 16px; opacity: 0; }
+  .counter { font-size: 18px; padding: 8px 14px; border-radius: 9px; background: var(--surface-1); border: 1px solid var(--ink-7);
+             box-shadow: 0 6px 18px rgb(15 22 32 / 0.06); color: var(--ink-4); white-space: nowrap; z-index: 3; }
+  .counter b { margin-left: 10px; font-weight: 500; color: var(--ink-1); }
+  #endcard { left: 0; top: 0; width: 1920px; height: 1080px; z-index: 70; background: var(--surface-0); opacity: 0;
+             display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px; }
+  #endcard .brand { font-size: 64px; font-weight: 600; letter-spacing: -1.5px; display: flex; align-items: center; gap: 20px; }
+  #endcard .brand svg { width: 68px; height: 68px; }
+  #endcard .line { font-size: 36px; color: var(--ink-3); letter-spacing: -0.5px; }
+  #endcard .links { margin-top: 18px; font-size: 26px; color: var(--ink-4); display: flex; gap: 22px; }
+  #endcard .links span + span::before { content: "·"; margin-right: 22px; color: var(--ink-6); }
+  #caption { left: 0; width: 1920px; top: 984px; text-align: center; z-index: 30; }
+  #caption span { display: inline-block; padding: 12px 22px; border-radius: 10px; font-size: 22px;
+                  background: var(--ink-1); color: var(--surface-0); }
+
+  .slide { left: 0; top: 0; width: 1920px; height: 1080px; background: var(--surface-0); z-index: 40; opacity: 0; }
+  .slide .title { position: absolute; left: 160px; top: 150px; font-size: 64px; font-weight: 600; letter-spacing: -2px; line-height: 1; }
+  .slide .lede { position: absolute; left: 164px; top: 236px; font-size: 30px; color: var(--ink-4); }
+  .slide .hint { position: absolute; }
+  .slide .foot { position: absolute; left: 164px; top: 950px; font-size: 21px; color: var(--ink-4); }
+  .panel { position: absolute; }
+  .panel .head { display: flex; align-items: center; gap: 14px; padding: 24px 28px 0; font-size: 26px; font-weight: 600; }
+  .panel .head img { width: 44px; height: 44px; border-radius: 5px; display: block; }
+  .panel .head .tag { margin-left: auto; font-size: 17px; letter-spacing: 0.5px; font-weight: 400; }
+  .dark .head .tag { color: var(--ink-6); }
+  .grid { position: absolute; left: 28px; top: 104px; display: grid; grid-template-columns: repeat(11, 38px); gap: 8px; }
+  .grid i { height: 26px; border-radius: 6px; border: 1px solid var(--ink-7); background: var(--surface-2); opacity: 0; }
+  .grid i.closed { background: #dbe6fd; border-color: #9db8f5; }
+  .rows { position: absolute; left: 28px; right: 28px; top: 84px; font-size: 20px; }
+  .rows div { display: grid; grid-template-columns: 1.2fr 0.7fr 1.6fr; padding: 9px 0; border-bottom: 1px solid var(--ink-7); }
+  .rows .th { color: var(--ink-4); font-size: 17px; letter-spacing: 0.5px; }
+  .tree { position: absolute; left: 28px; right: 28px; top: 84px; font-size: 21px; line-height: 1.9; }
+  .tree div { display: flex; justify-content: space-between; white-space: nowrap; }
+  .tree .d1 { padding-left: 28px; } .tree .d2 { padding-left: 56px; }
+  .tree span { color: var(--ink-4); font-size: 18px; }
+  .tree .new { color: var(--blue); }
+  .req { position: absolute; font-size: 19px; white-space: nowrap; padding: 10px 16px; border-radius: 9px; background: var(--surface-1);
+         border: 1px solid var(--ink-7); box-shadow: 0 8px 24px rgb(15 22 32 / 0.08); }
+  .req b { font-weight: 500; color: var(--blue); }
+  .lane { position: absolute; height: 76px; display: flex; border-radius: 12px; overflow: hidden; border: 1px solid var(--ink-7); }
+  .lane div { display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 500; white-space: nowrap; overflow: hidden; }
+  .lane .lakepart { background: #e8f3d6; color: #3b6a0f; }
+  .lane .minkpart { background: var(--surface-1); }
+  .lane .tailpart { background: #dbe6fd; color: #1d4fb8; }
+  .views { position: absolute; left: 260px; top: 640px; display: flex; gap: 16px; }
+  .views span { padding: 12px 22px; border-radius: 10px; font-size: 24px; border: 1px solid var(--ink-7); background: var(--surface-1); color: var(--ink-4); }
+  .views span.on { background: var(--ink-1); border-color: var(--ink-1); color: var(--surface-0); }
+  .views em { font-style: normal; margin-left: 14px; font-size: 21px; color: var(--ink-4); align-self: center; }
+</style>
+</head>
+<body>
+  <div id="lockup"><span>Mink</span></div>
+
+  <div id="stage" class="abs">
+  <div id="h0" class="abs headline">Mink on AWS</div>
+  <div id="s0" class="abs sub">A true real-time lakehouse, built from AWS services.</div>
+
+  <div id="cloud" class="abs"><div class="label"><img src="icons/cloud.svg" alt="">AWS Cloud</div></div>
+
+  <svg id="wires" class="abs wires" viewBox="0 0 1920 1080"><defs></defs><g></g></svg>
+
+  <div id="producer" class="abs card service" style="left: 150px; top: 560px; width: 300px">
+    <img src="icons/ec2.svg" alt=""><div><div class="name">Producer</div><div class="what mono">vehicle_locations</div></div>
+  </div>
+  <div id="msk" class="abs card service" style="left: 560px; top: 560px; width: 300px">
+    <img src="icons/msk.svg" alt=""><div><div class="name">Amazon MSK</div><div class="what mono">Kafka topics</div></div>
+  </div>
+  <div id="mink" class="abs card dark service" style="left: 970px; top: 520px; align-items: flex-start; padding-top: 30px">
+    <img src="icons/ecs.svg" alt=""><div><div class="name brand" id="minkname"><span>Mink on ECS</span></div>
+      <div class="what mono">catalog and S3 endpoint</div></div>
+    <div class="roles mono"><span>index</span><span>commit</span><span>tier</span></div>
+  </div>
+  <div id="rds" class="abs card service" style="left: 1030px; top: 850px; width: 300px">
+    <img src="icons/rds.svg" alt=""><div><div class="name">Amazon RDS</div><div class="what mono">PostgreSQL</div></div>
+  </div>
+  <div id="tables" class="abs card service" style="left: 1480px; top: 400px; width: 330px">
+    <img src="icons/s3.svg" alt=""><div><div class="name">S3 Tables</div><div class="what mono">tiered records</div></div>
+  </div>
+  <div id="athena" class="abs card service" style="left: 1480px; top: 720px; width: 330px">
+    <img src="icons/athena.svg" alt=""><div><div class="name">Amazon Athena</div><div class="what mono">merged, stream, lake</div></div>
+  </div>
+
+  <div id="l0" class="abs hint mono" style="left: 469px; top: 588px">produce</div>
+  <div id="l1" class="abs hint mono" style="left: 891px; top: 588px">index</div>
+  <div id="l2" class="abs hint mono" style="left: 1194px; top: 772px">state</div>
+  <div id="l3" class="abs hint mono" style="left: 1424px; top: 420px">tier</div>
+  <div id="l4" class="abs hint mono" style="left: 1408px; top: 800px">query</div>
+  <div id="c-stream" class="abs counter mono" style="left: 970px; top: 462px">stream<b>0</b></div>
+  <div id="c-lake" class="abs counter mono" style="left: 1480px; top: 342px">lake<b>0</b></div>
+  <div id="c-note" class="abs hint mono" style="right: 106px; top: 982px"></div>
+  <div id="later" class="abs counter mono" style="left: 836px; top: 430px; font-size: 24px; padding: 12px 22px">44 minutes later</div>
+  </div>
+
+  <div id="screen" class="abs">
+    <div class="bar"><div class="dots"><i></i><i></i><i></i></div><div class="address mono"></div><div class="speed mono"></div></div>
+    <div class="view"><img alt=""></div>
+    <div class="view"><img alt=""></div>
+    <div class="term mono"></div>
+  </div>
+  <div id="caption" class="abs mono"><span></span></div>
+  <div id="endcard" class="abs">
+    <div class="brand"><span>Mink</span></div>
+    <div class="line">Kafka topics as Iceberg tables.</div>
+    <div class="links mono"><span>minkdb.com</span><span>github.com/PicoMQ/mink</span><span>discord.gg/qsMy5sSpYX</span></div>
+  </div>
+
+  <div id="index" class="abs slide">
+    <svg class="abs wires" viewBox="0 0 1920 1080"><defs></defs><g></g></svg>
+    <div class="title">Index and metadata</div>
+    <div class="lede">One indexer per partition reads each committed record once, and the writer commits a snapshot every 10 seconds.</div>
+    <div class="panel card" style="left: 160px; top: 340px; width: 540px; height: 540px">
+      <div class="head"><img src="icons/msk.svg" alt="">Kafka<span class="tag mono">partition 0</span></div>
+      <div class="grid"></div>
+    </div>
+    <div class="panel card dark" style="left: 780px; top: 530px; width: 260px; height: 160px">
+      <div class="head" style="font-size: 23px"><span class="brand" id="ix-name"><span>Mink on ECS</span></span></div>
+      <div class="mono" style="padding: 12px 28px; font-size: 18px; color: var(--ink-6)">indexer, writer</div>
+    </div>
+    <div class="panel card" style="left: 1120px; top: 320px; width: 640px; height: 280px">
+      <div class="head"><img src="icons/rds.svg" alt="">Postgres<span class="tag mono">data files</span></div>
+      <div class="rows mono">
+        <div class="th"><span>offsets</span><span>rows</span><span>located_at</span></div>
+        <div id="ix-r0"><span>[0, 1500)</span><span>1,500</span><span>01:00:00 to 01:00:59</span></div>
+        <div id="ix-r1"><span>[1500, 3000)</span><span>1,500</span><span>01:01:00 to 01:01:59</span></div>
+        <div id="ix-r2"><span>[3000, 4500)</span><span>1,500</span><span>01:02:00 to 01:02:59</span></div>
+      </div>
+    </div>
+    <div class="panel card" style="left: 1120px; top: 620px; width: 640px; height: 280px">
+      <div class="head"><img src="icons/s3.svg" alt="">Bucket<span class="tag mono">metadata/</span></div>
+      <div class="tree mono">
+        <div><b id="md-v">v12-e1.metadata.json</b><span>table metadata</span></div>
+        <div class="d1"><b id="md-s">snap-12-e1.avro</b><span>manifest list</span></div>
+        <div class="d2">manifest, hour 498384<span>60 files</span></div>
+        <div id="md-m" class="d2 new">manifest, hour 498385<span id="md-n">1 file</span></div>
+      </div>
+    </div>
+    <div class="hint mono" style="left: 722px; top: 584px">read</div>
+    <div class="hint mono" style="left: 1046px; top: 428px">files</div>
+    <div class="hint mono" style="left: 1040px; top: 776px">commit</div>
+    <div class="foot mono">Only metadata is kept, data files in Postgres and Iceberg metadata in S3.</div>
+  </div>
+
+  <div id="virtual" class="abs slide">
+    <svg class="abs wires" viewBox="0 0 1920 1080"><defs></defs><g></g></svg>
+    <div class="title">Virtual files</div>
+    <div class="lede">Data files are built from Kafka on read.</div>
+    <div class="panel card" style="left: 160px; top: 470px; width: 340px; height: 140px">
+      <div class="head" style="padding-top: 46px"><img src="icons/athena.svg" alt="">Athena</div>
+    </div>
+    <div class="panel card dark" style="left: 760px; top: 450px; width: 400px; height: 180px">
+      <div class="head"><img src="icons/ecs.svg" alt=""><span class="brand" id="vf-name"><span>Mink on ECS</span></span></div>
+      <div class="mono" style="padding: 14px 28px; font-size: 18px; color: var(--ink-6)">S3 endpoint, cache: <span id="vf-cache">empty</span></div>
+    </div>
+    <div class="panel card" style="left: 1420px; top: 330px; width: 340px; height: 140px">
+      <div class="head" style="padding-top: 46px"><img src="icons/rds.svg" alt="">Postgres</div>
+    </div>
+    <div class="panel card" style="left: 1420px; top: 640px; width: 340px; height: 140px">
+      <div class="head" style="padding-top: 46px"><img src="icons/msk.svg" alt="">Kafka</div>
+    </div>
+    <div id="vf-q0" class="req mono" style="left: 160px; top: 380px">GET 1500-3000.t0_498385.s1.v1.parquet, <b>last 64 KiB</b></div>
+    <div id="vf-a0" class="req mono" style="left: 1186px; top: 280px">footer, no build</div>
+    <div id="vf-q1" class="req mono" style="left: 160px; top: 660px">GET 1500-3000.t0_498385.s1.v1.parquet, <b>row group 0</b></div>
+    <div id="vf-a1" class="req mono" style="left: 1186px; top: 820px">read offsets [1500, 3000), build Parquet</div>
+    <div class="foot mono">Every build gives the same bytes. Only the parts a read needs are built.</div>
+  </div>
+
+  <div id="union" class="abs slide">
+    <div class="title">One table</div>
+    <div class="lede">Each partition, by offset. Every record is listed once.</div>
+    <div class="hint mono" style="left: 164px; top: 380px; font-size: 22px">p=0</div>
+    <div id="un-b0" class="lane" style="left: 260px; top: 352px; width: 1500px">
+      <div class="lakepart mono">S3 Tables</div><div class="minkpart mono">Mink's files</div><div class="tailpart mono">tail</div>
+    </div>
+    <div class="hint mono" style="left: 164px; top: 498px; font-size: 22px">p=1</div>
+    <div id="un-b1" class="lane" style="left: 260px; top: 470px; width: 1500px">
+      <div class="lakepart mono">S3 Tables</div><div class="minkpart mono">Mink's files</div><div class="tailpart mono">tail</div>
+    </div>
+    <div class="views mono"><span id="un-lake">lake</span><span id="un-stream">stream</span><span id="un-merged">merged</span><em id="un-what"></em></div>
+    <div class="foot mono">A tier commit moves the boundary. The tail is what a load adds past the last snapshot.</div>
+  </div>
+
+<script src="takes.js"></script>
+<script src="motion.js"></script>
+<script src="sound.js"></script>
+<script>
+  $("lockup").prepend(logo("#0f1620", "#f6f7f9"));
+  $("minkname").prepend(logo("#f6f7f9", "#0f1620"));
+  document.querySelector("#endcard .brand").prepend(logo("#0f1620", "#f6f7f9"));
+  $("vf-name").prepend(logo("#f6f7f9", "#0f1620"));
+  $("ix-name").prepend(logo("#f6f7f9", "#0f1620"));
+
+  const SCENE = { overview: 0, later: 25, counters: 27.7, length: 149.5 };
+
+  const flows = (a) => (t) => span(t, a, a + 0.4);
+  const FLOW = SCENE.overview + 4.2;
+  link({ a: [450, 620], b: [560, 620], drawIn: [2.0, 2.3], flowing: flows(FLOW), period: 1.0, color: "var(--blue)" });
+  link({ a: [860, 620], b: [970, 620], drawIn: [2.3, 2.6], flowing: flows(FLOW + 0.2), period: 1.0, offset: 0.3, color: "var(--blue)" });
+  link({ a: [1180, 720], b: [1180, 850], drawIn: [2.6, 2.9], flowing: flows(FLOW + 0.4), period: 1.6 });
+  link({ a: [1390, 580], b: [1480, 460], curve: "h", drawIn: [2.9, 3.2], flowing: flows(FLOW + 0.6), period: 1.8, color: "var(--blue)" });
+  link({ a: [1480, 780], b: [1390, 660], curve: "h", drawIn: [3.2, 3.5], flowing: flows(FLOW + 0.8), period: 1.3, color: "#8c4fff" });
+
+  const CARDS = ["producer", "msk", "mink", "rds", "tables", "athena"];
+
+  const cells = [...Array(126)].map(() => document.createElement("i"));
+  document.querySelector("#index .grid").append(...cells);
+  const RANGE = 42;
+
+  const wires = (id) => $(id).querySelector(".wires");
+  link({ a: [700, 610], b: [780, 610], flowing: flows(0.3), period: 1.0, color: "var(--blue)" }, wires("index"));
+  link({ a: [1040, 580], b: [1120, 460], curve: "h", flowing: flows(0.5), period: 1.2 }, wires("index"));
+  link({ a: [1040, 640], b: [1120, 760], curve: "h", flowing: flows(0.7), period: 1.2 }, wires("index"));
+  link({ a: [500, 520], b: [760, 520], flowing: flows(0.4), period: 1.0, color: "#8c4fff" }, wires("virtual"));
+  link({ a: [1160, 500], b: [1420, 400], curve: "h", flowing: flows(1.6), period: 1.0 }, wires("virtual"));
+  link({ a: [500, 560], b: [760, 560], flowing: flows(3.2), period: 1.0, color: "#8c4fff" }, wires("virtual"));
+  link({ a: [1160, 580], b: [1420, 710], curve: "h", flowing: flows(4.4), period: 1.0, color: "var(--blue)" }, wires("virtual"));
+
+  const VIEWS = [
+    ["lake", "S3 Tables, the tiered records", [1, 0.25, 0.25]],
+    ["stream", "Kafka, from the tier boundary on", [0.25, 1, 1]],
+    ["merged", "both, each record once", [1, 1, 1]],
+  ];
+  const slides = {
+    index: (t) => {
+      const shown = Math.floor(clamp(t / 7.5) * 126);
+      cells.forEach((c, i) => {
+        c.style.opacity = i < shown ? 1 : 0;
+        c.classList.toggle("closed", i < Math.floor(shown / RANGE) * RANGE);
+      });
+      const landed = [0, 1, 2].map((r) => (r + 1) * RANGE / 126 * 7.5 + 0.1);
+      landed.forEach((at, r) => enter($(`ix-r${r}`), t, at, NEVER, 16));
+      const commits = landed.filter((at) => t >= at + 0.8).length;
+      $("md-v").textContent = `v${12 + commits}-e1.metadata.json`;
+      $("md-s").textContent = `snap-${12 + commits}-e1.avro`;
+      $("md-n").textContent = commits === 1 ? "1 file" : `${commits} files`;
+      enter($("md-m"), t, landed[0] + 0.8, NEVER, 12);
+    },
+    virtual: (t) => {
+      enter($("vf-q0"), t, 0.4, NEVER, 12);
+      enter($("vf-a0"), t, 1.6, NEVER, 12);
+      enter($("vf-q1"), t, 3.2, NEVER, 12);
+      enter($("vf-a1"), t, 4.4, NEVER, 12);
+      $("vf-cache").textContent = t > 5.6 ? "1 extent" : "empty";
+    },
+    union: (t) => {
+      const tier = span(t, 6.4, 7.6, inOut);
+      [["un-b0", 0.38, 0.5], ["un-b1", 0.33, 0.55]].forEach(([id, lake, mink]) => {
+        const parts = [...$(id).children];
+        const lw = lerp(lake, lake + 0.12, tier), mw = mink - (lw - lake);
+        [lw, mw, 1 - lw - mw].forEach((w, i) => (parts[i].style.width = `${w * 100}%`));
+      });
+      const view = t < 1 ? -1 : Math.min(2, Math.floor((t - 1) / 1.6));
+      VIEWS.forEach(([name], i) => $(`un-${name}`).classList.toggle("on", i === view));
+      $("un-what").textContent = view < 0 ? "" : VIEWS[view][1];
+      ["un-b0", "un-b1"].forEach((id) => [...$(id).children].forEach((part, i) =>
+        (part.style.opacity = view < 0 ? 1 : VIEWS[view][2][i])));
+    },
+  };
+
+  const SOURCE_FPS = 30;
+  const rect = (el) => ({ x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight });
+  const mix = (a, b, p) => ({ x: lerp(a.x, b.x, p), y: lerp(a.y, b.y, p), w: lerp(a.w, b.w, p), h: lerp(a.h, b.h, p) });
+  const CHROME = 52;
+
+  const take = (name, caption) => {
+    const k = TAKES[name], m = k.marks, hold = 3.5;
+    const fit = { w: 1600, h: k.crop[1] - k.crop[0] + CHROME };
+    const frame = { x: (1920 - fit.w) / 2, y: Math.max(24, (1000 - fit.h) / 2), ...fit };
+    if (m.run === undefined) return { name, caption, frame, dur: k.seconds, at: (u) => u, chip: () => "" };
+    const wait = (m.result - m.run) / 4;
+    return {
+      name, caption, frame, dur: m.run + wait + hold,
+      at: (u) => (u < m.run ? u : u < m.run + wait ? m.run + (u - m.run) * 4 : m.result + (u - m.run - wait)),
+      chip: (u) => (u >= m.run && u < m.run + wait ? "4×" : ""),
+    };
+  };
+  const TERM = { x: 210, y: 90, w: 1500, h: 820 };
+  const terminal = (lines, caption, dur, address) => ({ lines, caption, dur, address, frame: TERM, chip: () => "" });
+
+  const PRODUCER = (() => {
+    const out = [];
+    const command = `mvn -q exec:java -Dexec.args="telematics /client.properties http://mink.internal:9180 50 live"`;
+    const fast = [1.6, 9.2];
+    let at = fast[0];
+    window.PRODUCER.forEach((line, i) => {
+      if (line.startsWith("produced") && line.includes("a second")) at = Math.max(at + 1.0, fast[1]);
+      else if (line.startsWith("  [")) at += 0.025;
+      else if (i < 2) at += 0.3;
+      else at += 0.5;
+      out.push({ at, text: line });
+    });
+    return { command, out, fast };
+  })();
+  const ATTACH = {
+    command: `curl -s -w '\\n%{http_code}\\n' -X POST http://mink.internal:9180/admin/tables/vehicle_locations/external \\
+  -H 'content-type: application/json' \\
+  -d '{"catalog": "tables", "namespace": "kafka", "name": "vehicle_locations",
+       "source": {"new": {"partitioning": {"fields": ["day(_kafka_timestamp)"]}}},
+       "tierAfter": "5m", "tierInterval": "1m"}'`,
+    out: window.ATTACH.map((text, i) => ({ at: 2.2 + i * 0.25, text })),
+    fast: null,
+  };
+
+  const WINDOWS = [
+    { card: "producer", at: 10, shots: [terminal(PRODUCER, "Producer: 50 vehicles, one position per second each.", 13, "client instance, SSM session")] },
+    { card: "msk", at: 27.5, shots: [
+      take("msk-summary", "Amazon MSK: the mink cluster."),
+      take("msk-topics", "vehicle_locations, 2 partitions."),
+      take("msk-rate", "About 50 records a second."),
+    ] },
+    { card: "mink", at: 41.5, shots: [take("ecs", "Mink on ECS: two nodes.")] },
+    { card: "rds", at: 46.8, shots: [take("rds", "Mink's state in RDS PostgreSQL.")] },
+    { card: "athena", at: 80.5, shots: [take("athena-a", "Before tiering, every record is in Kafka. lake is 0.")] },
+    { card: "tables", at: 91.5, shots: [
+      take("s3t-before", "S3 Tables: no vehicle_locations yet."),
+      terminal(ATTACH, "Attach S3 Tables. Records past 5 minutes tier.", 5, "client instance, SSM session"),
+      take("s3t-after", "vehicle_locations in S3 Tables."),
+      take("s3t-table", "An Iceberg table, written by Mink."),
+    ] },
+    { card: "athena", at: 121.5, shots: [
+      take("athena-b", "lake + stream = merged: 206,682 + 19,668 = 226,350."),
+      take("athena-fresh", "Newest row 02:05:36 UTC. 500 records from the last 10 seconds."),
+    ] },
+  ];
+  for (const w of WINDOWS) {
+    let at = w.at + 1;
+    for (const s of w.shots) { s.start = at; at += s.dur; }
+    w.end = at;
+  }
+
+  const SLIDES = [
+    { id: "index", from: () => rect($("mink")), at: 52.5, len: 13.5 },
+    { id: "virtual", from: () => ({ x: 1380, y: 640, w: 110, h: 150 }), at: 69.5, len: 8 },
+    { id: "union", from: () => rect($("tables")), at: 109.5, len: 10 },
+  ];
+
+  const attach = WINDOWS.flatMap((w) => w.shots).find((s) => s.lines === ATTACH);
+  const ATTACHED = attach.start + attach.lines.out.at(-1).at;
+  const series = COUNTS.map(([iso, stream, lake]) => [Date.parse(iso) / 1000, stream, lake]);
+  const split = series.findIndex(([, , lake]) => lake > 0);
+  const counts = (t) => {
+    const [part, a, b] = t < ATTACHED ? [series.slice(0, split), SCENE.counters, ATTACHED] : [series.slice(split), ATTACHED, SCENE.length];
+    const when = lerp(part[0][0], part[part.length - 1][0], clamp((t - a) / (b - a)));
+    let pick = part[0];
+    for (const s of part) if (s[0] <= when) pick = s;
+    return pick;
+  };
+
+  const term = (shot, u) => {
+    const { command, out, fast } = shot.lines;
+    const typed = command.slice(0, Math.floor(clamp(u / 1.4) * command.length));
+    const shown = out.filter((l) => l.at <= u).map((l) => l.text);
+    const lines = [`<span class="prompt">$</span> <span class="cmd">${typed.replace(/</g, "&lt;")}</span>${u < 1.5 ? '<span class="caret"></span>' : ""}`, ...shown];
+    const box = document.querySelector("#screen .term");
+    box.innerHTML = lines.slice(-22).join("\n");
+    return fast && u >= fast[0] && u < fast[1] ? "sped up" : "";
+  };
+
+  const frameOf = (shot, u) => {
+    const k = TAKES[shot.name];
+    const i = Math.min(k.frames, Math.max(1, Math.floor(shot.at(Math.min(u, shot.dur)) * SOURCE_FPS) + 1));
+    return `clips/${shot.name}/${String(i).padStart(4, "0")}.jpg`;
+  };
+  const show = async (view, shot, u, opacity, width) => {
+    view.style.opacity = opacity;
+    if (!shot || !shot.name || opacity <= 0) return;
+    const img = view.querySelector("img");
+    const scale = width / 1600;
+    img.style.width = `${1600 * scale}px`;
+    img.style.top = `${-TAKES[shot.name].crop[0] * scale}px`;
+    const src = frameOf(shot, u);
+    if (!img.src.endsWith(src)) { img.src = src; await img.decode().catch(() => {}); }
+  };
+
+  const windows = async (t) => {
+    const w = WINDOWS.find((w) => t >= w.at && t < w.end + 0.8);
+    const screen = $("screen");
+    if (!w) { screen.style.opacity = 0; place($("caption"), 0); return 0; }
+    const p = span(t, w.at, w.at + 1, inOut) * (1 - span(t, w.end, w.end + 0.8, inOut));
+    const i = Math.max(0, w.shots.findLastIndex((s) => t >= s.start));
+    const shot = w.shots[i], prev = w.shots[i - 1];
+    const u = Math.max(0, t - shot.start);
+    const f = prev ? span(u, 0, 0.5, inOut) : 1;
+    const frame = prev ? mix(prev.frame, shot.frame, f) : shot.frame;
+    const card = rect($(w.card));
+    const k = lerp(card.w / frame.w, 1, p);
+    const cx = lerp(card.x + card.w / 2, frame.x + frame.w / 2, p), cy = lerp(card.y + card.h / 2, frame.y + frame.h / 2, p);
+    Object.assign(screen.style, { left: `${frame.x}px`, top: `${frame.y}px`, width: `${frame.w}px`, height: `${frame.h}px`, borderRadius: "14px",
+      transform: `translate(${cx - frame.x - frame.w / 2}px, ${cy - frame.y - frame.h / 2}px) scale(${k})`, opacity: clamp(p * 6) });
+    const [va, vb] = screen.querySelectorAll(".view");
+    const termBox = screen.querySelector(".term");
+    let chip = "";
+    if (shot.lines) {
+      termBox.style.opacity = f;
+      chip = term(shot, u);
+      await show(va, prev, prev ? prev.dur : 0, 1 - f, frame.w);
+      vb.style.opacity = 0;
+    } else {
+      termBox.style.opacity = prev && prev.lines ? 1 - f : 0;
+      if (prev && prev.lines) term(prev, prev.dur);
+      await Promise.all([show(va, prev && !prev.lines ? prev : null, prev ? prev.dur : 0, prev && !prev.lines ? 1 - f : 0, frame.w),
+                         show(vb, shot, u, f, frame.w)]);
+      chip = shot.chip(u);
+    }
+    screen.querySelector(".address").textContent = shot.lines ? shot.address : TAKES[shot.name].url;
+    const speed = screen.querySelector(".speed");
+    speed.textContent = chip;
+    speed.style.opacity = chip ? 1 : 0;
+    const c = p >= 1 ? span(u, 0.5, 1.0) * (1 - span(u, shot.dur - 0.4, shot.dur)) : 0;
+    $("caption").querySelector("span").textContent = shot.caption;
+    place($("caption"), c, (1 - c) * 16);
+    return p;
+  };
+
+  const slidesAt = (t) => {
+    let deepest = 0;
+    for (const s of SLIDES) {
+      const el = $(s.id);
+      const p = span(t, s.at, s.at + 1, inOut) * (1 - span(t, s.at + 1 + s.len, s.at + 1.8 + s.len, inOut));
+      if (p <= 0) { el.style.opacity = 0; continue; }
+      const from = s.from();
+      const k = lerp(from.w / 1920, 1, p);
+      const cx = lerp(from.x + from.w / 2, 960, p), cy = lerp(from.y + from.h / 2, 540, p);
+      Object.assign(el.style, { transform: `translate(${cx - 960}px, ${cy - 540}px) scale(${k})`, opacity: clamp(p * 4) });
+      slides[s.id](Math.max(0, t - s.at - 1));
+      if (wires(s.id)) renderLinks(Math.max(0, t - s.at - 1), wires(s.id));
+      deepest = Math.max(deepest, p);
+    }
+    return deepest;
+  };
+
+  window.render = async (t) => {
+    enter($("h0"), t, 0.2);
+    enter($("s0"), t, 0.45, NEVER, 24);
+    enter($("cloud"), t, 0.8, NEVER, 20);
+    CARDS.forEach((id, i) => enter($(id), t, 1.1 + i * 0.18, NEVER, 30));
+    [0, 1, 2, 3, 4].forEach((i) => enter($(`l${i}`), t, 2.3 + i * 0.3, NEVER, 10));
+    ["c-stream", "c-lake", "c-note"].forEach((id, i) => enter($(id), t, SCENE.counters + i * 0.2, NEVER, 10));
+    const later = span(t, SCENE.later, SCENE.later + 0.5) * (1 - span(t, SCENE.later + 2, SCENE.later + 2.5));
+    place($("later"), later, (1 - later) * 12);
+    const [when, stream, lake] = counts(t);
+    $("c-stream").querySelector("b").textContent = stream.toLocaleString("en-US");
+    $("c-lake").querySelector("b").textContent = lake.toLocaleString("en-US");
+    $("c-note").textContent = `${new Date(when * 1000).toISOString().slice(11, 19)} UTC, counts from the run, sped up`;
+    renderLinks(t);
+
+    const p = Math.max(await windows(t), slidesAt(t));
+    const w = WINDOWS.find((w) => t >= w.at && t < w.end + 0.8);
+    const focus = w ? rect($(w.card)) : { x: 960, y: 620, w: 0, h: 0 };
+    const stage = $("stage");
+    stage.style.transformOrigin = `${focus.x + focus.w / 2}px ${focus.y + focus.h / 2}px`;
+    stage.style.transform = `scale(${lerp(1, w ? 2.4 : 1.15, p)})`;
+    stage.style.opacity = lerp(1, 0.2, p);
+    stage.style.filter = p > 0.01 ? `blur(${p * 8}px)` : "none";
+    $("lockup").style.opacity = w ? 1 - clamp(p * 3) : 1;
+    const end = span(t, 142.5, 143.5, inOut);
+    $("endcard").style.opacity = end;
+  };
+  window.soundtrack = async () => {
+    const { BEAT, BAR, LEVEL, random, kick, sub, bass, hat, clap, blip, bell, droplet, tick, thud, wav } = studio(SCENE.length);
+
+    const ROOTS = [110, 110, 110, 98];
+    const BASSLINE = [[0, 0.6], [0, 0.85], [0, 1], [1, 0.8]];
+    const BLIPS = [1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0];
+    const DRUMS = 10, KICK = WINDOWS[1].at, CALM = SLIDES[0].at, BACK = WINDOWS[4].at, LAND = SCENE.length - 10.5;
+    const kicking = (at) => (at >= KICK && at < CALM) || (at >= BACK && at < LAND);
+    for (let step = 0; step * BEAT / 4 < SCENE.length - 0.5; step++) {
+      const at = step * BEAT / 4;
+      const sixteenth = step % 16;
+      const root = ROOTS[Math.floor(step / 16) % 4];
+      const calm = at >= CALM && at < BACK;
+      const open = at < KICK - BAR ? 700 : at < KICK ? lerp(700, 2400, (at - KICK + BAR) / BAR) : 2400;
+      const cutoff = calm ? 1100 : at >= BACK - BAR && at < BACK ? lerp(1100, 2400, (at - BACK + BAR) / BAR) : open;
+      if (BLIPS[sixteenth]) {
+        const octave = sixteenth % 3 === 0 ? 4 : sixteenth % 5 === 0 ? 6 : 8;
+        blip(root * octave, at, LEVEL.blip * (calm ? 1.2 : 1) * (0.85 + random() * 0.3), sixteenth % 2 ? 0.35 : -0.35);
+      }
+      if (at < DRUMS) {
+        if (sixteenth % 8 === 0) sub(root / 2, at, BEAT - 0.1, LEVEL.sub * 0.6);
+        continue;
+      }
+      const [jump, accent] = BASSLINE[sixteenth % 4];
+      bass(root * (jump && sixteenth % 8 === 7 ? 2 : 1), at, LEVEL.bass * accent * (calm ? 0.7 : 1) * (0.9 + random() * 0.2), cutoff);
+      if (at < LAND) {
+        hat(at, LEVEL.hat * (calm ? 0.55 : 1) * [0.5, 0.3, 0.85, 0.3][sixteenth % 4] * (0.85 + random() * 0.3), false);
+        if (kicking(at) && sixteenth % 4 === 2) hat(at, LEVEL.open, true);
+        if (sixteenth % 8 === 4) clap(at, LEVEL.clap * (calm ? 0.5 : 1));
+      }
+      if (kicking(at) && sixteenth % 4 === 0) {
+        kick(at, LEVEL.kick);
+        sub(root / 2, at, BEAT - 0.12, LEVEL.sub);
+      }
+    }
+
+    bell(1318.51, SCENE.later + 0.1, 0.05);
+    bell(1760, SCENE.later + 0.2, 0.04);
+    for (const w of WINDOWS) droplet(w.at + 0.15, 0.06);
+    for (const s of SLIDES) for (let i = 0; i < 9; i++) tick(s.at + 0.2 + i * (0.4 / 9), 0.06);
+    for (const w of WINDOWS) for (const s of w.shots) {
+      const m = s.name && TAKES[s.name].marks;
+      if (m && m.result !== undefined) bell(1046.5, s.start + m.run + (m.result - m.run) / 4, 0.045, 1.6);
+    }
+    bell(1318.51, ATTACHED, 0.06, 1.8);
+    bell(1975.53, ATTACHED + 0.09, 0.045, 1.8);
+    thud(ATTACHED, 0.45);
+    bell(1046.5, SCENE.length - 7, 0.05, 2.2);
+    bell(1318.51, SCENE.length - 6.9, 0.045, 2.2);
+
+    return wav();
+  };
+  window.LENGTH = SCENE.length;
+  window.render(0);
+</script>
+</body>
+</html>
