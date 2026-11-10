@@ -31,9 +31,14 @@ RUN --mount=type=cache,id=mink-target,sharing=locked,target=/src/target \
 FROM debian:bookworm-slim
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates \
- && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/* \
+ && groupadd --system --gid 10001 mink \
+ && useradd --system --uid 10001 --gid mink --no-create-home mink \
+ && install -d -o mink -g mink /cache
 
 COPY --from=build /out/mink /usr/local/bin/mink
 
+USER mink
+VOLUME ["/cache"]
 ENTRYPOINT ["mink"]
 CMD ["serve"]
