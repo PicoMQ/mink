@@ -70,9 +70,9 @@ Mink is a read-only Iceberg catalog over Kafka. Iceberg engines query topics as 
 ## Features
 
 - **Topics as tables.** Query Kafka topics as Iceberg tables from any Iceberg-compatible engine, with typed columns from Schema Registry and support for schema evolution.
-- **Virtual files.** Kafka records form Iceberg data files on read, served from an S3-compatible endpoint, with only metadata stored and built files cached in memory and on disk.
+- **Virtual files (zero copy).** Kafka records form Iceberg data files on read, served from an S3-compatible endpoint, with only metadata stored and built files cached in memory and on disk.
 - **Tiering.** Kafka records past a configurable age tier into an Iceberg table in an external REST catalog, with `merged`, `stream` and `lake` namespaces for the whole table and each part.
-- **Real time.** Kafka records are queryable as Iceberg tables as soon as they're published, consistent across partitions.
+- **True real time.** Kafka records are queryable as Iceberg tables as soon as they're published, consistent across partitions.
 - **Committed records only.** Aborted transactions and control records never show up.
 - **Pruning.** Files are partitioned by time and carry min/max bounds per column. Engines skip the files a filter rules out.
 - **Stateless nodes.** Mink nodes hold only caches, with metadata in Postgres. Indexing and tiering of each Kafka partition move between nodes through leases, and every cache rebuilds from Kafka and Postgres.

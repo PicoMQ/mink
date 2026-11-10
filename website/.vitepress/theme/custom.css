@@ -3,6 +3,7 @@
   --mink-ink-2: #1f2a37;
   --mink-ink-3: #3d4856;
   --mink-ink-4: #5e6878;
+  --mink-ink-5: #9aa3b0;
   --mink-ink-6: #c8cdd5;
   --mink-ink-7: #dfe2e8;
   --mink-ink-rgb: 15 22 32;
@@ -12,6 +13,9 @@
   --mink-surface-3: #e2e6eb;
   --mink-accent: #1f2a37;
   --mink-accent-low: #e2e6eb;
+  --mink-red: #9c2f27;
+  --mink-red-mid: #cc928d;
+  --mink-red-low: #f3e3e1;
   --mink-hairline: rgb(var(--mink-ink-rgb) / 0.08);
   --mink-font-serif:
     Marcellus, ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
@@ -48,7 +52,7 @@
   --vp-code-copy-code-hover-bg: var(--mink-surface-3);
   --mink-inline-code-bg: rgb(var(--mink-ink-rgb) / 0.06);
   --mink-inline-code-border: transparent;
-  --mink-content-max: 1180px;
+  --mink-content-max: 1320px;
   --mink-content-pad: 24px;
   --mink-radius: 0;
   --vp-sidebar-width: 320px;
@@ -188,107 +192,6 @@ html {
   position: relative;
 }
 
-:root {
-  --mink-animal-w: min(43vw, 30rem);
-  --mink-animal-h: calc(90vh - var(--vp-nav-height) - 1.5rem);
-}
-
-/* Home illustration, positioned as on nestor.picomq.com: fixed top-right,
-   inset from the nav edge, contained in a box below the nav. */
-.VPHome::before {
-  content: "";
-  position: fixed;
-  z-index: 3;
-  pointer-events: none;
-  top: calc(var(--vp-nav-height) + 2.5rem);
-  right: calc(var(--mink-nav-edge) + 5rem);
-  width: var(--mink-animal-w);
-  height: var(--mink-animal-h);
-  background-image: url("/images/mink.webp");
-  background-repeat: no-repeat;
-  background-position: right top;
-  background-size: contain;
-}
-
-@media (max-width: 959px) {
-  :root {
-    --mink-animal-w: min(52vw, 20rem);
-    --mink-animal-h: calc(90vh - var(--vp-nav-height) - 0.5rem);
-  }
-
-  .VPHome::before {
-    right: var(--mink-nav-edge);
-  }
-}
-
-@media (max-width: 639px) {
-  .VPHome::before {
-    display: none;
-  }
-}
-
-.VPHome > * {
-  position: relative;
-  z-index: 1;
-}
-
-.mink-etymology {
-  position: fixed !important;
-  z-index: 2;
-  right: var(--mink-nav-edge);
-  top: min(
-    calc(
-      var(--vp-nav-height) + 2.5rem +
-        min(var(--mink-animal-h), var(--mink-animal-w) * 772 / 591) + 1rem
-    ),
-    calc(100vh - 6rem)
-  );
-  margin: 0;
-  max-width: min(14.5rem, calc(var(--mink-animal-w) * 0.7));
-  padding: 0.4rem 0.6rem;
-  font-family: var(--mink-font-serif);
-  font-size: 0.8125rem;
-  font-weight: 400;
-  line-height: 1.45;
-  letter-spacing: 0.01em;
-  color: var(--mink-ink-3);
-  text-align: left;
-  background: rgb(255 255 255 / 0.52);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-}
-
-.mink-etymology p {
-  margin: 0;
-}
-
-.mink-etymology em {
-  font-style: italic;
-}
-
-.mink-etymology__credit {
-  margin-top: 0.35rem;
-  font-size: 0.7rem;
-  line-height: 1.35;
-  color: var(--mink-ink-4);
-}
-
-.mink-etymology__credit a {
-  color: inherit;
-  text-decoration: underline;
-  text-underline-offset: 0.12em;
-}
-
-.mink-etymology__credit a:hover {
-  color: var(--mink-ink-2);
-}
-
-@media (max-width: 639px) {
-  .mink-etymology {
-    display: none;
-  }
-}
-
 .VPNavBarMenuLink {
   font-family: var(--vp-font-family-mono) !important;
   font-size: 0.8125rem !important;
@@ -335,7 +238,7 @@ html {
   display: inline-block;
   margin-top: 0.22em;
   white-space: nowrap;
-  color: #9c2f27;
+  color: var(--mink-red);
 }
 
 .VPHero .tagline {
@@ -351,29 +254,6 @@ html {
 .VPHero .tagline .balanced {
   display: block;
   text-wrap: balance;
-}
-
-.mink-hero-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  margin: 0.85rem 0 0;
-}
-
-.mink-hero-tags span {
-  display: inline-block;
-  padding: 0.18rem 0.5rem;
-  border: 1px solid var(--mink-hairline);
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.72rem;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--vp-c-text-2);
-}
-
-.VPHero .actions {
-  padding-top: 2rem;
 }
 
 .VPButton {
@@ -533,10 +413,6 @@ html {
   color: var(--vp-c-text-2);
 }
 
-.VPDocFooter .mink-side-ico {
-  display: none;
-}
-
 @media (min-width: 960px) {
   .VPDoc.has-sidebar {
     padding-left: 16px !important;
@@ -610,7 +486,6 @@ html {
 }
 
 .VPSidebarItem .item:has(> .link):hover .text,
-.VPSidebarItem .item:has(> .link):hover .mink-side-ico,
 .VPSidebarItem .item:has(> .link):hover .caret {
   color: var(--vp-c-brand-1) !important;
 }
@@ -620,24 +495,8 @@ html {
 }
 
 .VPSidebarItem.is-active > .item .link > .text,
-.VPSidebarItem.is-active > .item .mink-side-ico,
 .VPSidebarItem.is-active > .item .caret {
   color: var(--vp-c-brand-1) !important;
-}
-
-.mink-side-ico {
-  display: inline-flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  width: 1.05rem;
-  height: 1.05rem;
-  color: var(--vp-c-text-2);
-}
-
-.mink-side-ico svg {
-  width: 100%;
-  height: 100%;
 }
 
 .VPDocAsideOutline {
@@ -749,23 +608,6 @@ html {
   }
 }
 
-.mink-or {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  margin: 2.25rem 0 0.75rem;
-  color: var(--vp-c-text-3);
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.8125rem;
-}
-
-.mink-or::before,
-.mink-or::after {
-  content: '';
-  flex: 1;
-  border-top: 1px solid var(--vp-c-divider);
-}
-
 .mink-diagram {
   margin: 28px 0;
   padding: 28px 16px;
@@ -836,7 +678,7 @@ html {
     );
     min-height: calc(100vh - var(--vp-nav-height));
     margin: 0 auto !important;
-    padding-top: 8.5rem;
+    padding-top: 6rem;
   }
 
   .VPHome .VPHero {
@@ -850,8 +692,7 @@ html {
     grid-column: 1;
     grid-row: 2;
     width: 100%;
-    max-width: 48rem;
-    margin: 6.5rem 0 0;
+    margin: 2.5rem 0 0;
   }
 
   .VPHome .VPHero .container {
@@ -862,34 +703,44 @@ html {
   .VPHome .VPHero .tagline {
     margin-top: 1.1rem;
   }
-
-  .VPHome .engine .engine__eyebrow {
-    margin-bottom: 0.9rem;
-    font-size: 1.15rem;
-  }
-
-  .VPHome .engine .engine__copy {
-    gap: 0.55rem;
-    padding: 1.35rem 1.5rem 1.15rem;
-  }
-
-  .VPHome .engine .engine__copy h3 {
-    font-size: 1.3rem;
-  }
-
-  .VPHome .engine .engine__body {
-    max-width: none;
-    min-height: 4.05rem;
-    font-size: 0.875rem;
-    line-height: 1.55;
-  }
-
-  .VPHome .engine .engine__tab {
-    padding: 0.65rem 0.75rem;
-  }
-
-  .VPHome .engine .engine__tab-name {
-    font-size: 0.8125rem;
-  }
 }
 
+.mink-flow {
+  overflow: visible;
+}
+
+.mink-flow .box { fill: var(--mink-surface-1); stroke: var(--mink-ink-5); }
+.mink-flow .dark { fill: var(--mink-ink-1); stroke: var(--mink-ink-1); }
+.mink-flow .name { font: 500 13px var(--vp-font-family-base); fill: var(--mink-ink-1); }
+.mink-flow .lab { font: 11px var(--vp-font-family-mono); fill: var(--mink-ink-4); }
+.mink-flow .lab-dark { font: 11px var(--vp-font-family-mono); fill: var(--mink-ink-5); }
+.mink-flow .on-dark,
+.mink-flow .lit { fill: var(--mink-surface-0); }
+.mink-flow .alert { fill: var(--mink-red); }
+.mink-flow .step { font: 12px var(--vp-font-family-base); fill: var(--mink-ink-5); }
+.mink-flow .step.on { fill: var(--mink-ink-1); }
+.mink-flow .num { font: 500 10px var(--vp-font-family-mono); fill: var(--mink-surface-1); }
+.mink-flow .path { fill: none; stroke: var(--mink-ink-5); stroke-width: 1.2; stroke-dasharray: 3 4; }
+.mink-flow .dot,
+.mink-flow .red { fill: var(--mink-red); }
+.mink-flow .cell { fill: var(--mink-surface-2); stroke: var(--mink-ink-6); }
+.mink-flow .tail { fill: var(--mink-red-low); stroke: var(--mink-red-mid); }
+.mink-flow .rule { stroke: var(--mink-ink-7); }
+.mink-flow .mark { stroke: var(--mink-ink-4); stroke-dasharray: 4 4; }
+.mink-flow .snap { stroke: var(--mink-ink-4); stroke-width: 1.5; }
+.mink-flow .chip { fill: var(--mink-surface-1); stroke: var(--mink-ink-5); }
+.mink-flow .chip.on { fill: var(--mink-ink-1); stroke: var(--mink-ink-4); }
+.mink-flow .chip.hit { fill: var(--mink-red); stroke: var(--mink-red); }
+.mink-flow .chip-t { font: 11px var(--vp-font-family-mono); fill: var(--mink-ink-4); }
+.mink-flow .chip-t.on { fill: var(--mink-surface-0); }
+.mink-flow .lake { fill: var(--mink-ink-2); }
+.mink-flow .lake-t { fill: var(--mink-ink-6); }
+.mink-flow .lake.off { fill: var(--mink-ink-7); }
+.mink-flow .files { fill: var(--mink-red); }
+.mink-flow .files.off { fill: var(--mink-red-low); }
+.mink-flow .frame { fill: none; stroke: var(--mink-ink-5); }
+.mink-flow .tick { stroke: var(--mink-ink-6); }
+.mink-flow .tick.old { stroke: var(--mink-ink-4); }
+.mink-flow .track { fill: var(--mink-ink-2); }
+.mink-flow .track.off { fill: var(--mink-surface-2); }
+.mink-flow .lease { fill: var(--mink-ink-2); }
