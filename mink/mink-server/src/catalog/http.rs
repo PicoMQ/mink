@@ -257,7 +257,7 @@ fn error(status: StatusCode, kind: &str, message: &str) -> Response {
         message: message.to_owned(),
         r#type: kind.to_owned(),
         code: status.as_u16(),
-        stack: None,
+        stack: Some(Vec::new()),
     };
 
     (status, Json(ErrorResponse { error })).into_response()

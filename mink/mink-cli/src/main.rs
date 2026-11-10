@@ -2,7 +2,7 @@ mod granularity;
 mod serve;
 mod table;
 
-use std::io;
+use std::io::{self, IsTerminal};
 
 use clap::{Parser, Subcommand};
 
@@ -31,6 +31,7 @@ async fn main() -> anyhow::Result<()> {
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
         .with_writer(io::stderr)
+        .with_ansi(io::stderr().is_terminal())
         .init();
 
     match Cli::parse().command {

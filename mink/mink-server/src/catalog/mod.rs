@@ -147,6 +147,7 @@ mod tests {
 
         assert_eq!(status, StatusCode::NOT_FOUND);
         assert_eq!(error["error"]["type"], "NoSuchTableException");
+        assert!(error["error"]["stack"].is_array());
         node.shutdown().await.unwrap();
     }
 

@@ -66,7 +66,7 @@ function duckdb(data: Cluster, table: string): string {
   return [
     'INSTALL iceberg; LOAD iceberg; INSTALL httpfs; LOAD httpfs;',
     `CREATE SECRET mink (TYPE S3, KEY_ID 'mink', SECRET 'mink', REGION 'us-east-1', ENDPOINT '${host(data.s3Endpoint)}', URL_STYLE 'path', USE_SSL ${data.s3Endpoint.startsWith('https') ? 'true' : 'false'});`,
-    `ATTACH 'warehouse' AS mink (TYPE iceberg, ENDPOINT '${data.catalogUrl}', AUTHORIZATION_TYPE 'none');`,
+    `ATTACH 'warehouse' AS mink (TYPE iceberg, URI '${data.catalogUrl}', AUTHORIZATION_TYPE 'none');`,
     `SELECT count(*) FROM mink.${MERGED}."${table}";`,
   ].join('\n')
 }

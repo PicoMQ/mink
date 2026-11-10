@@ -8,54 +8,36 @@ Mink serves Kafka topics as Iceberg tables, through a read-only Iceberg REST cat
 - **`console/`** the web console, embedded in the node
 - **`conformance/`** the fixtures that pin the [file formats](https://minkdb.com/docs/formats)
 
-## Install
-
-```bash
-(cd console && npm ci && npm run build)
-cargo install --path mink/mink-cli
-```
-
-The console is embedded in the binary, so it builds first.
-
-## Run a node
+## Run
 
 ```bash
 # Kafka, Schema Registry, Postgres and RustFS
 docker compose -f harness/compose.yml up -d postgres kafka rustfs schema-registry createbucket
 
-mink serve -c mink.toml
+docker run -d --name mink --network harness_default \
+  -p 8181:8181 -p 9100:9100 -p 9180:9180 \
+  -e MINK_POSTGRES=postgres://mink:mink@postgres:5432/mink \
+  -e MINK_KAFKA__BOOTSTRAP='["kafka:9092"]' \
+  -e MINK_STORAGE__ENDPOINT=http://rustfs:9000 \
+  -e MINK_STORAGE__CREDENTIALS__ACCESS_KEY_ID=mink \
+  -e MINK_STORAGE__CREDENTIALS__SECRET_ACCESS_KEY=minkminkmink \
+  -e MINK_SCHEMA_REGISTRY__TYPE=confluent \
+  -e MINK_SCHEMA_REGISTRY__URL=http://schema-registry:8081 \
+  -e MINK_CATALOG_ADDRESS=0.0.0.0:8181 \
+  -e MINK_S3_ADDRESS=0.0.0.0:9100 \
+  -e MINK_ADMIN_ADDRESS=0.0.0.0:9180 \
+  -e MINK_ADMIN_REMOTE=true \
+  ghcr.io/picomq/mink
 ```
 
-```toml
-# mink.toml
-[kafka]
-bootstrap = ["localhost:29092"]
-
-[storage]
-endpoint = "http://localhost:9000"
-credentials = { access_key_id = "mink", secret_access_key = "minkminkmink" }
-
-[schema_registry]
-type = "confluent"
-url = "http://localhost:8081"
-```
-
-Catalog on `:8181`, S3 on `:9100`, admin API and console on `:9180`. Every setting has a `MINK_*` env equivalent.
-
-## Docker
-
-```bash
-docker build -t mink .
-```
-
-Running it against the compose stack, and as a cluster: [Deployment](https://minkdb.com/docs/operations/deployment).
+Catalog on `:8181`, S3 on `:9100`, admin API and console on `:9180`. Running a cluster: [Deployment](https://minkdb.com/docs/operations/deployment).
 
 ## Use it
 
 ```bash
-mink table add payments -c mink.toml
-mink table list -c mink.toml
-mink granularity payments day -c mink.toml
+docker exec mink mink table add payments
+docker exec mink mink table list
+docker exec mink mink granularity payments day
 ```
 
 ```sql
@@ -63,10 +45,21 @@ mink granularity payments day -c mink.toml
 INSTALL iceberg; LOAD iceberg; INSTALL httpfs; LOAD httpfs;
 CREATE SECRET mink (TYPE S3, KEY_ID 'mink', SECRET 'mink', REGION 'us-east-1',
   ENDPOINT '127.0.0.1:9100', URL_STYLE 'path', USE_SSL false);
-ATTACH 'warehouse' AS mink (TYPE iceberg, ENDPOINT 'http://127.0.0.1:8181', AUTHORIZATION_TYPE 'none');
+ATTACH 'warehouse' AS mink (TYPE iceberg, URI 'http://127.0.0.1:8181', AUTHORIZATION_TYPE 'none');
 
 SELECT * FROM mink.merged.payments;
 ```
+
+## Build from source
+
+```bash
+(cd console && npm ci && npm run build)
+cargo install --path mink/mink-cli
+
+docker build -t mink .
+```
+
+The console is embedded in the binary, so it builds first.
 
 ## Test
 

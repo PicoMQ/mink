@@ -16,30 +16,23 @@ docker compose -f harness/compose.yml up -d postgres kafka rustfs schema-registr
 | Postgres | `localhost:5432`, user, password and database `mink` |
 | RustFS | `http://localhost:9000`, bucket `mink` |
 
-## Build and run a node
+## Run a node
 
 ```bash
-(cd console && npm ci && npm run build)
-cargo build --release -p mink-cli
-```
-
-Save this as `mink.toml`. Every other setting has a default that matches the compose stack.
-
-```toml
-[kafka]
-bootstrap = ["localhost:29092"]
-
-[storage]
-endpoint = "http://localhost:9000"
-credentials = { access_key_id = "mink", secret_access_key = "minkminkmink" }
-
-[schema_registry]
-type = "confluent"
-url = "http://localhost:8081"
-```
-
-```bash
-./target/release/mink serve -c mink.toml
+docker run -d --name mink --network harness_default \
+  -p 8181:8181 -p 9100:9100 -p 9180:9180 \
+  -e MINK_POSTGRES=postgres://mink:mink@postgres:5432/mink \
+  -e MINK_KAFKA__BOOTSTRAP='["kafka:9092"]' \
+  -e MINK_STORAGE__ENDPOINT=http://rustfs:9000 \
+  -e MINK_STORAGE__CREDENTIALS__ACCESS_KEY_ID=mink \
+  -e MINK_STORAGE__CREDENTIALS__SECRET_ACCESS_KEY=minkminkmink \
+  -e MINK_SCHEMA_REGISTRY__TYPE=confluent \
+  -e MINK_SCHEMA_REGISTRY__URL=http://schema-registry:8081 \
+  -e MINK_CATALOG_ADDRESS=0.0.0.0:8181 \
+  -e MINK_S3_ADDRESS=0.0.0.0:9100 \
+  -e MINK_ADMIN_ADDRESS=0.0.0.0:9180 \
+  -e MINK_ADMIN_REMOTE=true \
+  ghcr.io/picomq/mink
 ```
 
 | Listener | Address |
@@ -47,6 +40,8 @@ url = "http://localhost:8081"
 | REST catalog | `http://127.0.0.1:8181` |
 | S3 endpoint | `http://127.0.0.1:9100` |
 | Admin API and console | `http://127.0.0.1:9180` |
+
+Every setting is a `MINK_*` variable, see [Configuration](/docs/operations/configuration). To build the binary instead, see [Contribute](/docs/contribute#build-and-test).
 
 ## Produce records
 
@@ -69,14 +64,14 @@ EOF
 ## Add the topic as a table
 
 ```bash
-./target/release/mink table add payments -c mink.toml
+docker exec mink mink table add payments
 ```
 
 The table shows up in the catalog with its first snapshot, about 10 seconds later.
 
 ## Query it
 
-In DuckDB 1.4 or later:
+In DuckDB 2.0 or later:
 
 ```sql
 INSTALL iceberg; LOAD iceberg;
@@ -84,7 +79,7 @@ INSTALL httpfs; LOAD httpfs;
 
 CREATE SECRET mink (TYPE S3, KEY_ID 'mink', SECRET 'mink', REGION 'us-east-1',
   ENDPOINT '127.0.0.1:9100', URL_STYLE 'path', USE_SSL false);
-ATTACH 'warehouse' AS mink (TYPE iceberg, ENDPOINT 'http://127.0.0.1:8181', AUTHORIZATION_TYPE 'none');
+ATTACH 'warehouse' AS mink (TYPE iceberg, URI 'http://127.0.0.1:8181', AUTHORIZATION_TYPE 'none');
 
 SELECT _kafka_offset, id, item, amount FROM mink.merged.payments ORDER BY id;
 ```

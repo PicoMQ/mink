@@ -18,6 +18,7 @@ mod topics;
 use mink_core::{File, Partition, Scope};
 use sqlx::PgPool;
 use sqlx::migrate::MigrateError;
+use sqlx::postgres::PgConnectOptions;
 
 pub use external::{ExternalTables, ListedLocation};
 pub use files::{Files, StoredFile, built_bytes, parse_built};
@@ -160,7 +161,10 @@ impl From<sqlx::Error> for Error {
 
 impl Store {
     pub async fn connect(url: &str) -> Result<Store, Error> {
-        let pool = PgPool::connect(url).await?;
+        let options = url
+            .parse::<PgConnectOptions>()?
+            .options([("client_min_messages", "warning")]);
+        let pool = PgPool::connect_with(options).await?;
 
         sqlx::migrate!().run(&pool).await?;
 
