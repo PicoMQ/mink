@@ -72,7 +72,7 @@ pub async fn generate(bless: bool) -> anyhow::Result<()> {
                 )
             })
             .collect::<Result<_, _>>()?;
-        let snapshot = Snapshot::new(id, START_MS + id * STEP_MS, step.epoch, offsets)?;
+        let snapshot = Snapshot::new(id, id, START_MS + id * STEP_MS, step.epoch, offsets)?;
         let added: Vec<_> = step
             .added
             .iter()

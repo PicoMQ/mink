@@ -12,14 +12,16 @@ pub(crate) use http::router;
 mod tests {
     use bytes::Bytes;
     use mink_core::{
-        BuiltFile, DaySketches, File, Granularity, IndexedFile, Member, Offsets, Partition, Span,
-        Stats, TableLocation, TimePartition, Topic,
+        BuiltFile, CatalogTable, DaySketches, ExternalLocation, File, Granularity, IndexedFile,
+        Member, Offsets, Partition, Span, Stats, TableLocation, TierSchedule, TimePartition, Topic,
     };
     use mink_iceberg::FileSchema;
+    use object_store::{ObjectStoreExt, PutPayload};
     use reqwest::StatusCode;
     use uuid::Uuid;
 
     use crate::Role;
+    use crate::buckets::bucket_and_key;
     use crate::testing::{self, kafka, node, registered};
 
     fn url(node: &crate::Node, path: &str) -> String {
@@ -690,5 +692,158 @@ mod tests {
         assert_eq!(read.status(), StatusCode::OK);
         assert_eq!(builds(&node), before + 1);
         node.shutdown().await.unwrap();
+    }
+
+    async fn external_nodes(count: usize) -> Option<Vec<crate::Node>> {
+        let endpoint = mink_conformance::service("TEST_S3_ENDPOINT")?;
+        let mut config = testing::config(&[Role::S3]).await?;
+        config.lease_ttl = std::time::Duration::from_secs(60);
+        config.storage = testing::storage(endpoint);
+
+        let mut nodes = Vec::with_capacity(count);
+        for _ in 0..count {
+            nodes.push(testing::node_with(config.clone()).await);
+        }
+        Some(nodes)
+    }
+
+    async fn external_location(node: &crate::Node) -> String {
+        let topic = registered(&node.services, 1).await;
+        let location = format!("s3://mink/external/{}", topic.name());
+        node.services
+            .store
+            .external_tables()
+            .attach(
+                topic.name(),
+                CatalogTable::new("rest", "kafka", topic.name()),
+                Uuid::new_v4(),
+                ExternalLocation::parse(&location).unwrap(),
+                TierSchedule::default(),
+                &std::collections::BTreeMap::new(),
+            )
+            .await
+            .unwrap();
+
+        location
+    }
+
+    async fn put(node: &crate::Node, path: &str, bytes: &'static [u8]) {
+        let (bucket, key) = bucket_and_key(path).unwrap();
+        let store = node.services.buckets.client(bucket).unwrap();
+
+        store
+            .put(&key, PutPayload::from_static(bytes))
+            .await
+            .unwrap();
+    }
+
+    async fn delete(node: &crate::Node, path: &str) {
+        let (bucket, key) = bucket_and_key(path).unwrap();
+        let store = node.services.buckets.client(bucket).unwrap();
+
+        store.delete(&key).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn external_files_pass_through_from_their_bucket_and_stay_cached() {
+        let Some(nodes) = external_nodes(1).await else {
+            return;
+        };
+        let node = &nodes[0];
+        let location = external_location(node).await;
+        let path = format!("{location}/data/0.parquet");
+        put(node, &path, b"external bytes").await;
+        let client = reqwest::Client::new();
+
+        let whole = get(node, &path, None).await;
+        let suffix = get(node, &path, Some("bytes=-5")).await;
+        let head = client.head(url(node, &path)).send().await.unwrap();
+        let missing = get(node, &format!("{location}/data/1.parquet"), None).await;
+        let beside = get(node, &format!("{location}x/data/0.parquet"), None).await;
+        let write = client.put(url(node, &path)).body("x").send().await.unwrap();
+        let detached_path = format!("{location}/data/1-detached.parquet");
+        put(node, &detached_path, b"detached").await;
+        let topic = location.rsplit('/').next().unwrap();
+        node.services
+            .store
+            .external_tables()
+            .detach(topic)
+            .await
+            .unwrap();
+        let detached = get(node, &detached_path, None).await;
+        delete(node, &path).await;
+        node.services.store.close().await;
+        let cached = get(node, &path, None).await;
+
+        assert_eq!(whole.status(), StatusCode::OK);
+        assert_eq!(whole.bytes().await.unwrap(), "external bytes");
+        assert_eq!(suffix.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(suffix.bytes().await.unwrap(), "bytes");
+        assert_eq!(head.headers()["content-length"], "14");
+        assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+        assert_eq!(beside.status(), StatusCode::NOT_FOUND);
+        assert_eq!(detached.status(), StatusCode::OK);
+        assert_eq!(write.status(), StatusCode::FORBIDDEN);
+        assert_eq!(cached.status(), StatusCode::OK);
+        assert_eq!(cached.bytes().await.unwrap(), "external bytes");
+        for node in nodes {
+            node.shutdown().await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn external_reads_are_forwarded_to_the_owner_and_served_here_without_one() {
+        let Some(nodes) = external_nodes(2).await else {
+            return;
+        };
+        let (first, second) = (&nodes[0], &nodes[1]);
+        let unreachable = unreachable_member(first).await;
+        let location = external_location(first).await;
+        let paths: Vec<String> = (0..64)
+            .map(|index| format!("{location}/data/{index}.parquet"))
+            .collect();
+        let owned_by = |owner: Uuid| {
+            paths
+                .iter()
+                .find(|path| {
+                    first
+                        .services
+                        .membership
+                        .remote_owner(path)
+                        .is_some_and(|node| node.id() == owner)
+                })
+                .unwrap()
+        };
+        let (at_second, at_nobody) = (
+            owned_by(second.services.membership.id()),
+            owned_by(unreachable.id()),
+        );
+        put(first, at_second, b"second").await;
+        put(first, at_nobody, b"nobody").await;
+
+        let forwarded = get(first, at_second, None).await;
+        let fallback = get(first, at_nobody, None).await;
+
+        assert_eq!(
+            served_by(&forwarded),
+            second.services.membership.id().to_string()
+        );
+        assert_eq!(forwarded.bytes().await.unwrap(), "second");
+        assert_eq!(
+            served_by(&fallback),
+            first.services.membership.id().to_string()
+        );
+        assert_eq!(fallback.bytes().await.unwrap(), "nobody");
+
+        first
+            .services
+            .store
+            .members()
+            .remove(unreachable.id())
+            .await
+            .unwrap();
+        for node in nodes {
+            node.shutdown().await.unwrap();
+        }
     }
 }

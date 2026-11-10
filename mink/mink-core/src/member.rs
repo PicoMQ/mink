@@ -7,6 +7,7 @@ pub enum Role {
     Catalog,
     S3,
     Indexer,
+    Tier,
     Admin,
 }
 
@@ -19,13 +20,20 @@ pub struct Member {
 }
 
 impl Role {
-    pub const ALL: [Role; 4] = [Role::Catalog, Role::S3, Role::Indexer, Role::Admin];
+    pub const ALL: [Role; 5] = [
+        Role::Catalog,
+        Role::S3,
+        Role::Indexer,
+        Role::Tier,
+        Role::Admin,
+    ];
 
     pub fn name(&self) -> &'static str {
         match self {
             Role::Catalog => "catalog",
             Role::S3 => "s3",
             Role::Indexer => "indexer",
+            Role::Tier => "tier",
             Role::Admin => "admin",
         }
     }

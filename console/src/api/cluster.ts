@@ -4,7 +4,7 @@ export interface Cluster {
   nodeId: string
   roles: string[]
   version: string
-  namespace: string
+  namespaces: string[]
   catalogUrl: string
   s3Endpoint: string
   warehouse: string
@@ -16,6 +16,8 @@ export interface Sql {
   duckdbEngine: string | null
   duckdbExtensions: string | null
 }
+
+export const MERGED = 'merged'
 
 export const NO_SQL = 'This node does not run the catalog and s3 roles, so it cannot run SQL'
 

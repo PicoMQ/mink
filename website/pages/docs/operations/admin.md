@@ -29,7 +29,7 @@ Every node with the `admin` role serves the admin API, the [console](/docs/opera
 
 | Route | Returns |
 | --- | --- |
-| `GET /admin/cluster` | This node's id, roles and version, the namespace, catalog URL, S3 endpoint and warehouse, and whether the registry answers |
+| `GET /admin/cluster` | This node's id, roles and version, the namespaces, catalog URL, S3 endpoint and warehouse, and whether the registry answers |
 | `GET /admin/overview` | Table, node, record and byte counts, and the tables with the most lag, the most bytes and the oldest snapshot. Computed at most once a minute. |
 | `GET /admin/nodes` | Live nodes with their roles, addresses and lease counts |
 | `GET /admin/nodes/{id}` | One node, with its settings, secrets redacted, and its cache usage |
@@ -41,16 +41,50 @@ Every node with the `admin` role serves the admin API, the [console](/docs/opera
 | Route | Does |
 | --- | --- |
 | `GET /admin/tables?prefix=` | Lists tables with partitions, granularity, state, latest snapshot, records and bytes |
-| `GET /admin/tables/{name}` | One table, with its location, partition specs, writer lease and lag |
+| `GET /admin/tables/{name}` | One table, with its location, partition specs, writer lease, lag and external table |
 | `POST /admin/tables` | Adds a table: `{"topic": "orders", "granularity": "day"}`. `granularity` is optional. Returns `201`. |
 | `PATCH /admin/tables/{name}` | Changes the granularity: `{"granularity": "hour"}` |
 | `DELETE /admin/tables/{name}` | Removes the table. Returns `202`. Its objects and rows are deleted once its leases expire. |
+| `POST /admin/tables/{name}/external` | Attaches an external table. See [External table](#external-table). |
+| `DELETE /admin/tables/{name}/external` | Detaches the external table, as `mink table detach` does. Returns `204`. |
 | `GET /admin/tables/{name}/partitions` | Each partition's earliest, indexed and last stable offsets, lag, backfill left and lease. Reads Kafka. |
 | `GET /admin/tables/{name}/files?partition=&bucket=` | Live data files with offsets, time bucket, spec, schema, parts, records and bytes |
 | `GET /admin/tables/{name}/files/{file}` | One file, with its path and per-column statistics |
 | `GET /admin/tables/{name}/snapshots` | Snapshots, newest first |
 | `GET /admin/tables/{name}/snapshots/{id}` | One snapshot, with each partition's offsets and its metadata location |
 | `GET /admin/tables/{name}/schemas` | Every table schema, and every schema id records named, merged or rejected |
+
+## External table
+
+`POST /admin/tables/{name}/external` takes the options of [`mink table attach`](/docs/operations/cli#attach). `source` is `new` or `existing`, as an object with that one key.
+
+| Field | Default | Purpose |
+| --- | --- | --- |
+| `catalog`, `namespace`, `name` | | The Iceberg table, in an entry of `external_catalogs` |
+| `source.new.partitioning` | | `{"fields": [terms]}`, or `"unpartitioned"` |
+| `source.new.sort` | `[]` | Sort terms |
+| `source.new.properties` | `{}` | Table properties |
+| `source.new.location` | the catalog's | Where the table keeps its files |
+| `source.existing.endOffsets` | the table's properties | As `{"0": 1200}` |
+| `tierAfter`, `tierInterval` | `"1h"` | As `--tier-after` and `--tier-interval` |
+
+```json
+{
+  "catalog": "tables",
+  "namespace": "kafka",
+  "name": "orders",
+  "source": { "new": { "partitioning": { "fields": ["day(_kafka_timestamp)"] } } }
+}
+```
+
+It returns `201` with `{catalog, namespace, name, uuid, location, generation, tierAfter, tierInterval}`, the `external` of `GET /admin/tables/{name}`.
+
+| Status | When |
+| --- | --- |
+| `400` | An unreadable body or term, an unknown catalog or column, a retention too short to tier, a location outside S3 or inside the warehouse, missing end offsets, or a table Mink cannot list |
+| `404` | For `existing`, no such namespace or Iceberg table |
+| `409` | The table has an external table, the Iceberg table exists or belongs to another table, its location overlaps another's, or the given end offsets differ from the table's |
+| `502` | The catalog did not answer or refused Mink's request |
 
 ## Records
 

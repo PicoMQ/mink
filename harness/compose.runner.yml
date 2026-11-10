@@ -22,6 +22,7 @@ services:
       TEST_KAFKA_CA: /src/harness/auth/ca.pem
       TEST_S3_ENDPOINT: http://rustfs:9000
       TEST_SCHEMA_REGISTRY: http://schema-registry:8081
+      TEST_ICEBERG_REST: http://iceberg-rest:8181
       TEST_DUCKDB: /usr/local/bin/duckdb
       TEST_PYICEBERG: /opt/pyiceberg/bin/python
       TEST_ENGINE_HOST: runner

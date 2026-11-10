@@ -12,7 +12,7 @@ use instruments::Instruments;
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle, PrometheusRecorder};
 
 pub use labels::{
-    Answer, Forward, Method, Object, Outcome, Request, Route, Scope, Source, Status, Worker,
+    Answer, Forward, Method, Object, Outcome, Request, Route, Source, Status, Worker,
 };
 
 #[derive(Clone)]
@@ -146,8 +146,19 @@ impl Metrics {
         );
     }
 
-    pub fn leases(&self, scope: Scope, count: u64) {
-        self.instruments.leases[scope as usize].store(count, Ordering::Relaxed);
+    pub fn leases(&self, worker: Worker, count: u64) {
+        self.instruments.leases[worker as usize].store(count, Ordering::Relaxed);
+    }
+
+    pub fn tier_gap(&self, skipped_offsets: u64) {
+        add(&self.instruments.tier_gaps, 1);
+        add(&self.instruments.tier_skipped_offsets, skipped_offsets);
+    }
+
+    pub fn tier_lag(&self, lag: Duration) {
+        self.instruments
+            .tier_lag_seconds
+            .store(lag.as_secs(), Ordering::Relaxed);
     }
 }
 

@@ -8,10 +8,12 @@ use iceberg::spec::{
     ManifestFile, ManifestList, ManifestListWriter, ManifestStatus, ManifestWriter,
     ManifestWriterBuilder, PrimitiveType, Struct,
 };
-use mink_core::{File, Granularity, IndexedFile, Object, ObjectKind, TableLocation, TimePartition};
+use mink_core::{
+    File, Granularity, IndexedFile, Object, ObjectKind, TableLocation, TimePartition, View,
+};
 
 use super::commit::{Commit, CommitOutput};
-use super::specs::partition_specs;
+use super::specs::{iceberg_spec_id, partition_specs};
 use super::{FormatVersion, Table};
 use crate::Error;
 
@@ -202,9 +204,10 @@ impl Table {
         &self,
         io: &FileIO,
         commit: &Commit<'_>,
+        view: View,
         manifests: &mut [Manifest],
     ) -> Result<(Object, Bytes), Error> {
-        let location = &self.location().manifest_list(&commit.key);
+        let location = &self.location().manifest_list(&commit.key, view);
         let parent = self.snapshot_id();
         let output = io.new_output(location)?.writer().await?;
         let mut list = match self.version {
@@ -213,13 +216,15 @@ impl Table {
             }
         };
 
-        list.add_manifests(manifests.iter().map(|manifest| manifest.file.clone()))?;
+        list.add_manifests(self.listed_by(view, manifests).into_iter())?;
         list.close().await?;
 
         let bytes = io.new_input(location)?.read().await?;
-        let listed = ManifestList::parse_with_version(&bytes, self.version.iceberg())?;
-        for (manifest, file) in manifests.iter_mut().zip(listed.consume_entries()) {
-            manifest.file = file;
+        if view == View::Merged {
+            let listed = ManifestList::parse_with_version(&bytes, self.version.iceberg())?;
+            for (manifest, file) in manifests.iter_mut().zip(listed.consume_entries()) {
+                manifest.file = file;
+            }
         }
 
         Ok((Object::new(location, ObjectKind::ManifestList), bytes))
@@ -234,7 +239,7 @@ impl Table {
     ) -> Result<ManifestWriter, Error> {
         let spec = partition_specs(commit.specs)?
             .into_iter()
-            .find(|spec| spec.spec_id() == key.spec_id())
+            .find(|spec| spec.spec_id() == iceberg_spec_id(key.spec_id()))
             .ok_or(Error::UnknownTimeSpec(key.spec_id()))?;
         let builder = ManifestWriterBuilder::new(
             io.new_output(location)?,
@@ -277,7 +282,7 @@ impl Table {
             .file_path(TableLocation::data_file(&self.warehouse, file))
             .file_format(DataFileFormat::Parquet)
             .partition(partition_value(commit, file)?)
-            .partition_spec_id(file.time().spec_id())
+            .partition_spec_id(iceberg_spec_id(file.time().spec_id()))
             .record_count(stats.records())
             .file_size_in_bytes(stats.bytes())
             .lower_bounds(datums(stats.lower())?)
@@ -390,15 +395,27 @@ mod tests {
                 "4-e1-m0.avro",
                 "4-e1-m1.avro",
                 "snap-4-e1.avro",
-                "v4-e1.metadata.json"
+                "snap-4-e1-stream.avro",
+                "snap-4-e1-lake.avro",
+                "v4-e1.metadata.json",
+                "v4-e1-stream.metadata.json",
+                "v4-e1-lake.metadata.json"
             ]
         );
         assert_eq!(
             names(dropping.released()),
-            ["v3-e1.metadata.json", "snap-3-e1.avro", "1-e1-m0.avro"]
+            [
+                "v3-e1.metadata.json",
+                "snap-3-e1.avro",
+                "v3-e1-stream.metadata.json",
+                "snap-3-e1-stream.avro",
+                "v3-e1-lake.metadata.json",
+                "snap-3-e1-lake.avro",
+                "1-e1-m0.avro"
+            ]
         );
         assert_eq!(
-            listed(&dropping),
+            listed(&dropping, View::Merged),
             [
                 "4-e1-m0.avro",
                 "4-e1-m1.avro",
@@ -434,14 +451,22 @@ mod tests {
             .await
             .into_table();
         let dropping = applied(table, [(10, 20), (0, 0)], &[]).await;
-        let dropping_list = listed(&dropping);
+        let dropping_list = listed(&dropping, View::Merged);
         let after = applied(dropping.into_table(), [(10, 20), (0, 0)], &[]).await;
 
         assert_eq!(dropping_list, ["3-e1-m0.avro", "2-e1-m0.avro"]);
-        assert_eq!(listed(&after), ["2-e1-m0.avro"]);
+        assert_eq!(listed(&after, View::Merged), ["2-e1-m0.avro"]);
         assert_eq!(
             names(after.released()),
-            ["v3-e1.metadata.json", "snap-3-e1.avro", "3-e1-m0.avro"]
+            [
+                "v3-e1.metadata.json",
+                "snap-3-e1.avro",
+                "v3-e1-stream.metadata.json",
+                "snap-3-e1-stream.avro",
+                "v3-e1-lake.metadata.json",
+                "snap-3-e1-lake.avro",
+                "3-e1-m0.avro"
+            ]
         );
     }
 

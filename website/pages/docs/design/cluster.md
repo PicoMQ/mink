@@ -76,17 +76,18 @@ A node registers in Postgres when it starts and renews its row every `lease_ttl 
 | Lease | Scope | Holder runs |
 | --- | --- | --- |
 | Partition lease | One partition of one table | The partition's indexer |
-| Writer lease | One table | The table's writer: commits, assembly, statistics, expiry, collection |
+| Writer lease | One table | The table's writer: commits, assembly, statistics, expiry, collection, tier commits |
+| Tier lease | One partition of a [tiered](/docs/design/tiering) table | The partition's tier worker |
 
 Each lease has an epoch that grows every time it changes hands. Postgres rejects every write under an old epoch, so a node that lost a lease cannot change anything.
 
 ## Sharing
 
-Every `lease_ttl / 3`, each node with the `indexer` role applies the same rules.
+Every `lease_ttl / 3`, each node with the `indexer` role applies the same rules to partition and writer leases, and each node with the `tier` role to tier leases.
 
 | Rule | Effect |
 | --- | --- |
-| A table's partition share is its partition count divided by the indexing nodes, rounded up | Partitions spread evenly |
+| A table's partition share is its partition count divided by the `indexer` nodes, rounded up. Its tier share divides by the `tier` nodes. | Partitions spread evenly |
 | A node below its share takes free leases, the ones it prefers most first | New and freed partitions get an indexer |
 | A node above its share releases one lease of that table per round | A joining node takes work gradually |
 | Each table's writer lease goes to the node that prefers it most | One writer per table |

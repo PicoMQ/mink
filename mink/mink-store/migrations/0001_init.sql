@@ -11,6 +11,7 @@ CREATE TABLE topic (
     partition_count INTEGER NOT NULL CHECK (partition_count > 0),
     state TEXT NOT NULL CHECK (state IN ('indexing', 'removing', 'replaced', 'missing')),
     removing_at_ms BIGINT,
+    external_generation INTEGER NOT NULL DEFAULT 0 CHECK (external_generation >= 0),
     CHECK ((state = 'removing') = (removing_at_ms IS NOT NULL))
 );
 
@@ -28,6 +29,52 @@ CREATE TABLE time_spec (
     id INTEGER NOT NULL CHECK (id >= 0),
     granularity TEXT NOT NULL CHECK (granularity IN ('hour', 'day', 'month', 'none')),
     PRIMARY KEY (topic, id)
+);
+
+CREATE TABLE external_table (
+    topic TEXT PRIMARY KEY REFERENCES topic (name) ON DELETE CASCADE,
+    catalog TEXT NOT NULL,
+    namespace TEXT NOT NULL,
+    name TEXT NOT NULL,
+    uuid UUID NOT NULL,
+    location TEXT NOT NULL,
+    tier_after_ms BIGINT NOT NULL CHECK (tier_after_ms > 0),
+    tier_interval_ms BIGINT NOT NULL CHECK (tier_interval_ms > 0),
+    generation INTEGER NOT NULL CHECK (generation > 0),
+    UNIQUE (topic, generation),
+    UNIQUE (catalog, namespace, name),
+    UNIQUE (uuid),
+    UNIQUE (location)
+);
+
+CREATE TABLE listed_location (
+    topic TEXT NOT NULL REFERENCES topic (name) ON DELETE CASCADE,
+    generation INTEGER NOT NULL CHECK (generation > 0),
+    uuid UUID NOT NULL,
+    location TEXT NOT NULL,
+    PRIMARY KEY (topic, generation)
+);
+
+CREATE TABLE tiered_range (
+    topic TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    partition INTEGER NOT NULL CHECK (partition >= 0),
+    start_offset BIGINT NOT NULL,
+    end_offset BIGINT NOT NULL,
+    spec_id INTEGER NOT NULL,
+    encoded_data_files TEXT[] NOT NULL,
+    PRIMARY KEY (topic, partition, start_offset),
+    FOREIGN KEY (topic, generation) REFERENCES external_table (topic, generation) ON DELETE CASCADE,
+    CHECK (0 <= start_offset AND start_offset < end_offset)
+);
+
+CREATE TABLE tiered_end (
+    topic TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    partition INTEGER NOT NULL CHECK (partition >= 0),
+    end_offset BIGINT NOT NULL CHECK (end_offset >= 0),
+    PRIMARY KEY (topic, partition),
+    FOREIGN KEY (topic, generation) REFERENCES external_table (topic, generation) ON DELETE CASCADE
 );
 
 CREATE TABLE file (
@@ -62,6 +109,7 @@ CREATE TABLE sketch (
 CREATE TABLE snapshot (
     topic TEXT NOT NULL REFERENCES topic (name) ON DELETE CASCADE,
     id BIGINT NOT NULL CHECK (id > 0),
+    sequence_number BIGINT NOT NULL CHECK (sequence_number > 0),
     timestamp_ms BIGINT NOT NULL,
     epoch BIGINT NOT NULL CHECK (epoch > 0),
     PRIMARY KEY (topic, id)
@@ -89,10 +137,12 @@ CREATE TABLE member (
 CREATE TABLE lease (
     topic TEXT NOT NULL REFERENCES topic (name) ON DELETE CASCADE,
     partition INTEGER CHECK (partition >= 0),
+    scope TEXT NOT NULL CHECK (scope IN ('indexer', 'writer', 'tier')),
     holder UUID NOT NULL,
     epoch BIGINT NOT NULL,
     expires_at_ms BIGINT NOT NULL,
-    UNIQUE NULLS NOT DISTINCT (topic, partition)
+    UNIQUE NULLS NOT DISTINCT (topic, partition, scope),
+    CHECK ((scope = 'writer') = (partition IS NULL))
 );
 
 CREATE TABLE object (

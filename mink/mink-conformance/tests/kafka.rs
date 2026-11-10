@@ -257,6 +257,28 @@ async fn offsets_at_a_timestamp_follow_record_timestamps() {
 }
 
 #[tokio::test]
+async fn the_retention_of_a_topic_is_read_from_its_config() {
+    let Some(bootstrap) = mink_conformance::service("TEST_KAFKA_BOOTSTRAP") else {
+        return;
+    };
+    let topic = format!("retention-{}", uuid::Uuid::new_v4().simple());
+    mink_conformance::create_topic(&bootstrap, &topic, 1).await;
+    let mut cluster = Cluster::connect(
+        Config::new(vec![bootstrap.clone()]).unwrap(),
+        Metrics::new(),
+    )
+    .await
+    .unwrap();
+
+    let forever = cluster.retention(&topic).await.unwrap();
+    mink_conformance::set_retention(&bootstrap, &topic, 3_600_000).await;
+    let hour = cluster.retention(&topic).await.unwrap();
+
+    assert_eq!(forever, None);
+    assert_eq!(hour, Some(Duration::from_secs(3600)));
+}
+
+#[tokio::test]
 async fn reads_over_tls_and_sasl_match_a_read_committed_consumer() {
     let Some(bootstrap) = mink_conformance::service("TEST_KAFKA_BOOTSTRAP") else {
         return;

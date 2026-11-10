@@ -97,7 +97,7 @@ describe('failure', () => {
 })
 
 describe('setup', () => {
-  const cluster = { namespace: 'kafka', warehouse: 's3://mink/warehouse' } as Cluster
+  const cluster = { namespaces: ['merged', 'stream', 'lake'], warehouse: 's3://mink/warehouse' } as Cluster
   const sql = { duckdbEngine: null, duckdbExtensions: null }
 
   it('reads the catalog and S3 through the page origin, over TLS when the page is', () => {
@@ -109,7 +109,7 @@ describe('setup', () => {
     expect(statements).toContain(
       "ATTACH 's3://mink/warehouse' AS mink (TYPE iceberg, ENDPOINT 'https://mink.example.com/catalog', AUTHORIZATION_TYPE 'none', ACCESS_DELEGATION_MODE 'none')",
     )
-    expect(statements.at(-1)).toBe('USE mink."kafka"')
+    expect(statements.at(-1)).toBe('USE mink."merged"')
     expect(statements.some((statement) => statement.includes('custom_extension_repository'))).toBe(false)
   })
 
@@ -161,18 +161,18 @@ describe('scanned', () => {
 
 describe('tables', () => {
   const parsed = (statement: string) =>
-    tables(String(connection.query(`SELECT json_serialize_sql('${statement.replaceAll("'", "''")}') AS tree`).getChildAt(0)!.get(0)), 'kafka')
+    tables(String(connection.query(`SELECT json_serialize_sql('${statement.replaceAll("'", "''")}') AS tree`).getChildAt(0)!.get(0)), 'merged')
 
   it('names each table once in the namespace unless the query names another', () => {
     expect(parsed('SELECT * FROM orders a JOIN orders b USING (_offset) JOIN mink.other.t USING (_offset)')).toEqual([
-      { schema: 'kafka', table: 'orders' },
+      { schema: 'merged', table: 'orders' },
       { schema: 'other', table: 't' },
     ])
   })
 
   it('leaves out the query\'s own WITH names and tables of other catalogs', () => {
     expect(parsed('WITH recent AS (SELECT * FROM orders) SELECT * FROM recent JOIN memory.main.x USING (_offset)')).toEqual([
-      { schema: 'kafka', table: 'orders' },
+      { schema: 'merged', table: 'orders' },
     ])
   })
 

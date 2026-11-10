@@ -27,7 +27,7 @@ A cache miss builds only the extents a read overlaps, see [Reads](/docs/design/r
 
 ## Cache
 
-A cache miss on a data file reads its offset range from Kafka again. The cache decides how often that happens.
+A cache miss on one of Mink's data files reads its offset range from Kafka again. A miss on an external table's file reads it from that table's bucket. The cache decides how often that happens.
 
 | Setting | Effect |
 | --- | --- |
@@ -67,3 +67,16 @@ An indexer reads each committed record once. Adding nodes with the `indexer` rol
 | `snapshot_retention` | How far back time travel reaches. Longer keeps more metadata objects in the bucket and rows in Postgres. |
 | `collection_grace` | How long unused metadata objects wait before deletion. It must outlast the longest query. |
 | `statistics_interval` | How often a writer publishes distinct-value estimates. Each publish reads the table's sketches from Postgres and writes a statistics file to the bucket. |
+
+## Tiering
+
+[Tiering](/docs/design/tiering) holds a flush's records in memory while it writes them.
+
+| Setting | Effect |
+| --- | --- |
+| `tier_bytes` | Larger flushes write fewer, larger files. A flush holds about twice its decoded records in memory. |
+| `max_tier_flushes` | Flushes at once on a node, the multiple of a flush's memory |
+
+A longer [`tier_interval`](/docs/design/tiering#when-records-tier) makes fewer commits with more files each.
+
+Tiered files reach `write.target-file-size-bytes` only when a flush holds that much for one partition of the external table. `rewrite_data_files` on the external table joins smaller files.

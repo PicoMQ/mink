@@ -3,6 +3,7 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::routing::get;
 use axum::{Json, Router};
+use mink_core::Scope;
 use mink_store::LeaseHolder;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -11,6 +12,7 @@ use uuid::Uuid;
 use super::Admin;
 use super::paging::{PageQuery, Paging};
 use super::reply::{Failure, Params, filter};
+use crate::Error;
 
 #[derive(Deserialize)]
 struct Filters {
@@ -27,6 +29,7 @@ pub(super) fn lease(lease: &LeaseHolder) -> Value {
     json!({
         "table": lease.scope().topic(),
         "partition": lease.scope().partition_index(),
+        "scope": lease.scope().name(),
         "holder": lease.holder(),
         "epoch": lease.epoch(),
         "expiresAtMs": lease.expires_at_ms(),
@@ -50,7 +53,11 @@ async fn leases(
             ("node", &node),
         ],
     )?;
-    let after = paging.after::<(String, Option<i32>)>()?;
+    let after = paging
+        .after::<(String, Option<i32>, String)>()?
+        .map(|(topic, partition, scope)| Scope::from_name(&scope, &topic, partition))
+        .transpose()
+        .map_err(Error::from)?;
 
     let leases = admin
         .services
@@ -59,9 +66,7 @@ async fn leases(
         .page(
             table.as_deref(),
             filters.node,
-            after
-                .as_ref()
-                .map(|(topic, partition)| (topic.as_str(), *partition)),
+            after.as_ref(),
             paging.wanted() as i64,
         )
         .await?;
@@ -73,6 +78,7 @@ async fn leases(
             let key = (
                 held.scope().topic().to_owned(),
                 held.scope().partition_index(),
+                held.scope().name().to_owned(),
             );
 
             (key, lease(held))

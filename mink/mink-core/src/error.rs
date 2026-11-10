@@ -24,6 +24,18 @@ pub enum Error {
     RecordOffset(i64),
     #[error("snapshot id {0} is not positive")]
     SnapshotId(i64),
+    #[error("snapshot sequence number {0} is not positive")]
+    SnapshotSequenceNumber(i64),
+    #[error("the external table of {0} needs a catalog, namespace and name")]
+    ExternalTable(String),
+    #[error("location {0} is not an s3:// location")]
+    ExternalLocation(String),
+    #[error("attach generation {0} is not positive")]
+    Generation(i32),
+    #[error("{0:?} is not a lease scope with a matching partition")]
+    Scope(String),
+    #[error("a tier schedule needs a positive tier_after and tier_interval")]
+    TierSchedule,
     #[error("snapshot epoch {0} is not positive")]
     SnapshotEpoch(i64),
     #[error("a snapshot needs the offsets of at least one partition")]

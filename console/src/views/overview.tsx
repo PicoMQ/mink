@@ -39,7 +39,7 @@ export default function Overview() {
       {state.error && <Notice kind="danger">{state.error.message}</Notice>}
       {ranking.data ? (
         <>
-          <Heading title={`Namespace ${state.data?.namespace ?? ''}`} icon={Network} />
+          <Heading title={`Namespaces ${state.data?.namespaces.join(', ') ?? ''}`} icon={Network} />
           {ranking.error && <Notice kind="danger">{ranking.error.message}</Notice>}
           <Details
             items={[

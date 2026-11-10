@@ -36,7 +36,7 @@ pub(crate) async fn partition_lease(
     index: i32,
     holder: Uuid,
 ) -> Lease {
-    let scope = Scope::Partition(Partition::new(topic.name(), index).unwrap());
+    let scope = Scope::Indexer(Partition::new(topic.name(), index).unwrap());
 
     store
         .leases()
@@ -47,7 +47,7 @@ pub(crate) async fn partition_lease(
 }
 
 pub(crate) async fn topic_lease(store: &Store, topic: &Topic, holder: Uuid) -> Lease {
-    let scope = Scope::Topic(topic.name().to_owned());
+    let scope = Scope::Writer(topic.name().to_owned());
 
     store
         .leases()
@@ -79,7 +79,7 @@ pub(crate) fn snapshot(lease: &Lease, topic: &Topic, id: i64, ranges: &[(i64, i6
         })
         .collect();
 
-    Snapshot::new(id, id * 1000, lease.epoch(), offsets).unwrap()
+    Snapshot::new(id, id, id * 1000, lease.epoch(), offsets).unwrap()
 }
 
 pub(crate) fn file(topic: &Topic, partition: i32, start: i64, end: i64) -> IndexedFile {

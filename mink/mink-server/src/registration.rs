@@ -61,7 +61,7 @@ pub(crate) async fn delete_removed(services: &Services, indexers: &[Uuid]) -> Re
     let node = services.membership.id();
 
     for name in topics.removable(services.config.lease_ttl).await? {
-        let writer = owner(indexers, &scope_key(&Scope::Topic(name.clone())));
+        let writer = owner(indexers, &scope_key(&Scope::Writer(name.clone())));
         if writer != Some(node) {
             continue;
         }

@@ -6,7 +6,7 @@
     </span>
   </h1>
   <p class="tagline">
-    Mink is a read-only Iceberg catalog over Kafka.<br />
-    Iceberg engines query topics as tables, and the records stay in Kafka.
+    Mink is a read-only Iceberg catalog over Kafka.
+    <span class="balanced">Iceberg engines query topics as tables, with older records tiered into Iceberg and read as one table.</span>
   </p>
 </template>

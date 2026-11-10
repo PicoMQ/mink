@@ -15,7 +15,7 @@ impl<'a> IndexedRanges<'a> {
     }
 
     pub async fn start(&self, lease: &Lease, offset: i64) -> Result<Offsets, Error> {
-        let partition = lease.require_partition()?;
+        let partition = lease.require_indexer()?;
         let mut transaction = self.pool.begin().await?;
         check(&mut transaction, lease).await?;
 
@@ -71,7 +71,7 @@ impl<'a> IndexedRanges<'a> {
     }
 
     pub async fn trim(&self, lease: &Lease, start_offset: i64) -> Result<Offsets, Error> {
-        let partition = lease.require_partition()?;
+        let partition = lease.require_indexer()?;
         let mut transaction = self.pool.begin().await?;
         check(&mut transaction, lease).await?;
         let range = lock(&mut transaction, partition).await?;

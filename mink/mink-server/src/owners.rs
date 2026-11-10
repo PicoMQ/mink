@@ -21,8 +21,9 @@ pub(crate) fn share(leases: usize, nodes: usize) -> usize {
 
 pub(crate) fn scope_key(scope: &Scope) -> String {
     match scope {
-        Scope::Partition(partition) => format!("{}/{}", partition.topic(), partition.index()),
-        Scope::Topic(topic) => topic.clone(),
+        Scope::Indexer(partition) => format!("{}/{}", partition.topic(), partition.index()),
+        Scope::Writer(topic) => topic.clone(),
+        Scope::Tier(partition) => format!("{}/{}/tier", partition.topic(), partition.index()),
     }
 }
 
@@ -44,7 +45,7 @@ mod tests {
     fn preferences_hash_the_node_and_scope_and_spread_the_leases() {
         let nodes: Vec<Uuid> = (1..=3).map(Uuid::from_u128).collect();
         let scopes: Vec<String> = (0..3000)
-            .map(|index| scope_key(&Scope::Partition(Partition::new("orders", index).unwrap())))
+            .map(|index| scope_key(&Scope::Indexer(Partition::new("orders", index).unwrap())))
             .collect();
 
         let most_preferred: Vec<usize> = nodes
@@ -58,7 +59,7 @@ mod tests {
             .collect();
 
         assert_eq!(preference(nodes[0], "orders/0"), 18010754674424339750);
-        assert_eq!(scope_key(&Scope::Topic("orders".to_owned())), "orders");
+        assert_eq!(scope_key(&Scope::Writer("orders".to_owned())), "orders");
         assert_eq!(scopes[3], "orders/3");
         assert!(
             most_preferred

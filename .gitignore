@@ -19,6 +19,7 @@ website/node_modules/
 website/.vitepress/cache/
 website/.vitepress/dist/
 website/video/*.mp4
+website/video/clips/
 
 # Env / secrets
 .env

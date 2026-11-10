@@ -17,7 +17,7 @@ struct Cli {
 enum Command {
     #[command(about = "run a node")]
     Serve(serve::Serve),
-    #[command(about = "add, remove or list tables")]
+    #[command(about = "add, remove, list, attach or detach tables, or print their schema")]
     Table(table::Table),
     #[command(about = "change a table's granularity")]
     Granularity(granularity::SetGranularity),

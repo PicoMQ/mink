@@ -27,6 +27,14 @@ pub enum Error {
     UnsupportedVersion { key: i16 },
     #[error("broker error code {code}")]
     Broker { code: i16 },
+    #[error("topic {topic} has no config {name} in the broker's answer")]
+    MissingConfig { topic: String, name: &'static str },
+    #[error("topic {topic} has config {name} = {value:?}, which is not a number")]
+    InvalidConfig {
+        topic: String,
+        name: &'static str,
+        value: String,
+    },
     #[error("response has no data for {0:?}")]
     MissingPartition(Partition),
     #[error("{0:?} has no leader")]

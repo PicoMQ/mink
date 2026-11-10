@@ -49,8 +49,15 @@ impl Schemas {
             }
         }
 
-        let latest = self.store.schemas().latest(topic).await?;
+        self.current_file_schema(topic).await
+    }
 
+    pub(crate) async fn current_file_schema(&self, topic: &str) -> Result<FileSchema, Error> {
+        if self.registry().is_none() {
+            return Ok(FileSchema::Binary);
+        }
+
+        let latest = self.store.schemas().latest(topic).await?;
         self.typed(topic, latest).await
     }
 

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::routing::get;
 use axum::{Json, Router};
+use mink_core::View;
 use serde_json::{Value, json};
 
 use super::Admin;
@@ -33,7 +34,7 @@ async fn cluster(State(admin): State<Arc<Admin>>) -> Json<Value> {
         "nodeId": services.membership.id(),
         "roles": roles,
         "version": env!("CARGO_PKG_VERSION"),
-        "namespace": config.namespace,
+        "namespaces": View::ALL.map(View::name),
         "catalogUrl": config.catalog_endpoint,
         "s3Endpoint": config.s3_endpoint,
         "warehouse": config.warehouse,

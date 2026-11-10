@@ -31,7 +31,7 @@ impl<'a> Sketches<'a> {
     }
 
     pub async fn trim(&self, lease: &Lease) -> Result<(), Error> {
-        let topic = lease.require_topic()?;
+        let topic = lease.require_writer()?;
         let mut transaction = self.pool.begin().await?;
         check(&mut transaction, lease).await?;
 

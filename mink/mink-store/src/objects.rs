@@ -71,7 +71,7 @@ impl<'a> Objects<'a> {
     }
 
     pub async fn remove(&self, lease: &Lease, objects: &[Object]) -> Result<(), Error> {
-        let topic = lease.require_topic()?;
+        let topic = lease.require_writer()?;
         let paths: Vec<&str> = objects.iter().map(Object::path).collect();
 
         let mut transaction = self.pool.begin().await?;

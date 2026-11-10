@@ -67,8 +67,24 @@
           "path": "s3://warehouse/orders/metadata/snap-1-e1.avro"
         },
         {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-1-e1-stream.avro"
+        },
+        {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-1-e1-lake.avro"
+        },
+        {
           "kind": "table_metadata",
           "path": "s3://warehouse/orders/metadata/v1-e1.metadata.json"
+        },
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v1-e1-stream.metadata.json"
+        },
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v1-e1-lake.metadata.json"
         }
       ],
       "released": [],
@@ -130,8 +146,24 @@
           "path": "s3://warehouse/orders/metadata/snap-2-e1.avro"
         },
         {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-2-e1-stream.avro"
+        },
+        {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-2-e1-lake.avro"
+        },
+        {
           "kind": "table_metadata",
           "path": "s3://warehouse/orders/metadata/v2-e1.metadata.json"
+        },
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v2-e1-stream.metadata.json"
+        },
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v2-e1-lake.metadata.json"
         }
       ],
       "released": [
@@ -142,6 +174,22 @@
         {
           "kind": "manifest_list",
           "path": "s3://warehouse/orders/metadata/snap-1-e1.avro"
+        },
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v1-e1-stream.metadata.json"
+        },
+        {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-1-e1-stream.avro"
+        },
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v1-e1-lake.metadata.json"
+        },
+        {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-1-e1-lake.avro"
         }
       ],
       "snapshot": {
@@ -232,8 +280,24 @@
           "path": "s3://warehouse/orders/metadata/snap-3-e2.avro"
         },
         {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-3-e2-stream.avro"
+        },
+        {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-3-e2-lake.avro"
+        },
+        {
           "kind": "table_metadata",
           "path": "s3://warehouse/orders/metadata/v3-e2.metadata.json"
+        },
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v3-e2-stream.metadata.json"
+        },
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v3-e2-lake.metadata.json"
         }
       ],
       "released": [
@@ -244,6 +308,22 @@
         {
           "kind": "manifest_list",
           "path": "s3://warehouse/orders/metadata/snap-2-e1.avro"
+        },
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v2-e1-stream.metadata.json"
+        },
+        {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-2-e1-stream.avro"
+        },
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v2-e1-lake.metadata.json"
+        },
+        {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-2-e1-lake.avro"
         },
         {
           "kind": "manifest",
@@ -281,8 +361,24 @@
           "path": "s3://warehouse/orders/metadata/snap-4-e2.avro"
         },
         {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-4-e2-stream.avro"
+        },
+        {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-4-e2-lake.avro"
+        },
+        {
           "kind": "table_metadata",
           "path": "s3://warehouse/orders/metadata/v4-e2.metadata.json"
+        },
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v4-e2-stream.metadata.json"
+        },
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v4-e2-lake.metadata.json"
         }
       ],
       "released": [
@@ -293,6 +389,22 @@
         {
           "kind": "manifest_list",
           "path": "s3://warehouse/orders/metadata/snap-3-e2.avro"
+        },
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v3-e2-stream.metadata.json"
+        },
+        {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-3-e2-stream.avro"
+        },
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v3-e2-lake.metadata.json"
+        },
+        {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-3-e2-lake.avro"
         },
         {
           "kind": "manifest",
@@ -357,8 +469,24 @@
           "path": "s3://warehouse/orders/metadata/snap-5-e2.avro"
         },
         {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-5-e2-stream.avro"
+        },
+        {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-5-e2-lake.avro"
+        },
+        {
           "kind": "table_metadata",
           "path": "s3://warehouse/orders/metadata/v5-e2.metadata.json"
+        },
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v5-e2-stream.metadata.json"
+        },
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v5-e2-lake.metadata.json"
         }
       ],
       "released": [
@@ -369,6 +497,22 @@
         {
           "kind": "manifest_list",
           "path": "s3://warehouse/orders/metadata/snap-4-e2.avro"
+        },
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v4-e2-stream.metadata.json"
+        },
+        {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-4-e2-stream.avro"
+        },
+        {
+          "kind": "table_metadata",
+          "path": "s3://warehouse/orders/metadata/v4-e2-lake.metadata.json"
+        },
+        {
+          "kind": "manifest_list",
+          "path": "s3://warehouse/orders/metadata/snap-4-e2-lake.avro"
         },
         {
           "kind": "manifest",

@@ -1,8 +1,10 @@
 mod admin;
+mod buckets;
 mod catalog;
 mod commands;
 mod config;
 mod error;
+mod external;
 mod forward;
 mod indexer;
 mod membership;
@@ -16,6 +18,7 @@ mod services;
 mod supervisor;
 #[cfg(test)]
 mod testing;
+mod tier;
 mod warehouse;
 mod writer;
 
@@ -29,12 +32,19 @@ use tokio::net::TcpListener;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
-pub use commands::{add_table, list_tables, remove_table, set_granularity};
+pub use commands::{
+    add_table, attach_external_table, detach_external_table, list_tables, remove_table,
+    set_granularity, table_schema,
+};
 pub use config::{
-    Config, ConfigError, History, SchemaRegistry, Storage, parse_granularity, parse_role,
+    Config, ConfigError, History, SchemaRegistry, Storage, parse_duration, parse_granularity,
+    parse_role,
 };
 pub use error::Error;
-pub use mink_core::{Granularity, Role, TableState, Topic};
+pub use external::{Attachment, Partitioning, SortTerm, TableSource, Term};
+pub use mink_core::{
+    CatalogTable, ExternalTable, Granularity, Role, TableState, TierSchedule, Topic,
+};
 
 use crate::s3::Cache;
 use crate::services::Services;
@@ -127,8 +137,7 @@ impl Node {
 
         let membership = tokio::spawn(membership::run(services.clone(), member, stop.subscribe()));
 
-        let supervisor = config
-            .has(Role::Indexer)
+        let supervisor = (config.has(Role::Indexer) || config.has(Role::Tier))
             .then(|| tokio::spawn(supervisor::supervise(services.clone(), stop.subscribe())));
 
         Ok(Node {

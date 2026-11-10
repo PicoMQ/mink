@@ -28,7 +28,7 @@ A connector is a stream processor that copies a topic into an Iceberg table: Fli
   <text x="20" y="138" class="sub">Mink</text>
   <rect x="20" y="150" width="140" height="50" class="box"/>
   <text x="90" y="171" text-anchor="middle" class="label">Kafka</text>
-  <text x="90" y="189" text-anchor="middle" class="sub">the only copy</text>
+  <text x="90" y="189" text-anchor="middle" class="sub">records</text>
   <rect x="190" y="150" width="140" height="50" class="box-accent"/>
   <text x="260" y="171" text-anchor="middle" class="label">Mink</text>
   <text x="260" y="189" text-anchor="middle" class="sub">builds on read</text>
@@ -69,22 +69,21 @@ Frequent commits write small files and many snapshots. A connector's table needs
 | Unused files | `remove_orphan_files` | Collected after `collection_grace` |
 | Manifests | `rewrite_manifests` | Grouped by time bucket, one per bucket once assembled |
 
-Expiring snapshots or deleting orphan files under a running Flink job can break its state. Mink's writer runs all of these itself, see [Retention](/docs/design/retention).
+Expiring snapshots or deleting orphan files under a running Flink job can break its state. Mink's writer runs all of these itself for its own files, see [Retention](/docs/design/retention). A tiered table's external table needs them as a connector's does, see [Tiering](/docs/design/tiering#requirements).
 
 ## Differences
 
 | | Connector | Mink |
 | --- | --- | --- |
-| Copies | Kafka, and Parquet in the bucket | Kafka only. The bucket holds metadata. |
+| Copies | Kafka, and Parquet in the bucket | Kafka. A [tiered](/docs/design/tiering) table also writes its older records to an external table. |
 | Freshness | The last commit | Every record committed when the table loads |
 | Moving parts | A Flink, Connect, Spark or RisingWave deployment, a catalog, maintenance jobs | Mink nodes and Postgres |
 | Schema changes | Off by default in the Connect sink. Firehose drops fields the table lacks. | New Schema Registry versions evolve the table |
-| History | Kept in the table after Kafka deletes it | As far back as Kafka's retention |
+| History | Kept in the table after Kafka deletes it | As far back as Kafka's retention, or a tiered table's external table |
 | Transforms | Any, in the job | None. One row per record. |
 
 ## When a connector fits
 
-- Tables kept longer than the topic's retention.
 - Records transformed, joined or filtered before they land.
 - Engines that read only from cloud storage.
 

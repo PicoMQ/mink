@@ -1,13 +1,18 @@
+use std::collections::HashMap;
+
 use bytes::Bytes;
 use iceberg::io::FileIO;
 use iceberg::spec::ManifestList;
+use iceberg::table::Table as IcebergTable;
 use mink_core::{
-    Granularity, IndexedFile, Object, ObjectKind, Offsets, Partition, Snapshot, TimeSpecs, Topic,
+    Granularity, IndexedFile, Object, Offsets, Partition, Record, Snapshot, TimeSpecs, Topic, View,
 };
 use uuid::Uuid;
 
 use super::{Change, FormatVersion, ObjectReader, Table};
-use crate::Error;
+use crate::table::last_time_field_id;
+use crate::testing::{appended, external_table};
+use crate::{Error, FileSchema, record_batch, write_data_files};
 
 impl ObjectReader for FileIO {
     async fn read(&self, path: &str) -> Result<Bytes, Error> {
@@ -37,7 +42,7 @@ pub(super) fn snapshot(id: i64, epoch: i64, ranges: [(i64, i64); 2]) -> Snapshot
         })
         .collect();
 
-    Snapshot::new(id, id * 1000, epoch, offsets).unwrap()
+    Snapshot::new(id, id, id * 1000, epoch, offsets).unwrap()
 }
 
 pub(super) fn file(partition: i32, start: i64, end: i64) -> IndexedFile {
@@ -49,7 +54,7 @@ pub(super) async fn applied(
     ranges: [(i64, i64); 2],
     added: &[IndexedFile],
 ) -> Change {
-    let id = Snapshot::next_id(table.snapshot_id());
+    let id = Snapshot::next(table.snapshot_id());
     let specs = specs();
 
     table
@@ -69,10 +74,16 @@ pub(super) fn written(change: &Change) -> Vec<Object> {
     change.objects().map(|(object, _)| object.clone()).collect()
 }
 
-pub(super) fn listed(change: &Change) -> Vec<String> {
+pub(super) fn listed(change: &Change, view: View) -> Vec<String> {
+    let (_, metadata) = change.metadata(view).unwrap();
+    let metadata: serde_json::Value = serde_json::from_slice(metadata).unwrap();
+    let list = metadata["snapshots"].as_array().unwrap().last().unwrap()["manifest-list"]
+        .as_str()
+        .unwrap()
+        .to_owned();
     let (_, bytes) = change
         .objects()
-        .find(|(object, _)| object.kind() == ObjectKind::ManifestList)
+        .find(|(object, _)| object.path() == list)
         .unwrap();
 
     ManifestList::parse_with_version(bytes, FormatVersion::V2.iceberg())
@@ -98,4 +109,25 @@ pub(super) async fn store(io: &FileIO, change: &Change) {
             .await
             .unwrap();
     }
+}
+
+pub(super) async fn tiered() -> IcebergTable {
+    tiered_by_day_field(last_time_field_id() + 1).await
+}
+
+pub(super) async fn tiered_by_day_field(day_field_id: i32) -> IcebergTable {
+    let table = external_table(day_field_id, HashMap::new());
+    let records: Vec<Record> = (0..6)
+        .map(|offset| {
+            let value = Some(Bytes::from(format!("v{offset}")));
+
+            Record::new(offset, offset, None, value, Vec::new()).unwrap()
+        })
+        .collect();
+    let partition = Partition::new("orders", 0).unwrap();
+    let rows = record_batch(&partition, &records, &FileSchema::Binary).unwrap();
+
+    let files = write_data_files(&table, rows, "0-0-6").await.unwrap();
+
+    appended(&table, files, Vec::new(), &[(0, 6)]).await
 }

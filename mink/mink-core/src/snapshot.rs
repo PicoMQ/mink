@@ -8,6 +8,7 @@ use crate::topic::Partition;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Snapshot {
     id: i64,
+    sequence_number: i64,
     timestamp_ms: i64,
     epoch: i64,
     offsets: Vec<Offsets>,
@@ -16,12 +17,17 @@ pub struct Snapshot {
 impl Snapshot {
     pub fn new(
         id: i64,
+        sequence_number: i64,
         timestamp_ms: i64,
         epoch: i64,
         mut offsets: Vec<Offsets>,
     ) -> Result<Snapshot, Error> {
         if id < 1 {
             return Err(Error::SnapshotId(id));
+        }
+
+        if sequence_number < 1 {
+            return Err(Error::SnapshotSequenceNumber(sequence_number));
         }
 
         if epoch < 1 {
@@ -45,6 +51,7 @@ impl Snapshot {
 
         Ok(Snapshot {
             id,
+            sequence_number,
             timestamp_ms,
             epoch,
             offsets,
@@ -57,6 +64,10 @@ impl Snapshot {
 
     pub fn id(&self) -> i64 {
         self.id
+    }
+
+    pub fn sequence_number(&self) -> i64 {
+        self.sequence_number
     }
 
     pub fn timestamp_ms(&self) -> i64 {
@@ -86,8 +97,8 @@ impl Snapshot {
             .is_some_and(|offsets| offsets.covers(file))
     }
 
-    pub fn next_id(latest_id: Option<i64>) -> i64 {
-        latest_id.map_or(1, |id| id + 1)
+    pub fn next(latest: Option<i64>) -> i64 {
+        latest.map_or(1, |latest| latest + 1)
     }
 
     pub fn expired_through(
@@ -126,13 +137,13 @@ mod tests {
         let partition = Partition::new("orders", 0).unwrap();
         let offsets = Offsets::new(partition, start_offset, 100).unwrap();
 
-        Snapshot::new(id, timestamp_ms, 1, vec![offsets]).unwrap()
+        Snapshot::new(id, id, timestamp_ms, 1, vec![offsets]).unwrap()
     }
 
     #[test]
     fn a_snapshot_takes_its_topic_from_its_offsets_in_partition_order() {
         let snapshot =
-            Snapshot::new(1, 0, 1, vec![offsets("orders", 1), offsets("orders", 0)]).unwrap();
+            Snapshot::new(1, 1, 0, 1, vec![offsets("orders", 1), offsets("orders", 0)]).unwrap();
 
         let indexes: Vec<_> = snapshot
             .offsets()
@@ -145,23 +156,27 @@ mod tests {
     }
 
     #[test]
-    fn snapshots_are_rejected_when_empty_mixed_repeated_or_not_positive() {
-        assert_eq!(Snapshot::new(1, 0, 1, vec![]), Err(Error::EmptySnapshot));
+    fn snapshots_are_rejected_when_empty_mixed_repeated_not_positive_or_behind_their_id() {
+        assert_eq!(Snapshot::new(1, 1, 0, 1, vec![]), Err(Error::EmptySnapshot));
         assert_eq!(
-            Snapshot::new(1, 0, 1, vec![offsets("orders", 0), offsets("users", 1)]),
+            Snapshot::new(1, 1, 0, 1, vec![offsets("orders", 0), offsets("users", 1)]),
             Err(Error::SnapshotPartitions)
         );
         assert_eq!(
-            Snapshot::new(1, 0, 1, vec![offsets("orders", 0), offsets("orders", 0)]),
+            Snapshot::new(1, 1, 0, 1, vec![offsets("orders", 0), offsets("orders", 0)]),
             Err(Error::SnapshotPartitions)
         );
         assert_eq!(
-            Snapshot::new(0, 0, 1, vec![offsets("orders", 0)]),
+            Snapshot::new(0, 0, 0, 1, vec![offsets("orders", 0)]),
             Err(Error::SnapshotId(0))
         );
         assert_eq!(
-            Snapshot::new(1, 0, 0, vec![offsets("orders", 0)]),
+            Snapshot::new(1, 1, 0, 0, vec![offsets("orders", 0)]),
             Err(Error::SnapshotEpoch(0))
+        );
+        assert_eq!(
+            Snapshot::new(2, 0, 0, 1, vec![offsets("orders", 0)]),
+            Err(Error::SnapshotSequenceNumber(0))
         );
     }
 
@@ -201,8 +216,14 @@ mod tests {
         let file = |index, start, end| {
             File::v1(partition(index), start, end, TimePartition::new(0, None), 0).unwrap()
         };
-        let snapshot =
-            Snapshot::new(1, 0, 1, vec![Offsets::new(partition(0), 10, 20).unwrap()]).unwrap();
+        let snapshot = Snapshot::new(
+            1,
+            1,
+            0,
+            1,
+            vec![Offsets::new(partition(0), 10, 20).unwrap()],
+        )
+        .unwrap();
 
         assert!(snapshot.covers(&file(0, 10, 20)));
         assert!(snapshot.covers(&file(0, 12, 15)));
@@ -212,8 +233,8 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_ids_start_at_one_and_follow_the_latest() {
-        assert_eq!(Snapshot::next_id(None), 1);
-        assert_eq!(Snapshot::next_id(Some(7)), 8);
+    fn ids_and_sequence_numbers_start_at_one_and_follow_the_latest() {
+        assert_eq!(Snapshot::next(None), 1);
+        assert_eq!(Snapshot::next(Some(7)), 8);
     }
 }

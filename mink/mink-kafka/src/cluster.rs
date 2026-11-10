@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::pin::Pin;
+use std::time::Duration;
 
 use kafka_protocol::messages::fetch_response::PartitionData;
 use kafka_protocol::messages::{BrokerId, MetadataResponse};
@@ -72,6 +73,44 @@ impl Cluster {
         let offset = self.offset(partition, timestamp_ms).await?;
 
         Ok((offset >= 0).then_some(offset))
+    }
+
+    pub async fn retention(&mut self, topic: &str) -> Result<Option<Duration>, Error> {
+        let mut backoff = Backoff::new(self.config.retry_deadline());
+
+        loop {
+            let error = match self.retention_once(topic).await {
+                Ok(retention_ms) => {
+                    return Ok(u64::try_from(retention_ms).ok().map(Duration::from_millis));
+                }
+                Err(error) => error,
+            };
+
+            if !retriable(&error) || !backoff.wait().await {
+                return Err(error);
+            }
+        }
+    }
+
+    async fn retention_once(&mut self, topic: &str) -> Result<i64, Error> {
+        let mut failures = Vec::new();
+
+        let brokers: Vec<BrokerId> = self.brokers.keys().copied().collect();
+        for broker in brokers {
+            let retention_ms = match self.connection(broker).await {
+                Ok(connection) => connection.retention_ms(topic).await,
+                Err(error) => Err(error),
+            };
+
+            match retention_ms {
+                Err(error) if retriable(&error) => {
+                    failures.push((format!("broker {}", broker.0), error));
+                }
+                answered => return answered,
+            }
+        }
+
+        Err(Error::Unreachable(failures))
     }
 
     async fn offset(&mut self, partition: &Partition, timestamp: i64) -> Result<i64, Error> {

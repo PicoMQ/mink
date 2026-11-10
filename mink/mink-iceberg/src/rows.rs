@@ -57,7 +57,7 @@ pub fn decode<'a>(schema: &FileSchema, record: &'a Record) -> Result<Decoded<'a>
     })
 }
 
-pub(crate) fn rows(
+pub fn record_batch(
     partition: &Partition,
     records: &[Record],
     schema: &FileSchema,
@@ -203,7 +203,7 @@ mod tests {
             Record::new(41, 5, None, None, Vec::new()).unwrap(),
         ];
 
-        let rows = rows(&partition, &records, &FileSchema::Binary).unwrap();
+        let rows = record_batch(&partition, &records, &FileSchema::Binary).unwrap();
 
         let partitions: Int32Array = column(&rows, "_kafka_partition");
         let offsets: Int64Array = column(&rows, "_kafka_offset");
@@ -250,7 +250,7 @@ mod tests {
         let partition = Partition::new("orders", 0).unwrap();
         let records = [Record::new(9, i64::MAX, None, None, Vec::new()).unwrap()];
 
-        let rows = rows(&partition, &records, &FileSchema::Binary);
+        let rows = record_batch(&partition, &records, &FileSchema::Binary);
 
         assert!(
             matches!(rows, Err(Error::TimestampOverflow { offset: 9 })),

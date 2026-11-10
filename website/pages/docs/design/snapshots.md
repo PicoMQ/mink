@@ -56,9 +56,9 @@ Every `snapshot_interval` the table's writer reads the indexed ranges from Postg
 | Part | Holds |
 | --- | --- |
 | Snapshot id | `1`, `2`, `3`, … in commit order. The Iceberg snapshot has the same id. |
-| Offsets | For each partition, `[start_offset, end_offset)` |
-| Files | The data files inside those offsets |
-| Summary | `mink.partition.{p}.start-offset` and `mink.partition.{p}.end-offset` for each partition `p` |
+| Offsets | For each partition, `[start_offset, end_offset)`. A [tiered](/docs/design/tiering) table's partitions start at the external table's end offsets. |
+| Files | The data files inside those offsets, and a tiered table's external table |
+| Summary | `mink.partition.{p}.start-offset` and `mink.partition.{p}.end-offset` for each partition `p`, and `mink.external.*` for a tiered table |
 
 ## Loads
 

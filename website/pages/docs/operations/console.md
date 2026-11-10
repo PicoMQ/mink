@@ -14,7 +14,7 @@ Every node with the `admin` role serves a web console at the root of its admin l
 | Nodes | Live nodes with their roles, addresses and lease counts, and a page per node with live charts | |
 | Registry | Schema Registry schemas Mink has stored, with their format, references and the tables that use them | |
 | SQL | A DuckDB session in the browser over this node's catalog | Run, profile |
-| Connect | The catalog URL, namespace, warehouse and S3 endpoint, and settings for DuckDB, PyIceberg, Spark and Trino | Copy |
+| Connect | The catalog URL, namespaces, warehouse and S3 endpoint, and settings for DuckDB, PyIceberg, Spark and Trino | Copy |
 
 Pages refresh every `10` seconds.
 
@@ -54,7 +54,7 @@ A node's page shows its roles, leases, cache use, addresses and settings, with s
 
 ![A query on the events table with the Kafka partition and offset of each row](/images/console/sql.webp)
 
-The SQL page runs DuckDB-Wasm in the browser. DuckDB attaches this node's catalog, with its namespace as the default. It reads through `/catalog` and `/s3` on the admin listener, and needs the `catalog` and `s3` roles on this node.
+The SQL page runs DuckDB-Wasm in the browser. DuckDB attaches this node's catalog, with `merged` as the default namespace. It reads through `/catalog` and `/s3` on the admin listener, and needs the `catalog` and `s3` roles on this node.
 
 - **Run.** Runs the statement and shows the first `1,000` rows. `Ctrl+Enter`, or `Cmd+Enter` on macOS, runs it too.
 - **Links.** The statement is kept in the URL, so a link opens the same query.
@@ -81,4 +81,4 @@ Files read shows how much a filter [prunes](/docs/design/layout).
 
 ![Connection settings and a DuckDB, PyIceberg, Spark and Trino example for the events table](/images/console/connect.webp)
 
-The Connect page shows the values an engine needs, with a copy button on each. Naming a table fills it into the examples. The values come from `catalog_endpoint`, `namespace`, `warehouse` and `s3_endpoint`. Set those to the addresses engines reach. See [Engines](/docs/engines).
+The Connect page shows the values an engine needs, with a copy button on each. Naming a table fills it into the examples. The values come from `catalog_endpoint`, `warehouse` and `s3_endpoint`. Set those to the addresses engines reach. See [Engines](/docs/engines).

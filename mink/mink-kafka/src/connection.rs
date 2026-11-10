@@ -2,13 +2,15 @@ use std::ops::RangeInclusive;
 use std::time::{Duration, Instant};
 
 use bytes::{Bytes, BytesMut};
+use kafka_protocol::messages::describe_configs_request::DescribeConfigsResource;
 use kafka_protocol::messages::fetch_request::{FetchPartition, FetchTopic};
 use kafka_protocol::messages::fetch_response::PartitionData;
 use kafka_protocol::messages::list_offsets_request::{ListOffsetsPartition, ListOffsetsTopic};
 use kafka_protocol::messages::{
-    ApiKey, ApiVersionsRequest, ApiVersionsResponse, BrokerId, FetchRequest, ListOffsetsRequest,
-    MetadataRequest, MetadataResponse, RequestHeader, ResponseHeader, SaslAuthenticateRequest,
-    SaslAuthenticateResponse, SaslHandshakeRequest, TopicName,
+    ApiKey, ApiVersionsRequest, ApiVersionsResponse, BrokerId, DescribeConfigsRequest,
+    FetchRequest, ListOffsetsRequest, MetadataRequest, MetadataResponse, RequestHeader,
+    ResponseHeader, SaslAuthenticateRequest, SaslAuthenticateResponse, SaslHandshakeRequest,
+    TopicName,
 };
 use kafka_protocol::protocol::{
     Decodable, HeaderVersion, Request, StrBytes, encode_request_header_into_buffer,
@@ -30,6 +32,10 @@ const LIST_OFFSETS: RangeInclusive<i16> = 2..=10;
 const FETCH: RangeInclusive<i16> = 4..=12;
 const SASL_HANDSHAKE: RangeInclusive<i16> = 1..=1;
 const SASL_AUTHENTICATE: RangeInclusive<i16> = 0..=2;
+const DESCRIBE_CONFIGS: RangeInclusive<i16> = 1..=4;
+
+const TOPIC_RESOURCE: i8 = 2;
+const RETENTION_MS: &str = "retention.ms";
 
 const NO_REPLICA: BrokerId = BrokerId(-1);
 const NO_LEADER_EPOCH: i32 = -1;
@@ -49,6 +55,7 @@ struct ApiVersions {
     fetch: i16,
     sasl_handshake: Option<i16>,
     sasl_authenticate: Option<i16>,
+    describe_configs: Option<i16>,
 }
 
 pub(crate) trait Transport: AsyncRead + AsyncWrite + Unpin + Send {}
@@ -89,6 +96,7 @@ impl ApiVersions {
             fetch: highest(ApiKey::Fetch, FETCH)?,
             sasl_handshake: highest(ApiKey::SaslHandshake, SASL_HANDSHAKE).ok(),
             sasl_authenticate: highest(ApiKey::SaslAuthenticate, SASL_AUTHENTICATE).ok(),
+            describe_configs: highest(ApiKey::DescribeConfigs, DESCRIBE_CONFIGS).ok(),
         })
     }
 }
@@ -226,6 +234,12 @@ impl Connection {
         self.counted(mink_metrics::Request::Fetch, fetched)
     }
 
+    pub(crate) async fn retention_ms(&mut self, topic: &str) -> Result<i64, Error> {
+        let retention = self.describe_retention_ms(topic).await;
+
+        self.counted(mink_metrics::Request::Configs, retention)
+    }
+
     fn counted<T>(
         &self,
         request: mink_metrics::Request,
@@ -234,6 +248,40 @@ impl Connection {
         self.metrics.kafka_request(request, Outcome::of(&result));
 
         result
+    }
+
+    async fn describe_retention_ms(&mut self, topic: &str) -> Result<i64, Error> {
+        let version = self
+            .versions
+            .describe_configs
+            .ok_or(Error::UnsupportedVersion {
+                key: ApiKey::DescribeConfigs as i16,
+            })?;
+        let resource = DescribeConfigsResource::default()
+            .with_resource_type(TOPIC_RESOURCE)
+            .with_resource_name(StrBytes::from_string(topic.to_owned()))
+            .with_configuration_keys(Some(vec![StrBytes::from_static_str(RETENTION_MS)]));
+        let request = DescribeConfigsRequest::default().with_resources(vec![resource]);
+
+        let response = self.call(&request, version).await?;
+        let missing = || Error::MissingConfig {
+            topic: topic.to_owned(),
+            name: RETENTION_MS,
+        };
+        let result = response.results.into_iter().next().ok_or_else(missing)?;
+        check::<DescribeConfigsRequest>(result.error_code)?;
+
+        let value = result
+            .configs
+            .into_iter()
+            .find(|config| config.name.as_str() == RETENTION_MS)
+            .and_then(|config| config.value)
+            .ok_or_else(missing)?;
+        value.as_str().parse().map_err(|_| Error::InvalidConfig {
+            topic: topic.to_owned(),
+            name: RETENTION_MS,
+            value: value.to_string(),
+        })
     }
 
     async fn list_offset(&mut self, partition: &Partition, timestamp: i64) -> Result<i64, Error> {

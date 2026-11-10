@@ -3174,6 +3174,7 @@ dependencies = [
  "anyhow",
  "clap",
  "mink-server",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -3226,9 +3227,11 @@ version = "0.1.0"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
+ "arrow-ord",
  "arrow-schema",
  "arrow-select",
  "bytes",
+ "futures",
  "hex",
  "iceberg",
  "mink-conformance",
@@ -3299,9 +3302,12 @@ dependencies = [
 name = "mink-server"
 version = "0.1.0"
 dependencies = [
+ "arrow-array",
  "async-trait",
  "aws-config",
+ "aws-credential-types",
  "aws-sdk-glue",
+ "aws-sigv4",
  "axum",
  "base64 0.23.1",
  "bytes",
@@ -3321,6 +3327,7 @@ dependencies = [
  "nestor",
  "nestor-store",
  "object_store",
+ "parquet",
  "rdkafka",
  "reqwest 0.13.5",
  "rust-embed",
@@ -3331,6 +3338,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+ "typetag",
  "uuid",
 ]
 
@@ -3402,7 +3410,7 @@ checksum = "9252111cf132ba0929b6f8e030cac2a24b507f3a4d6db6fb2896f27b354c714b"
 [[package]]
 name = "nestor"
 version = "0.1.0"
-source = "git+https://github.com/PicoMQ/nestor?branch=main#d382dda6e213e4405b9e7741ae16767ede0ff319"
+source = "git+https://github.com/PicoMQ/nestor?branch=main#89c30fd2666421ac716bb29c086bb7f762272b9b"
 dependencies = [
  "ahash",
  "async-trait",
@@ -3424,7 +3432,7 @@ dependencies = [
 [[package]]
 name = "nestor-store"
 version = "0.1.0"
-source = "git+https://github.com/PicoMQ/nestor?branch=main#d382dda6e213e4405b9e7741ae16767ede0ff319"
+source = "git+https://github.com/PicoMQ/nestor?branch=main#89c30fd2666421ac716bb29c086bb7f762272b9b"
 dependencies = [
  "async-trait",
  "bytes",
@@ -4345,6 +4353,7 @@ dependencies = [
  "rustls-platform-verifier",
  "serde",
  "serde_json",
+ "serde_urlencoded",
  "sync_wrapper",
  "tokio",
  "tokio-rustls",
@@ -4793,6 +4802,12 @@ dependencies = [
  "cpufeatures 0.3.1",
  "digest 0.11.3",
 ]
+
+[[package]]
+name = "sha1_smol"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbfa15b3dddfee50a0fff136974b3e1bde555604ba463834a7eb7deb6417705d"
 
 [[package]]
 name = "sha2"
@@ -5750,6 +5765,7 @@ dependencies = [
  "getrandom 0.4.3",
  "js-sys",
  "serde_core",
+ "sha1_smol",
  "wasm-bindgen",
 ]
 

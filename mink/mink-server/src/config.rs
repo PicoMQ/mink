@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fmt;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -30,7 +31,7 @@ pub struct Config {
     pub(crate) warehouse: String,
     pub(crate) storage: Storage,
     pub(crate) schema_registry: Option<SchemaRegistry>,
-    pub(crate) namespace: String,
+    pub(crate) external_catalogs: BTreeMap<String, ExternalCatalog>,
     pub(crate) history: History,
     pub(crate) file_bytes: u64,
     #[serde(with = "duration")]
@@ -59,6 +60,8 @@ pub struct Config {
     #[serde(with = "duration")]
     pub(crate) assembly_delay: Duration,
     pub(crate) assembled_bytes: u64,
+    pub(crate) tier_bytes: u64,
+    pub(crate) max_tier_flushes: usize,
     #[serde(with = "duration")]
     pub(crate) statistics_interval: Duration,
 }
@@ -76,14 +79,24 @@ pub struct Kafka {
 pub struct Storage {
     pub(crate) endpoint: Option<String>,
     pub(crate) region: String,
+    #[serde(skip_serializing)]
     pub(crate) credentials: Option<Credentials>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Credentials {
     pub(crate) access_key_id: String,
     pub(crate) secret_access_key: String,
+}
+
+impl fmt::Debug for Credentials {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Credentials")
+            .field("access_key_id", &self.access_key_id)
+            .field("secret_access_key", &"<redacted>")
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -98,6 +111,55 @@ pub enum SchemaRegistry {
         name: String,
         region: Option<String>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExternalCatalog {
+    pub(crate) uri: String,
+    pub(crate) warehouse: Option<String>,
+    pub(crate) auth: Option<ExternalCatalogAuth>,
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
+pub enum ExternalCatalogAuth {
+    Sigv4 {
+        service: String,
+        region: String,
+    },
+    Oauth2 {
+        credential: String,
+        scope: Option<String>,
+        token_uri: Option<String>,
+    },
+    Bearer {
+        token: String,
+    },
+}
+
+impl fmt::Debug for ExternalCatalogAuth {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ExternalCatalogAuth::Sigv4 { service, region } => f
+                .debug_struct("Sigv4")
+                .field("service", service)
+                .field("region", region)
+                .finish(),
+            ExternalCatalogAuth::Oauth2 {
+                scope, token_uri, ..
+            } => f
+                .debug_struct("Oauth2")
+                .field("credential", &"<redacted>")
+                .field("scope", scope)
+                .field("token_uri", token_uri)
+                .finish(),
+            ExternalCatalogAuth::Bearer { .. } => f
+                .debug_struct("Bearer")
+                .field("token", &"<redacted>")
+                .finish(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -116,8 +178,10 @@ pub enum ConfigError {
     NotPositive(&'static str),
     #[error("{0:?} is not a granularity: hour, day, month or none")]
     Granularity(String),
-    #[error("{0:?} is not a role: catalog, s3, indexer or admin")]
+    #[error("{0:?} is not a role: catalog, s3, indexer, tier or admin")]
     Role(String),
+    #[error("{0:?} is not a duration: a number followed by ms, s, m or h")]
+    Duration(String),
     #[error("statistics_interval must be shorter than snapshot_retention")]
     StatisticsInterval,
     #[error("admin_address {0} is not a loopback address; set admin_remote to allow it")]
@@ -151,7 +215,7 @@ impl Default for Config {
                 credentials: None,
             },
             schema_registry: None,
-            namespace: "kafka".to_owned(),
+            external_catalogs: BTreeMap::new(),
             history: History::All,
             file_bytes: 128 * 1024 * 1024,
             file_window: Duration::from_secs(60),
@@ -171,6 +235,8 @@ impl Default for Config {
             granularity: Granularity::Hour,
             assembly_delay: Duration::from_secs(10 * 60),
             assembled_bytes: 1024 * 1024 * 1024,
+            tier_bytes: 256 * 1024 * 1024,
+            max_tier_flushes: 2,
             statistics_interval: Duration::from_secs(60 * 60),
         }
     }
@@ -234,7 +300,6 @@ impl Config {
                     }
                 },
             ),
-            ("namespace", self.namespace.clone()),
             ("admin_address", self.admin_address.to_string()),
             ("catalog_endpoint", self.catalog_endpoint.clone()),
             ("granularity", self.granularity.name().to_owned()),
@@ -265,6 +330,8 @@ impl Config {
             ("cache_disk_bytes", self.cache_disk_bytes),
             ("max_builds", self.max_builds as u64),
             ("assembled_bytes", self.assembled_bytes),
+            ("tier_bytes", self.tier_bytes),
+            ("max_tier_flushes", self.max_tier_flushes as u64),
             (
                 "backfill_offsets",
                 u64::try_from(self.backfill_offsets).unwrap_or(0),
@@ -374,6 +441,14 @@ pub fn parse_granularity(text: &str) -> Result<Granularity, ConfigError> {
     Granularity::from_name(text).ok_or_else(|| ConfigError::Granularity(text.to_owned()))
 }
 
+pub(crate) fn format_duration(duration: Duration) -> String {
+    duration::format(duration)
+}
+
+pub fn parse_duration(text: &str) -> Result<Duration, ConfigError> {
+    duration::parse(text).ok_or_else(|| ConfigError::Duration(text.to_owned()))
+}
+
 mod roles {
     use mink_core::Role;
     use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
@@ -430,6 +505,10 @@ mod duration {
         duration: &Duration,
         serializer: S,
     ) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&format(*duration))
+    }
+
+    pub(super) fn format(duration: Duration) -> String {
         let millis = u64::try_from(duration.as_millis()).unwrap_or(u64::MAX);
         let (unit, size) = UNITS
             .iter()
@@ -437,7 +516,7 @@ mod duration {
             .find(|(_, size)| millis % size == 0)
             .unwrap_or(&UNITS[0]);
 
-        serializer.serialize_str(&format!("{}{unit}", millis / size))
+        format!("{}{unit}", millis / size)
     }
 
     pub(super) fn deserialize<'de, D: Deserializer<'de>>(
@@ -445,11 +524,7 @@ mod duration {
     ) -> Result<Duration, D::Error> {
         let text = String::deserialize(deserializer)?;
 
-        parse(&text).ok_or_else(|| {
-            de::Error::custom(format!(
-                "{text:?} is not a number followed by ms, s, m or h"
-            ))
-        })
+        super::parse_duration(&text).map_err(de::Error::custom)
     }
 
     pub(super) fn parse(text: &str) -> Option<Duration> {
@@ -757,7 +832,7 @@ mod tests {
             described["postgres"],
             "postgres://mink:<redacted>@db:5432/mink"
         );
-        assert_eq!(described["roles"], "catalog,s3,indexer,admin");
+        assert_eq!(described["roles"], "catalog,s3,indexer,tier,admin");
     }
 
     #[test]
@@ -768,5 +843,24 @@ mod tests {
         };
 
         assert_eq!(config.describe()["postgres"], "postgres://db:5432/mink");
+    }
+
+    #[test]
+    fn catalog_secrets_are_redacted_in_debug() {
+        let oauth2 = ExternalCatalogAuth::Oauth2 {
+            credential: "client:hunter2".to_owned(),
+            scope: Some("catalog".to_owned()),
+            token_uri: None,
+        };
+        let bearer = ExternalCatalogAuth::Bearer {
+            token: "hunter2".to_owned(),
+        };
+
+        for auth in [oauth2, bearer] {
+            let printed = format!("{auth:?}");
+
+            assert!(!printed.contains("hunter2"), "{printed}");
+            assert!(printed.contains("<redacted>"), "{printed}");
+        }
     }
 }

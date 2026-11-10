@@ -8,7 +8,7 @@ use axum::http::{HeaderValue, Method};
 use bytes::Bytes;
 use futures::stream::{self, BoxStream};
 use futures::{StreamExt, TryStreamExt};
-use mink_core::{BuiltFile, File};
+use mink_core::{BuiltFile, ExternalLocation, File};
 use mink_iceberg::Slice;
 use mink_metrics::{Forward, Metrics};
 use nestor::{ReadRange, ReadStream};
@@ -94,6 +94,10 @@ impl Reader {
         request: &Request<'_>,
         range: ReadRange,
     ) -> Result<Found, Error> {
+        if let Object::External = key.object() {
+            return self.external(key, Method::GET, request, range).await;
+        }
+
         let table = self.table(key).await?;
         let Some(built) = self.built(key, table).await? else {
             return self.whole(key, table, request, range).await;
@@ -130,6 +134,12 @@ impl Reader {
     }
 
     pub(super) async fn head(&self, key: &Key, request: &Request<'_>) -> Result<Found, Error> {
+        if let Object::External = key.object() {
+            return self
+                .external(key, Method::HEAD, request, ReadRange::Full)
+                .await;
+        }
+
         let table = self.table(key).await?;
         if let Some(built) = self.built(key, table).await? {
             return Ok(Found::Length(built.indexed().stats().bytes()));
@@ -141,6 +151,27 @@ impl Reader {
             Route::Unreachable(file) => Ok(Found::Length(
                 self.cache.build(table, file).await?.len() as u64,
             )),
+        }
+    }
+
+    async fn external(
+        &self,
+        key: &Key,
+        method: Method,
+        request: &Request<'_>,
+        range: ReadRange,
+    ) -> Result<Found, Error> {
+        let head = method == Method::HEAD;
+        if let Route::Forwarded(answer) = self.route(key, method, request).await {
+            return Ok(Found::Forwarded(answer));
+        }
+
+        let table = self.table(key).await?;
+        match head {
+            true => Ok(Found::Length(self.cache.length(key, table).await?)),
+            false => Ok(Found::Stream(ranged(
+                self.cache.read(key, table, range).await?,
+            ))),
         }
     }
 
@@ -229,32 +260,40 @@ impl Reader {
     }
 
     async fn table(&self, key: &Key) -> Result<Uuid, Error> {
-        let name = key.topic();
+        let store = &self.services.store;
+        let (names, found) = match key.object() {
+            Object::Metadata { topic } => (vec![topic.as_str()], topic_table(store, topic).await),
+            Object::Data(file) => {
+                let topic = file.partition().topic();
+                (vec![topic], topic_table(store, topic).await)
+            }
+            Object::External => {
+                let listed = store.external_tables().listed(key.path()).await;
+                let found = listed.map(|listed| {
+                    listed.map(|listed| (listed.location().to_owned(), listed.uuid()))
+                });
+                (ExternalLocation::holding(key.path()), found)
+            }
+        };
 
-        match self.services.store.topics().get(name).await {
-            Ok(Some(topic)) => {
-                self.tables
-                    .lock()
-                    .expect("the table map is never poisoned")
-                    .insert(name.to_owned(), topic.uuid());
-                Ok(topic.uuid())
+        let mut tables = self.tables.lock().expect("the table map is never poisoned");
+        match found {
+            Ok(Some((name, uuid))) => {
+                tables.insert(name, uuid);
+                Ok(uuid)
             }
             Ok(None) => {
-                self.tables
-                    .lock()
-                    .expect("the table map is never poisoned")
-                    .remove(name);
-
+                for name in &names {
+                    tables.remove(*name);
+                }
                 Err(Error::NoSuchKey(key.path().to_owned()))
             }
             Err(error) => {
                 let error = Error::from(error);
-                let known = self
-                    .tables
-                    .lock()
-                    .expect("the table map is never poisoned")
-                    .get(name)
-                    .copied();
+                let known = names
+                    .iter()
+                    .rev()
+                    .find_map(|name| tables.get(*name).copied());
 
                 known.filter(|_| error.store_unavailable()).ok_or(error)
             }
@@ -262,8 +301,10 @@ impl Reader {
     }
 
     async fn route<'a>(&self, key: &'a Key, method: Method, request: &Request<'_>) -> Route<'a> {
-        let Object::Data(file) = key.object() else {
-            return Route::Here;
+        let file = match key.object() {
+            Object::Metadata { .. } => return Route::Here,
+            Object::Data(file) => Some(file),
+            Object::External => None,
         };
 
         if request.forwarded {
@@ -290,10 +331,19 @@ impl Reader {
             Err(error) => {
                 self.services.metrics.forwarded(Forward::Unreachable);
                 tracing::warn!(%error, path = key.path(), "the owner is unreachable; serving here");
-                Route::Unreachable(file)
+                file.map_or(Route::Here, Route::Unreachable)
             }
         }
     }
+}
+
+async fn topic_table(
+    store: &mink_store::Store,
+    topic: &str,
+) -> Result<Option<(String, Uuid)>, mink_store::Error> {
+    let found = store.topics().get(topic).await?;
+
+    Ok(found.map(|found| (topic.to_owned(), found.uuid())))
 }
 
 fn ranged(stream: ReadStream) -> Ranged {

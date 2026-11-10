@@ -18,15 +18,15 @@ Scrape every node. Each counts only its own work. Label values come from fixed s
 | `mink_indexed_records_total` | counter | `source`: `live`, `backfill` | Records written as files |
 | `mink_indexed_bytes_total` | counter | `source` | Bytes of those files |
 | `mink_files_written_total` | counter | `source` | Files written by indexers |
-| `mink_kafka_requests_total` | counter | `request`: `metadata`, `offsets`, `fetch`. `result`: `ok`, `error` | Kafka requests, retries included |
+| `mink_kafka_requests_total` | counter | `request`: `metadata`, `offsets`, `fetch`, `configs`. `result`: `ok`, `error` | Kafka requests, retries included |
 | `mink_kafka_fetched_bytes_total` | counter | | Record batch bytes fetched |
 | `mink_commits_total` | counter | `result`: `ok`, `error` | Snapshot commits |
 | `mink_commit_duration_seconds` | histogram | | Time of one commit |
 | `mink_assemblies_total` | counter | | Assembled files committed |
 | `mink_snapshots_expired_total` | counter | | Snapshots expired |
 | `mink_objects_collected_total` | counter | | Metadata objects deleted |
-| `mink_worker_failures_total` | counter | `worker`: `indexer`, `writer` | Indexers and writers that ended with an error |
-| `mink_leases` | gauge | `scope`: `partition`, `topic` | Leases this node holds |
+| `mink_worker_failures_total` | counter | `worker`: `indexer`, `writer`, `tier` | Workers that ended with an error. `writer` also counts failed tier commits. |
+| `mink_leases` | gauge | `worker`: `indexer`, `writer`, `tier` | Leases this node holds |
 
 ## Reads
 
@@ -35,7 +35,7 @@ Scrape every node. Each counts only its own work. Label values come from fixed s
 | `mink_catalog_requests_total` | counter | `route`: `config`, `namespaces`, `tables`, `load`, `write`. `status`: `2xx`, `4xx`, `5xx` | Catalog requests |
 | `mink_tails_total` | counter | | Load tails built |
 | `mink_tail_duration_seconds` | histogram | | Time to build one tail |
-| `mink_s3_requests_total` | counter | `method`: `get`, `head`. `object`: `data`, `metadata`. `status` | S3 requests answered or forwarded |
+| `mink_s3_requests_total` | counter | `method`: `get`, `head`. `object`: `data`, `metadata`, `external`. `status` | S3 requests answered or forwarded |
 | `mink_s3_sent_bytes_total` | counter | | Response bytes this node sent |
 | `mink_s3_forwarded_total` | counter | `result`: `ok`, `unreachable` | Reads forwarded to a file's owner |
 | `mink_builds_total` | counter | `result`: `ok`, `error` | Builds from Kafka, each an extent of a stored file or a whole tail file |
@@ -46,15 +46,25 @@ Scrape every node. Each counts only its own work. Label values come from fixed s
 
 Histograms have buckets from 0.5 ms to 10 s.
 
+## Tiering
+
+| Metric | Type | Labels | Counts |
+| --- | --- | --- | --- |
+| `mink_tier_gaps_total` | counter | | Gaps: offsets Kafka deleted before they tiered |
+| `mink_tier_skipped_offsets_total` | counter | | Offsets in those gaps |
+| `mink_tier_lag_seconds` | gauge | | Age of the oldest record that waits to tier on this node |
+
+See [Tiering](/docs/design/tiering#gaps).
+
 ## Cache
 
-The cache adds its own `nestor_*` metrics, labelled by `namespace`: `files` for data files, `metadata` for metadata objects.
+The cache adds its own `nestor_*` metrics, labelled by `namespace`: `files` for data files, `metadata` for metadata objects, `external` for the external table's files.
 
 | Metric | Counts |
 | --- | --- |
 | `nestor_blocks_hit_total`, `nestor_blocks_miss_total` | Blocks served from the cache, and blocks fetched |
 | `nestor_bytes_served_total` | Bytes served |
-| `nestor_origin_requests_total`, `nestor_origin_bytes_total` | Fetches from the origin, Kafka builds for `files` and the bucket for `metadata` |
+| `nestor_origin_requests_total`, `nestor_origin_bytes_total` | Fetches from the origin: Kafka builds for `files`, Mink's bucket for `metadata`, the external table's bucket for `external` |
 | `nestor_origin_errors_total`, `nestor_origin_timeouts_total` | Failed and timed out fetches |
 
 The cache hit ratio for data files is `nestor_blocks_hit_total{namespace="files"}` over hits plus misses.

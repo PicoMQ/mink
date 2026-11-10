@@ -24,12 +24,17 @@ impl Writer {
         let specs = store.time_specs().list(self.topic.name()).await?;
         let ended_before = now_ms() - millis(config.assembly_delay);
 
+        let tiered = store.tiered_ranges().ends(self.topic.name()).await?;
+
         let mut groups: BTreeMap<AssemblyGroup, Vec<IndexedFile>> = BTreeMap::new();
         for indexed in store.snapshots().files(latest).await? {
             let file = indexed.file();
             let ended = specs.bucket_ended(file.time(), ended_before);
+            let untiered = tiered
+                .get(&file.partition().index())
+                .is_none_or(|end| file.start_offset() >= *end);
 
-            if ended && next.covers(file) {
+            if ended && untiered && next.covers(file) {
                 groups
                     .entry(AssemblyGroup::of(file))
                     .or_default()
@@ -105,7 +110,11 @@ fn sized_runs(files: &[IndexedFile], limit: u64) -> Vec<&[IndexedFile]> {
 mod tests {
     use std::time::Duration;
 
-    use mink_core::{Granularity, Span, Stats};
+    use mink_core::{
+        CatalogTable, ExternalLocation, Granularity, Offsets, Partition, Scope, Span, Stats,
+        TierSchedule, TieredFiles, TieredRange,
+    };
+    use uuid::Uuid;
 
     use super::*;
     use crate::Config;
@@ -176,5 +185,59 @@ mod tests {
 
         assert_eq!(runs, [2, 2]);
         assert_eq!(whole, [5]);
+    }
+
+    #[tokio::test]
+    async fn files_below_the_tiered_end_are_not_assembled() {
+        let hourly = |config: &mut Config| {
+            config.granularity = Granularity::Hour;
+            config.assembly_delay = Duration::from_millis(1);
+        };
+        let Some(setup) = setup(1, hourly).await else {
+            return;
+        };
+        let mut writer = setup.writer(WRITER, TTL).await;
+        let store = &setup.services.store;
+        setup.index_hour(0, 10, 100).await;
+        setup.index_hour(10, 20, 100).await;
+        setup.index_hour(20, 30, 100).await;
+        let latest = writer.commit().await.unwrap().unwrap();
+        let partition = Partition::new(setup.topic.name(), 0).unwrap();
+        let tier = store
+            .leases()
+            .acquire(&Scope::Tier(partition.clone()), Uuid::from_u128(9), TTL)
+            .await
+            .unwrap()
+            .unwrap();
+        let offsets = Offsets::new(partition, 0, 10).unwrap();
+        store
+            .external_tables()
+            .attach(
+                setup.topic.name(),
+                CatalogTable::new("rest", "kafka", setup.topic.name()),
+                Uuid::new_v4(),
+                ExternalLocation::parse(&format!("s3://b/{}", setup.topic.name())).unwrap(),
+                TierSchedule::default(),
+                &BTreeMap::new(),
+            )
+            .await
+            .unwrap();
+        store
+            .tiered_ranges()
+            .add(
+                &tier,
+                &TieredRange::new(offsets, 1, TieredFiles::new(0, Vec::new())),
+            )
+            .await
+            .unwrap();
+
+        let assemblies = writer.assemblies(&latest, &latest).await.unwrap();
+
+        let replaced: Vec<(i64, i64)> = assemblies
+            .iter()
+            .flat_map(Assembly::replaced)
+            .map(|file| (file.start_offset(), file.end_offset()))
+            .collect();
+        assert_eq!(replaced, [(10, 20), (20, 30)]);
     }
 }

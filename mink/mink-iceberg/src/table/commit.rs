@@ -6,6 +6,8 @@ use mink_core::{File, Object, Offsets, Snapshot, TimeSpecs};
 use mink_schema::binary_schema;
 use sha2::{Digest, Sha256};
 
+use super::external::ExternalSnapshot;
+use super::keys::{end_offset_key, start_offset_key};
 use super::manifests::Manifest;
 
 pub const FIRST_TAIL_SNAPSHOT_ID: i64 = 1 << 62;
@@ -45,7 +47,7 @@ impl<'a> Commit<'a> {
     ) -> Commit<'a> {
         Commit {
             snapshot_id: snapshot.id(),
-            sequence_number: snapshot.id(),
+            sequence_number: snapshot.sequence_number(),
             timestamp_ms: snapshot.timestamp_ms(),
             key: snapshot.key(),
             offsets: snapshot.offsets().to_vec(),
@@ -81,7 +83,7 @@ impl<'a> Commit<'a> {
         Commit {
             snapshot_id: FIRST_TAIL_SNAPSHOT_ID
                 | i64::try_from(low).expect("62 bits fit in an i64"),
-            sequence_number: committed.id() + 1,
+            sequence_number: committed.sequence_number() + 1,
             timestamp_ms: committed.timestamp_ms(),
             key: format!("{}-t{key:016x}", committed.key()),
             offsets,
@@ -100,6 +102,15 @@ impl<'a> Commit<'a> {
 }
 
 impl Counts {
+    pub(super) fn live(manifests: &[Manifest]) -> Counts {
+        let mut counts = Counts::default();
+        for (_, entry) in manifests.iter().flat_map(|manifest| &manifest.live) {
+            counts.add(entry.data_file());
+        }
+
+        counts
+    }
+
     pub(super) fn add(&mut self, data_file: &DataFile) {
         self.files += 1;
         self.records += data_file.record_count();
@@ -112,6 +123,7 @@ pub(super) fn summary(
     additions: &Counts,
     deletions: &Counts,
     totals: &Counts,
+    external: Option<&ExternalSnapshot>,
 ) -> Summary {
     let operation = match (additions.files, deletions.files) {
         (_, 0) => Operation::Append,
@@ -135,25 +147,51 @@ pub(super) fn summary(
         put("removed-files-size", deletions.bytes);
     }
 
-    put("total-data-files", totals.files);
-    put("total-records", totals.records);
-    put("total-files-size", totals.bytes);
-    put("total-delete-files", 0);
-    put("total-position-deletes", 0);
-    put("total-equality-deletes", 0);
+    let (data_files, records, delete_files, position_deletes, files_size) = match external {
+        None => (
+            Some(totals.files),
+            Some(totals.records),
+            Some(0),
+            Some(0),
+            Some(totals.bytes),
+        ),
+        Some(external) => (
+            external.data_files().map(|files| totals.files + files),
+            external.records().map(|records| totals.records + records),
+            external.delete_files(),
+            external.position_deletes(),
+            None,
+        ),
+    };
+    let known = [
+        ("total-data-files", data_files),
+        ("total-records", records),
+        ("total-files-size", files_size),
+        ("total-delete-files", delete_files),
+        ("total-position-deletes", position_deletes),
+        ("total-equality-deletes", Some(0)),
+    ];
+    for (key, value) in known {
+        if let Some(value) = value {
+            put(key, value);
+        }
+    }
 
     for offsets in offsets {
-        let prefix = format!("mink.partition.{}", offsets.partition().index());
+        let partition = offsets.partition().index();
 
         properties.insert(
-            format!("{prefix}.start-offset"),
+            start_offset_key(partition),
             offsets.start_offset().to_string(),
         );
-        properties.insert(
-            format!("{prefix}.end-offset"),
-            offsets.end_offset().to_string(),
-        );
+        properties.insert(end_offset_key(partition), offsets.end_offset().to_string());
     }
+
+    properties.extend(
+        external
+            .into_iter()
+            .flat_map(ExternalSnapshot::summary_properties),
+    );
 
     Summary {
         operation,

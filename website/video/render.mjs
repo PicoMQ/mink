@@ -6,8 +6,9 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const FPS = 60;
-const scene = new URL("./scene.html", import.meta.url);
-const output = process.argv[2] ?? fileURLToPath(new URL("./mink.mp4", import.meta.url));
+const [name = "mink", target] = process.argv.slice(2);
+const scene = new URL(`./${name}.html`, import.meta.url);
+const output = target ?? fileURLToPath(new URL(`./${name}.mp4`, import.meta.url));
 const audio = join(tmpdir(), `mink-${process.pid}.wav`);
 
 const browser = await chromium.launch();

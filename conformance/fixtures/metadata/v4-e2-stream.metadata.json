@@ -1,0 +1,137 @@
+{
+  "current-schema-id": 0,
+  "current-snapshot-id": 4,
+  "default-sort-order-id": 0,
+  "default-spec-id": 1073741824,
+  "format-version": 2,
+  "last-column-id": 9,
+  "last-partition-id": 1000,
+  "last-sequence-number": 4,
+  "last-updated-ms": 1793000240000,
+  "location": "s3://warehouse/orders",
+  "metadata-log": [],
+  "partition-specs": [
+    {
+      "fields": [
+        {
+          "field-id": 1000,
+          "name": "_kafka_partition",
+          "source-id": 1,
+          "transform": "identity"
+        }
+      ],
+      "spec-id": 1073741824
+    }
+  ],
+  "refs": {
+    "main": {
+      "snapshot-id": 4,
+      "type": "branch"
+    }
+  },
+  "schemas": [
+    {
+      "fields": [
+        {
+          "id": 1,
+          "name": "_kafka_partition",
+          "required": true,
+          "type": "int"
+        },
+        {
+          "id": 2,
+          "name": "_kafka_offset",
+          "required": true,
+          "type": "long"
+        },
+        {
+          "id": 3,
+          "name": "_kafka_timestamp",
+          "required": true,
+          "type": "timestamptz"
+        },
+        {
+          "id": 4,
+          "name": "_kafka_key",
+          "required": false,
+          "type": "binary"
+        },
+        {
+          "id": 5,
+          "name": "_kafka_headers",
+          "required": true,
+          "type": {
+            "element": {
+              "fields": [
+                {
+                  "id": 8,
+                  "name": "key",
+                  "required": true,
+                  "type": "string"
+                },
+                {
+                  "id": 9,
+                  "name": "value",
+                  "required": false,
+                  "type": "binary"
+                }
+              ],
+              "type": "struct"
+            },
+            "element-id": 7,
+            "element-required": true,
+            "type": "list"
+          }
+        },
+        {
+          "id": 6,
+          "name": "_kafka_value",
+          "required": false,
+          "type": "binary"
+        }
+      ],
+      "schema-id": 0,
+      "type": "struct"
+    }
+  ],
+  "snapshot-log": [
+    {
+      "snapshot-id": 4,
+      "timestamp-ms": 1793000240000
+    }
+  ],
+  "snapshots": [
+    {
+      "manifest-list": "s3://warehouse/orders/metadata/snap-4-e2-stream.avro",
+      "parent-snapshot-id": 3,
+      "schema-id": 0,
+      "sequence-number": 4,
+      "snapshot-id": 4,
+      "summary": {
+        "deleted-data-files": "1",
+        "deleted-records": "100",
+        "mink.partition.0.end-offset": "250",
+        "mink.partition.0.start-offset": "200",
+        "mink.partition.1.end-offset": "80",
+        "mink.partition.1.start-offset": "0",
+        "operation": "delete",
+        "removed-files-size": "10000",
+        "total-data-files": "3",
+        "total-delete-files": "0",
+        "total-equality-deletes": "0",
+        "total-files-size": "13000",
+        "total-position-deletes": "0",
+        "total-records": "130"
+      },
+      "timestamp-ms": 1793000240000
+    }
+  ],
+  "sort-orders": [
+    {
+      "fields": [],
+      "order-id": 0
+    }
+  ],
+  "statistics": [],
+  "table-uuid": "1e11d53d-c5cc-532f-84e5-14957a826d5b"
+}

@@ -1,6 +1,6 @@
 # Retention
 
-Snapshots expire after `snapshot_retention`. The writer deletes the objects and rows only expired snapshots used. Kafka's retention decides how far back a table reaches.
+Snapshots expire after `snapshot_retention`. The writer deletes the objects and rows only expired snapshots used. Kafka's retention decides how far back a table reaches, and a [tiered](/docs/design/tiering) table reaches as far back as its external table.
 
 ## Snapshot expiry
 
@@ -8,6 +8,7 @@ Snapshots expire after `snapshot_retention`. The writer deletes the objects and 
 | --- | --- | --- |
 | It is older than | `snapshot_retention` | `24h` |
 | Kafka's retention deleted records it covers | Kafka's `retention.ms`, `retention.bytes` | |
+| It lists a detached external table, and another is attached | [Tiering](/docs/design/tiering#attach-and-detach) | |
 
 The latest snapshot never expires. Snapshots expire oldest first, as part of a commit.
 
@@ -31,5 +32,6 @@ Queries that started on a snapshot just before it expired finish reading within 
 | Records at the start of a partition | Moves the indexed range's start to the next file boundary. At most one file per partition leaves the table early. |
 | Records a snapshot covers | Expires that snapshot |
 | The whole topic | Marks the table `missing` |
+| Records of a tiered table before they tier | Tiering skips them, see [Gaps](/docs/design/tiering#gaps) |
 
 Mink never deletes anything from Kafka.

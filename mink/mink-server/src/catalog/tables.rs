@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
-use mink_core::{Offsets, Snapshot, Topic};
+use mink_core::{Offsets, Snapshot, Topic, View};
 use mink_iceberg::Table;
 
 use super::tail;
@@ -13,13 +13,18 @@ use crate::services::Services;
 pub(crate) struct Tables {
     services: Arc<Services>,
     cached: Mutex<HashMap<String, Cached>>,
-    tails: SharedRuns<Vec<Offsets>, MetadataFile>,
+    tails: SharedRuns<Vec<Offsets>, MetadataFiles>,
 }
 
 #[derive(Clone)]
 pub(crate) struct MetadataFile {
     location: String,
     bytes: Bytes,
+}
+
+#[derive(Clone)]
+pub(crate) struct MetadataFiles {
+    files: Vec<(View, MetadataFile)>,
 }
 
 #[derive(Clone)]
@@ -32,7 +37,7 @@ struct Cached {
 #[derive(Clone)]
 struct Tail {
     offsets: Vec<Offsets>,
-    metadata: MetadataFile,
+    metadata: MetadataFiles,
 }
 
 impl MetadataFile {
@@ -46,6 +51,19 @@ impl MetadataFile {
 
     pub(crate) fn bytes(&self) -> &Bytes {
         &self.bytes
+    }
+}
+
+impl MetadataFiles {
+    pub(super) fn new(files: Vec<(View, MetadataFile)>) -> MetadataFiles {
+        MetadataFiles { files }
+    }
+
+    fn of(&self, view: View) -> Option<MetadataFile> {
+        self.files
+            .iter()
+            .find(|(rendered, _)| *rendered == view)
+            .map(|(_, file)| file.clone())
     }
 }
 
@@ -71,7 +89,7 @@ impl Tables {
         Ok(store.snapshots().latest(name).await?.is_some())
     }
 
-    pub(crate) async fn load(&self, name: &str) -> Result<MetadataFile, Error> {
+    pub(crate) async fn load(&self, name: &str, view: View) -> Result<MetadataFile, Error> {
         let store = &self.services.store;
         let not_found = || Error::NoSuchTable(name.to_owned());
         let topic = store.topics().get(name).await?.ok_or_else(not_found)?;
@@ -83,13 +101,13 @@ impl Tables {
         let cached = self.cached(&topic, &snapshot).await?;
 
         let offsets = tail::offsets(&self.services, &snapshot).await?;
-        if offsets == snapshot.offsets() {
-            let location = cached.table.metadata_location(&snapshot);
+        if offsets == snapshot.offsets() || view == View::Lake {
+            let location = cached.table.metadata_location(&snapshot, view);
             let bytes = self.services.warehouse.read(&location).await?;
             return Ok(MetadataFile { location, bytes });
         }
         if let Some(tail) = cached.tail.filter(|tail| tail.offsets == offsets) {
-            return Ok(tail.metadata);
+            return tail.metadata.of(view).ok_or_else(not_found);
         }
 
         let built = tail::build(
@@ -108,7 +126,7 @@ impl Tables {
                 metadata: metadata.clone(),
             },
         );
-        Ok(metadata)
+        metadata.of(view).ok_or_else(not_found)
     }
 
     async fn cached(&self, topic: &Topic, snapshot: &Snapshot) -> Result<Cached, Error> {

@@ -6,6 +6,7 @@ use crate::files::{self, listed_in, remove_unlisted};
 use crate::leases::{Lease, check};
 use crate::objects::{record_commit, unreference_through};
 use crate::ranges::{check_boundary, lock};
+use crate::tiered;
 
 pub struct Snapshots<'a> {
     pool: &'a PgPool,
@@ -24,7 +25,7 @@ impl<'a> Snapshots<'a> {
         released: &[Object],
         assembled: &[Assembly],
     ) -> Result<(), Error> {
-        let topic = lease.require_topic()?;
+        let topic = lease.require_writer()?;
         if snapshot.topic() != topic {
             return Err(Error::LeaseScope(lease.scope().clone()));
         }
@@ -38,6 +39,7 @@ impl<'a> Snapshots<'a> {
         let latest = latest(&mut transaction, topic).await?;
 
         check_id(topic, snapshot, latest.as_ref())?;
+        check_sequence_number(topic, snapshot, latest.as_ref())?;
         check_offsets(snapshot, latest.as_ref())?;
         for offsets in snapshot.offsets() {
             let range = lock(&mut transaction, offsets.partition()).await?;
@@ -58,7 +60,7 @@ impl<'a> Snapshots<'a> {
     }
 
     pub async fn expire(&self, lease: &Lease, through_id: i64) -> Result<u64, Error> {
-        let topic = lease.require_topic()?;
+        let topic = lease.require_writer()?;
         let mut transaction = self.pool.begin().await?;
         check(&mut transaction, lease).await?;
 
@@ -94,8 +96,8 @@ impl<'a> Snapshots<'a> {
         before: Option<i64>,
         limit: i64,
     ) -> Result<Vec<Snapshot>, Error> {
-        let rows: Vec<(i64, i64, i64)> = sqlx::query_as(
-            "SELECT id, timestamp_ms, epoch FROM snapshot \
+        let rows: Vec<(i64, i64, i64, i64)> = sqlx::query_as(
+            "SELECT id, sequence_number, timestamp_ms, epoch FROM snapshot \
              WHERE topic = $1 AND ($2::BIGINT IS NULL OR id < $2) ORDER BY id DESC LIMIT $3",
         )
         .bind(topic)
@@ -103,7 +105,7 @@ impl<'a> Snapshots<'a> {
         .bind(limit)
         .fetch_all(self.pool)
         .await?;
-        let ids: Vec<i64> = rows.iter().map(|(id, _, _)| *id).collect();
+        let ids: Vec<i64> = rows.iter().map(|(id, ..)| *id).collect();
 
         let offsets: Vec<(i64, i32, i64, i64)> = sqlx::query_as(
             "SELECT snapshot_id, partition, start_offset, end_offset FROM snapshot_offsets \
@@ -115,7 +117,7 @@ impl<'a> Snapshots<'a> {
         .await?;
 
         rows.into_iter()
-            .map(|(id, timestamp_ms, epoch)| {
+            .map(|(id, sequence_number, timestamp_ms, epoch)| {
                 let offsets = offsets
                     .iter()
                     .filter(|(snapshot_id, ..)| *snapshot_id == id)
@@ -128,7 +130,13 @@ impl<'a> Snapshots<'a> {
                     })
                     .collect::<Result<Vec<_>, Error>>()?;
 
-                Ok(Snapshot::new(id, timestamp_ms, epoch, offsets)?)
+                Ok(Snapshot::new(
+                    id,
+                    sequence_number,
+                    timestamp_ms,
+                    epoch,
+                    offsets,
+                )?)
             })
             .collect()
     }
@@ -247,6 +255,13 @@ async fn add_assembly(
         return Err(Error::MixedAssembly(assembled.clone()));
     }
 
+    if let Some(offset) = tiered::end_inside(connection, assembled).await? {
+        return Err(Error::NotABoundary {
+            partition: assembled.partition().clone(),
+            offset,
+        });
+    }
+
     let mut flattened = Vec::new();
     for replaced in assembly.replaced() {
         let spans = files::stored_spans(connection, replaced)
@@ -265,7 +280,7 @@ async fn add_assembly(
 }
 
 fn check_id(topic: &str, snapshot: &Snapshot, latest: Option<&Snapshot>) -> Result<(), Error> {
-    let expected = Snapshot::next_id(latest.map(Snapshot::id));
+    let expected = Snapshot::next(latest.map(Snapshot::id));
 
     match snapshot.id() == expected {
         true => Ok(()),
@@ -273,6 +288,23 @@ fn check_id(topic: &str, snapshot: &Snapshot, latest: Option<&Snapshot>) -> Resu
             topic: topic.to_owned(),
             expected,
             given: snapshot.id(),
+        }),
+    }
+}
+
+fn check_sequence_number(
+    topic: &str,
+    snapshot: &Snapshot,
+    latest: Option<&Snapshot>,
+) -> Result<(), Error> {
+    let latest = latest.map_or(0, Snapshot::sequence_number);
+
+    match snapshot.sequence_number() > latest {
+        true => Ok(()),
+        false => Err(Error::SequenceNumberConflict {
+            topic: topic.to_owned(),
+            latest,
+            given: snapshot.sequence_number(),
         }),
     }
 }
@@ -293,13 +325,17 @@ fn check_offsets(snapshot: &Snapshot, latest: Option<&Snapshot>) -> Result<(), E
 }
 
 async fn insert(connection: &mut PgConnection, snapshot: &Snapshot) -> Result<(), Error> {
-    sqlx::query("INSERT INTO snapshot (topic, id, timestamp_ms, epoch) VALUES ($1, $2, $3, $4)")
-        .bind(snapshot.topic())
-        .bind(snapshot.id())
-        .bind(snapshot.timestamp_ms())
-        .bind(snapshot.epoch())
-        .execute(&mut *connection)
-        .await?;
+    sqlx::query(
+        "INSERT INTO snapshot (topic, id, sequence_number, timestamp_ms, epoch) \
+         VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(snapshot.topic())
+    .bind(snapshot.id())
+    .bind(snapshot.sequence_number())
+    .bind(snapshot.timestamp_ms())
+    .bind(snapshot.epoch())
+    .execute(&mut *connection)
+    .await?;
 
     for offsets in snapshot.offsets() {
         sqlx::query(
@@ -355,12 +391,13 @@ async fn latest(connection: &mut PgConnection, topic: &str) -> Result<Option<Sna
 }
 
 async fn load(connection: &mut PgConnection, topic: &str, id: i64) -> Result<Snapshot, Error> {
-    let (timestamp_ms, epoch): (i64, i64) =
-        sqlx::query_as("SELECT timestamp_ms, epoch FROM snapshot WHERE topic = $1 AND id = $2")
-            .bind(topic)
-            .bind(id)
-            .fetch_one(&mut *connection)
-            .await?;
+    let (sequence_number, timestamp_ms, epoch): (i64, i64, i64) = sqlx::query_as(
+        "SELECT sequence_number, timestamp_ms, epoch FROM snapshot WHERE topic = $1 AND id = $2",
+    )
+    .bind(topic)
+    .bind(id)
+    .fetch_one(&mut *connection)
+    .await?;
     let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
         "SELECT partition, start_offset, end_offset FROM snapshot_offsets \
          WHERE topic = $1 AND snapshot_id = $2 ORDER BY partition",
@@ -377,7 +414,13 @@ async fn load(connection: &mut PgConnection, topic: &str, id: i64) -> Result<Sna
         })
         .collect::<Result<Vec<_>, Error>>()?;
 
-    Ok(Snapshot::new(id, timestamp_ms, epoch, offsets)?)
+    Ok(Snapshot::new(
+        id,
+        sequence_number,
+        timestamp_ms,
+        epoch,
+        offsets,
+    )?)
 }
 
 #[cfg(test)]
@@ -490,13 +533,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_commit_whose_sequence_number_does_not_rise_conflicts() {
+        let Some(store) = testing::store().await else {
+            return;
+        };
+        let topic = testing::topic(&store, 1).await;
+        testing::started(&store, &topic).await;
+        let lease = testing::topic_lease(&store, &topic, WRITER).await;
+        let partition = Partition::new(topic.name(), 0).unwrap();
+        let offsets = vec![Offsets::new(partition, 0, 0).unwrap()];
+        let first = Snapshot::new(1, 5, 1000, lease.epoch(), offsets.clone()).unwrap();
+        let second = Snapshot::new(2, 5, 2000, lease.epoch(), offsets).unwrap();
+
+        let snapshots = store.snapshots();
+        snapshots
+            .commit(&lease, &first, &[], &[], &[])
+            .await
+            .unwrap();
+        let commit = snapshots.commit(&lease, &second, &[], &[], &[]).await;
+
+        assert!(
+            matches!(
+                commit,
+                Err(Error::SequenceNumberConflict {
+                    latest: 5,
+                    given: 5,
+                    ..
+                })
+            ),
+            "{commit:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn a_commit_under_a_stale_lease_is_fenced() {
         let Some(store) = testing::store().await else {
             return;
         };
         let topic = testing::topic(&store, 1).await;
         testing::started(&store, &topic).await;
-        let scope = Scope::Topic(topic.name().to_owned());
+        let scope = Scope::Writer(topic.name().to_owned());
         let stale = store
             .leases()
             .acquire(&scope, WRITER, Duration::ZERO)
@@ -846,7 +922,7 @@ mod tests {
     async fn run(store: &Store, steps: &[Step]) {
         let topic = testing::topic(store, 1).await;
         let indexer = testing::started(store, &topic).await.remove(0);
-        let scope = Scope::Topic(topic.name().to_owned());
+        let scope = Scope::Writer(topic.name().to_owned());
         let first = store
             .leases()
             .acquire(&scope, Uuid::from_u128(0), TTL)
@@ -904,7 +980,7 @@ mod tests {
                         continue;
                     };
                     let latest = before.last().map(|(snapshot, _)| snapshot.id());
-                    let id = Snapshot::next_id(latest) + id_shift;
+                    let id = Snapshot::next(latest) + id_shift;
                     if id < 1 {
                         continue;
                     }

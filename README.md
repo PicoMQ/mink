@@ -1,12 +1,12 @@
 # Mink
 
-Mink serves Kafka topics as Iceberg tables, through a read-only Iceberg REST catalog and an S3 endpoint. The records stay in Kafka.
+Mink serves Kafka topics as Iceberg tables, through a read-only Iceberg REST catalog and an S3 endpoint, with older records tiered into Iceberg and read as one table.
 
 [Documentation](https://minkdb.com/docs/) · [Quick start](https://minkdb.com/docs/quick-start) · [Contribute](https://minkdb.com/docs/contribute)
 
 - **`mink/`** the node: Kafka client, schemas, Postgres store, Iceberg files and metadata, metrics, and the `mink` CLI
 - **`console/`** the web console, embedded in the node
-- **`specification/`** the files and metadata Mink writes
+- **`conformance/`** the fixtures that pin the [file formats](https://minkdb.com/docs/formats)
 
 ## Install
 
@@ -65,7 +65,7 @@ CREATE SECRET mink (TYPE S3, KEY_ID 'mink', SECRET 'mink', REGION 'us-east-1',
   ENDPOINT '127.0.0.1:9100', URL_STYLE 'path', USE_SSL false);
 ATTACH 'warehouse' AS mink (TYPE iceberg, ENDPOINT 'http://127.0.0.1:8181', AUTHORIZATION_TYPE 'none');
 
-SELECT * FROM mink.kafka.payments;
+SELECT * FROM mink.merged.payments;
 ```
 
 ## Test

@@ -5,11 +5,12 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
-use mink_core::{Granularity, Scope, TableLocation, TableState, Topic};
+use mink_core::{Granularity, Scope, TableLocation, TableState, Topic, View};
 use mink_store::TableSummary;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use super::external::external_json;
 use super::leases::lease;
 use super::paging::{PageQuery, Paging};
 use super::reply::{Body, Failure, Params, Segments};
@@ -109,6 +110,7 @@ async fn table(
     let specs = store.time_specs().list(&name).await?;
     let leases = store.leases().holders(&name).await?;
     let statistics_at_ms = statistics_at_ms(services, &name, &location).await?;
+    let external = store.external_tables().get(&name).await?;
     let lag = match state {
         TableState::Indexing => Some(lag(services, &name).await?),
         _ => None,
@@ -117,19 +119,23 @@ async fn table(
     let mut detail = item(&topic, state, &summary);
     detail["location"] = json!(location.path());
     detail["metadataLocation"] =
-        json!(latest.map(|snapshot| { location.metadata_file(&snapshot.key()) }));
+        json!(latest.map(|snapshot| { location.metadata_file(&snapshot.key(), View::Merged) }));
     detail["specs"] = specs
         .granularities()
         .iter()
         .enumerate()
-        .map(|(id, granularity)| json!({ "id": id, "granularity": granularity.name() }))
+        .map(|(id, granularity)| {
+            let id = i32::try_from(id).expect("spec ids fit in an i32");
+            json!({ "id": mink_iceberg::iceberg_spec_id(id), "granularity": granularity.name() })
+        })
         .collect();
     detail["writer"] = leases
         .iter()
-        .find(|held| matches!(held.scope(), Scope::Topic(_)))
+        .find(|held| matches!(held.scope(), Scope::Writer(_)))
         .map_or(Value::Null, lease);
     detail["statisticsAtMs"] = json!(statistics_at_ms);
     detail["lag"] = json!(lag);
+    detail["external"] = external.as_ref().map_or(Value::Null, external_json);
     Ok(Json(detail))
 }
 
@@ -338,7 +344,10 @@ mod tests {
         assert_eq!(table["granularity"], "day");
         assert_eq!(
             detail["specs"],
-            json!([{ "id": 0, "granularity": "none" }, { "id": 1, "granularity": "day" }])
+            json!([
+                { "id": 1 << 30, "granularity": "none" },
+                { "id": (1 << 30) + 1, "granularity": "day" }
+            ])
         );
         assert_eq!(bad, StatusCode::BAD_REQUEST);
         assert_eq!(removed, StatusCode::ACCEPTED);

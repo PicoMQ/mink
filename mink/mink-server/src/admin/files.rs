@@ -173,7 +173,7 @@ fn item(stored: &StoredFile) -> Value {
         "startOffset": file.start_offset(),
         "endOffset": file.end_offset(),
         "bucket": file.time().bucket(),
-        "specId": file.time().spec_id(),
+        "specId": mink_iceberg::iceberg_spec_id(file.time().spec_id()),
         "schemaId": file.schema_id(),
         "version": file.version().number(),
         "parts": stored.spans().len(),
@@ -209,7 +209,7 @@ mod tests {
                 start.to_le_bytes().to_vec(),
                 (end - 1).to_le_bytes().to_vec(),
             )
-            .with_nulls(9, 1);
+            .with_nulls(6, 1);
 
         IndexedFile::new(file, stats)
     }
@@ -293,7 +293,7 @@ mod tests {
             detail["columns"],
             json!([
                 { "fieldId": 2, "name": "_kafka_offset", "lower": "10", "upper": "19", "nulls": null, "nans": null },
-                { "fieldId": 9, "name": "_kafka_value", "lower": null, "upper": null, "nulls": 1, "nans": null },
+                { "fieldId": 6, "name": "_kafka_value", "lower": null, "upper": null, "nulls": 1, "nans": null },
             ])
         );
         assert_eq!(unknown, reqwest::StatusCode::NOT_FOUND);

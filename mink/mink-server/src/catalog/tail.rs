@@ -1,9 +1,9 @@
 use std::time::Instant;
 
-use mink_core::{Offsets, Snapshot};
+use mink_core::{Offsets, Snapshot, View};
 use mink_iceberg::Table;
 
-use super::tables::MetadataFile;
+use super::tables::{MetadataFile, MetadataFiles};
 use crate::Error;
 use crate::services::Services;
 
@@ -32,7 +32,7 @@ pub(super) async fn build(
     table: &Table,
     snapshot: &Snapshot,
     offsets: Vec<Offsets>,
-) -> Result<MetadataFile, Error> {
+) -> Result<MetadataFiles, Error> {
     let started = Instant::now();
 
     let built = metadata(services, name, table, snapshot, offsets).await?;
@@ -47,7 +47,7 @@ async fn metadata(
     table: &Table,
     snapshot: &Snapshot,
     offsets: Vec<Offsets>,
-) -> Result<MetadataFile, Error> {
+) -> Result<MetadataFiles, Error> {
     let specs = services.store.time_specs().list(name).await?;
     let mut added = Vec::new();
 
@@ -83,6 +83,15 @@ async fn metadata(
         .add_unreferenced(name, &objects)
         .await?;
 
-    let (object, bytes) = change.metadata();
-    Ok(MetadataFile::new(object.path().to_owned(), bytes.clone()))
+    let files = View::ALL
+        .into_iter()
+        .filter_map(|view| {
+            let (object, bytes) = change.metadata(view)?;
+            Some((
+                view,
+                MetadataFile::new(object.path().to_owned(), bytes.clone()),
+            ))
+        })
+        .collect();
+    Ok(MetadataFiles::new(files))
 }

@@ -4,13 +4,15 @@ use std::ops::Range;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::Duration;
 
-use mink_core::{Member, Offsets, Partition};
+use mink_core::{Member, Offsets, Partition, Scope, View};
 use mink_iceberg::FIRST_TAIL_SNAPSHOT_ID;
 use mink_kafka::{Cluster, Config as KafkaConfig};
 use mink_metrics::Metrics;
-use mink_server::{Config, Error, Node, Role};
+use mink_server::{
+    Attachment, CatalogTable, Config, Error, Node, Partitioning, Role, TableSource, TierSchedule,
+};
 use mink_store::{LeaseHolder, Store};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use tokio::process::Command;
 use tokio::time::Instant;
 use uuid::Uuid;
@@ -18,6 +20,8 @@ use uuid::Uuid;
 const WAIT: Duration = Duration::from_secs(60);
 const LOCALHOST: &str = "127.0.0.1";
 const PORTS: Range<u16> = 20_000..32_000;
+const TIER_INTERVAL: Duration = Duration::from_secs(2);
+const TARGET_FILE_BYTES: u64 = 524_288;
 
 static NEXT_PORT: AtomicU16 = AtomicU16::new(0);
 
@@ -174,8 +178,12 @@ async fn committed(bootstrap: &str, topic: &str, partitions: i32) -> u64 {
     records
 }
 
-async fn load_table(node: &TestNode, topic: &str) -> Option<Value> {
-    let url = format!("{}/v1/namespaces/kafka/tables/{topic}", node.catalog);
+async fn load_table(node: &TestNode, view: View, topic: &str) -> Option<Value> {
+    let url = format!(
+        "{}/v1/namespaces/{}/tables/{topic}",
+        node.catalog,
+        view.name()
+    );
     let response = reqwest::get(url).await.ok()?;
 
     match response.status().is_success() {
@@ -197,7 +205,7 @@ async fn wait_for(node: &TestNode, topic: &str, ready: impl Fn(&Value) -> bool) 
     let deadline = Instant::now() + WAIT;
 
     loop {
-        if let Some(table) = load_table(node, topic).await
+        if let Some(table) = load_table(node, View::Merged, topic).await
             && ready(&table)
         {
             return table;
@@ -212,16 +220,24 @@ async fn wait_for_committed(node: &TestNode, topic: &str, records: u64) -> Value
     let wanted = records.to_string();
 
     wait_for(node, topic, |table| {
-        let snapshots = table["metadata"]["snapshots"].as_array();
-        let committed = snapshots.into_iter().flatten().rev().find(|snapshot| {
+        committed_snapshot(table)["summary"]["total-records"] == wanted.as_str()
+    })
+    .await
+}
+
+fn committed_snapshot(table: &Value) -> &Value {
+    let snapshots = table["metadata"]["snapshots"].as_array();
+
+    snapshots
+        .into_iter()
+        .flatten()
+        .rev()
+        .find(|snapshot| {
             snapshot["snapshot-id"]
                 .as_i64()
                 .is_some_and(|id| id < FIRST_TAIL_SNAPSHOT_ID)
-        });
-
-        committed.is_some_and(|snapshot| snapshot["summary"]["total-records"] == wanted.as_str())
-    })
-    .await
+        })
+        .unwrap_or(&Value::Null)
 }
 
 fn summary(table: &Value) -> &Value {
@@ -317,6 +333,130 @@ async fn duckdb_count(duckdb: &str, node: &TestNode, location: &str) -> String {
     String::from_utf8_lossy(&output.stdout).into_owned()
 }
 
+fn records_sql(table: &str) -> String {
+    format!(
+        "SELECT (SELECT count(*) FROM {table}) AS records, \
+         (SELECT count(*) FROM (SELECT DISTINCT _kafka_partition, _kafka_offset FROM {table}) AS pairs) AS distinct_records"
+    )
+}
+
+fn records(count: u64) -> Value {
+    json!([{"records": count, "distinct_records": count}])
+}
+
+async fn duckdb_records(duckdb: &str, node: &TestNode, location: &str) -> Value {
+    let sql = format!(
+        "INSTALL iceberg; LOAD iceberg; \
+         CREATE SECRET mink (TYPE S3, KEY_ID 'mink', SECRET 'mink', REGION 'us-east-1', \
+         ENDPOINT '127.0.0.1:{}', URL_STYLE 'path', USE_SSL false); {};",
+        node.s3_port,
+        records_sql(&format!("iceberg_scan('{location}')"))
+    );
+    let output = Command::new(duckdb)
+        .args(["-json", "-c", &sql])
+        .output()
+        .await
+        .unwrap();
+
+    serde_json::Deserializer::from_slice(&output.stdout)
+        .into_iter::<Value>()
+        .filter_map(Result::ok)
+        .last()
+        .unwrap_or_else(|| panic!("{}", String::from_utf8_lossy(&output.stderr)))
+}
+
+fn mink_catalog(node: &TestNode) -> String {
+    format!(
+        "from pyiceberg.catalog.rest import RestCatalog\n\
+         catalog = RestCatalog('mink', uri='{}', **{{'s3.access-key-id': 'mink', 's3.secret-access-key': 'mink'}})\n",
+        node.catalog
+    )
+}
+
+fn fixture_catalog(uri: &str, s3: &str) -> String {
+    format!(
+        "from pyiceberg.catalog.rest import RestCatalog\n\
+         catalog = RestCatalog('fixture', uri='{uri}', **{{'s3.endpoint': '{s3}', 's3.access-key-id': 'mink', \
+         's3.secret-access-key': 'minkminkmink', 's3.region': 'us-east-1'}})\n"
+    )
+}
+
+async fn pyiceberg_records(
+    interpreter: &str,
+    catalog: &str,
+    namespace: &str,
+    topic: &str,
+) -> Value {
+    let script = format!(
+        "import json\n\
+         {catalog}\
+         rows = catalog.load_table(('{namespace}', '{topic}')).scan(selected_fields=('_kafka_partition', '_kafka_offset')).to_arrow()\n\
+         pairs = set(zip(rows['_kafka_partition'].to_pylist(), rows['_kafka_offset'].to_pylist()))\n\
+         print(json.dumps([{{'records': rows.num_rows, 'distinct_records': len(pairs)}}]))\n"
+    );
+
+    python(interpreter, &script).await
+}
+
+async fn trino_catalog(trino_url: &str, node: &TestNode, host: &str) -> String {
+    let catalog = format!("mink_{}", Uuid::new_v4().simple());
+
+    trino(
+        trino_url,
+        &format!(
+            "CREATE CATALOG {catalog} USING iceberg WITH (\
+             \"iceberg.catalog.type\" = 'rest', \"iceberg.rest-catalog.uri\" = '{}', \
+             \"fs.native-s3.enabled\" = 'true', \"s3.endpoint\" = 'http://{host}:{}', \"s3.path-style-access\" = 'true', \
+             \"s3.region\" = 'us-east-1', \"s3.aws-access-key\" = 'mink', \"s3.aws-secret-key\" = 'mink')",
+            node.catalog, node.s3_port
+        ),
+    )
+    .await;
+    catalog
+}
+
+fn spark_catalog(uri: &str, s3: &str, secret: &str) -> Value {
+    json!({
+        "": "org.apache.iceberg.spark.SparkCatalog",
+        ".type": "rest",
+        ".uri": uri,
+        ".io-impl": "org.apache.iceberg.aws.s3.S3FileIO",
+        ".s3.endpoint": s3,
+        ".s3.path-style-access": "true",
+        ".s3.access-key-id": "mink",
+        ".s3.secret-access-key": secret,
+        ".client.region": "us-east-1",
+    })
+}
+
+async fn spark_sql(
+    interpreter: &str,
+    spark: &str,
+    catalogs: &[(&str, Value)],
+    statements: &[String],
+) -> Value {
+    let catalogs: Map<String, Value> = catalogs
+        .iter()
+        .map(|(name, settings)| (name.to_string(), settings.clone()))
+        .collect();
+    let script = format!(
+        "import json\n\
+         from pyspark.sql import SparkSession\n\
+         spark = SparkSession.builder.remote('{spark}').getOrCreate()\n\
+         for catalog, settings in json.loads({catalogs}).items():\n\
+         \x20   for key, value in settings.items():\n\
+         \x20       spark.conf.set('spark.sql.catalog.' + catalog + key, value)\n\
+         rows = []\n\
+         for statement in json.loads({statements}):\n\
+         \x20   rows = [row.asDict() for row in spark.sql(statement).collect()]\n\
+         print(json.dumps(rows))\n",
+        catalogs = serde_json::to_string(&Value::Object(catalogs).to_string()).unwrap(),
+        statements = serde_json::to_string(&json!(statements).to_string()).unwrap(),
+    );
+
+    python(interpreter, &script).await
+}
+
 fn metric(text: &str, series: &str) -> u64 {
     text.lines()
         .find_map(|line| line.strip_prefix(series)?.strip_prefix(' '))
@@ -369,7 +509,7 @@ async fn metrics_move_with_the_work_they_count() {
     wait_for_committed(&node, &topic, 9).await;
     let client = reqwest::Client::new();
 
-    load_table(&node, &topic).await.unwrap();
+    load_table(&node, View::Merged, &topic).await.unwrap();
     let files: Value = client
         .get(format!("{}/admin/tables/{topic}/files", node.admin))
         .send()
@@ -435,7 +575,7 @@ async fn metrics_move_with_the_work_they_count() {
     );
     assert_eq!(metric(&text, r#"mink_builds_total{result="ok"}"#), 1);
     assert!(metric(&text, "mink_cache_bytes") > 0);
-    assert!(metric(&text, r#"mink_leases{scope="partition"}"#) >= 1);
+    assert!(metric(&text, r#"mink_leases{worker="indexer"}"#) >= 1);
 }
 
 #[tokio::test]
@@ -450,7 +590,7 @@ async fn duckdb_reads_a_mink_table() {
     wait_for_records(&node, &topic, 9).await;
 
     mink_conformance::produce_values(&bootstrap, &topic, 1, &["j", "k"]);
-    let table = load_table(&node, &topic).await.unwrap();
+    let table = load_table(&node, View::Merged, &topic).await.unwrap();
     let location = table["metadata-location"].as_str().unwrap();
 
     let stdout = duckdb_count(&duckdb, &node, location).await;
@@ -475,11 +615,10 @@ async fn pyiceberg_reads_every_committed_record() {
 
     mink_conformance::produce_values(&bootstrap, &topic, 0, &["j", "k", "l"]);
     let script = format!(
-        "from pyiceberg.catalog.rest import RestCatalog\n\
-         catalog = RestCatalog('mink', uri='{}', **{{'s3.access-key-id': 'mink', 's3.secret-access-key': 'mink'}})\n\
-         table = catalog.load_table(('kafka', '{topic}'))\n\
+        "{}\
+         table = catalog.load_table(('merged', '{topic}'))\n\
          print(table.scan().to_arrow().num_rows)\n",
-        node.catalog
+        mink_catalog(&node)
     );
     let output = Command::new(&python)
         .args(["-c", &script])
@@ -605,11 +744,10 @@ async fn engines_read_typed_columns_across_schema_versions() {
 
     let script = format!(
         "import json\n\
-         from pyiceberg.catalog.rest import RestCatalog\n\
-         catalog = RestCatalog('mink', uri='{}', **{{'s3.access-key-id': 'mink', 's3.secret-access-key': 'mink'}})\n\
-         rows = catalog.load_table(('kafka', '{topic}')).scan().to_arrow().sort_by('_kafka_offset')\n\
+         {}\
+         rows = catalog.load_table(('merged', '{topic}')).scan().to_arrow().sort_by('_kafka_offset')\n\
          print(json.dumps(rows.select(['id', 'note', 'amount']).to_pylist()))\n",
-        node.catalog
+        mink_catalog(&node)
     );
     let pyiceberg = Command::new(&interpreter)
         .args(["-c", &script])
@@ -646,42 +784,24 @@ async fn engines_read_typed_columns_across_schema_versions() {
         .collect();
     assert_eq!(scanned, Value::Array(without_raw));
 
-    let catalog = format!("mink_{}", Uuid::new_v4().simple());
+    let catalog = trino_catalog(&trino_url, &node, &env.host).await;
     let s3 = format!("http://{}:{}", env.host, node.s3_port);
     let select = |table: String| {
         format!(
-            "SELECT id, note, amount, _kafka_value IS NOT NULL AS raw FROM {catalog}.kafka.{table} ORDER BY _kafka_offset"
+            "SELECT id, note, amount, _kafka_value IS NOT NULL AS raw FROM {catalog}.merged.{table} ORDER BY _kafka_offset"
         )
     };
 
-    trino(
-        &trino_url,
-        &format!(
-            "CREATE CATALOG {catalog} USING iceberg WITH (\
-             \"iceberg.catalog.type\" = 'rest', \"iceberg.rest-catalog.uri\" = '{}', \
-             \"fs.native-s3.enabled\" = 'true', \"s3.endpoint\" = '{s3}', \"s3.path-style-access\" = 'true', \
-             \"s3.region\" = 'us-east-1', \"s3.aws-access-key\" = 'mink', \"s3.aws-secret-key\" = 'mink')",
-            node.catalog
-        ),
-    )
-    .await;
     let trino_rows = trino(&trino_url, &select(format!("\"{topic}\""))).await;
     trino(&trino_url, &format!("DROP CATALOG {catalog}")).await;
 
-    let spark_script = format!(
-        "import json\n\
-         from pyspark.sql import SparkSession\n\
-         spark = SparkSession.builder.remote('{spark}').getOrCreate()\n\
-         settings = {{'': 'org.apache.iceberg.spark.SparkCatalog', '.type': 'rest', '.uri': '{}', \
-         '.io-impl': 'org.apache.iceberg.aws.s3.S3FileIO', '.s3.endpoint': '{s3}', '.s3.path-style-access': 'true', \
-         '.s3.access-key-id': 'mink', '.s3.secret-access-key': 'mink'}}\n\
-         for key, value in settings.items():\n    spark.conf.set('spark.sql.catalog.{catalog}' + key, value)\n\
-         rows = spark.sql(\"{}\").collect()\n\
-         print(json.dumps([row.asDict() for row in rows]))\n",
-        node.catalog,
-        select(format!("`{topic}`"))
-    );
-    let spark_rows = python(&interpreter, &spark_script).await;
+    let spark_rows = spark_sql(
+        &interpreter,
+        &spark,
+        &[(&catalog, spark_catalog(&node.catalog, &s3, "mink"))],
+        &[select(format!("`{topic}`"))],
+    )
+    .await;
 
     let as_rows = |rows: Vec<Value>| -> Value {
         rows.into_iter()
@@ -863,22 +983,11 @@ async fn assembled_files_build_only_the_parts_a_query_reads() {
     );
     let read = python(&interpreter, &script).await;
 
-    let catalog = format!("mink_{}", Uuid::new_v4().simple());
-    trino(
-        &trino_url,
-        &format!(
-            "CREATE CATALOG {catalog} USING iceberg WITH (\
-             \"iceberg.catalog.type\" = 'rest', \"iceberg.rest-catalog.uri\" = '{}', \
-             \"fs.native-s3.enabled\" = 'true', \"s3.endpoint\" = 'http://{}:{}', \"s3.path-style-access\" = 'true', \
-             \"s3.region\" = 'us-east-1', \"s3.aws-access-key\" = 'mink', \"s3.aws-secret-key\" = 'mink')",
-            node.catalog, env.host, node.s3_port
-        ),
-    )
-    .await;
+    let catalog = trino_catalog(&trino_url, &node, &env.host).await;
     let counted = trino(
         &trino_url,
         &format!(
-            "SELECT count(*) FROM {catalog}.kafka.\"{topic}\" WHERE _kafka_offset >= {second}"
+            "SELECT count(*) FROM {catalog}.merged.\"{topic}\" WHERE _kafka_offset >= {second}"
         ),
     )
     .await;
@@ -918,9 +1027,8 @@ async fn pyiceberg_reads_the_statistics_file() {
     let script = format!(
         "import json\n\
          import datasketches\n\
-         from pyiceberg.catalog.rest import RestCatalog\n\
-         catalog = RestCatalog('mink', uri='{catalog}', **{{'s3.access-key-id': 'mink', 's3.secret-access-key': 'mink'}})\n\
-         table = catalog.load_table(('kafka', '{topic}'))\n\
+         {catalog}\
+         table = catalog.load_table(('merged', '{topic}'))\n\
          statistics = table.metadata.statistics[0]\n\
          data = table.io.new_input(statistics.statistics_path).open().read()\n\
          size = int.from_bytes(data[-12:-8], 'little')\n\
@@ -930,13 +1038,13 @@ async fn pyiceberg_reads_the_statistics_file() {
          \x20   sketch = datasketches.compact_theta_sketch.deserialize(data[blob['offset']:blob['offset'] + blob['length']])\n\
          \x20   sketches[blob['fields'][0]] = [round(sketch.get_estimate()), int(blob['properties']['ndv'])]\n\
          print(json.dumps(sketches))\n",
-        catalog = node.catalog,
+        catalog = mink_catalog(&node),
     );
 
     let sketches = python(&interpreter, &script).await;
 
     assert_eq!(sketches["2"], json!([4, 4]));
-    assert_eq!(sketches["9"], json!([3, 3]));
+    assert_eq!(sketches["6"], json!([3, 3]));
     for (field, estimates) in sketches.as_object().unwrap() {
         assert_eq!(estimates[0], estimates[1], "field {field}");
     }
@@ -1039,32 +1147,494 @@ async fn three_nodes_survive_a_crash_and_a_postgres_restart() {
         );
     }
 
-    let table = load_table(&first, &topic).await.unwrap();
+    let table = load_table(&first, View::Merged, &topic).await.unwrap();
     let location = table["metadata-location"].as_str().unwrap();
-    let sql = format!(
-        "INSTALL iceberg; LOAD iceberg; \
-         CREATE SECRET mink (TYPE S3, KEY_ID 'mink', SECRET 'mink', REGION 'us-east-1', \
-         ENDPOINT '127.0.0.1:{}', URL_STYLE 'path', USE_SSL false); \
-         SELECT count(*) AS records, count(DISTINCT (_kafka_partition, _kafka_offset)) AS distinct_records \
-         FROM iceberg_scan('{location}');",
-        first.s3_port
-    );
-    let output = Command::new(&duckdb)
-        .args(["-json", "-c", &sql])
-        .output()
-        .await
-        .unwrap();
 
-    let read = serde_json::Deserializer::from_slice(&output.stdout)
-        .into_iter::<Value>()
-        .filter_map(Result::ok)
-        .last()
-        .unwrap_or_else(|| panic!("{}", String::from_utf8_lossy(&output.stderr)));
-    assert_eq!(
-        read,
-        json!([{"records": expected, "distinct_records": expected}])
-    );
+    let read = duckdb_records(&duckdb, &first, location).await;
+    assert_eq!(read, records(expected));
     assert_eq!(committed(&env.bootstrap, &topic, 3).await, expected);
     first.shutdown().await;
     second.shutdown().await;
+}
+
+fn external_catalogs(uri: &str) -> String {
+    format!(r#"external_catalogs = {{ fixture = {{ uri = "{uri}" }} }}"#)
+}
+
+async fn attach(node: &TestNode, uri: &str, topic: &str, after: Duration, source: TableSource) {
+    reqwest::Client::new()
+        .post(format!("{uri}/v1/namespaces"))
+        .json(&json!({ "namespace": ["mink"] }))
+        .send()
+        .await
+        .unwrap();
+    let attachment = Attachment {
+        topic: topic.to_owned(),
+        table: CatalogTable::new("fixture", "mink", topic),
+        schedule: TierSchedule::new(after, TIER_INTERVAL).unwrap(),
+        source,
+    };
+
+    mink_server::attach_external_table(&node.config, attachment)
+        .await
+        .unwrap();
+}
+
+fn new_table(properties: &[(&str, String)]) -> TableSource {
+    TableSource::New {
+        partitioning: Partitioning::Fields(vec!["day(_kafka_timestamp)".parse().unwrap()]),
+        sort: vec!["_kafka_offset desc".parse().unwrap()],
+        properties: properties
+            .iter()
+            .map(|(key, value)| (key.to_string(), value.clone()))
+            .collect(),
+        location: None,
+    }
+}
+
+async fn external_metadata(uri: &str, topic: &str) -> Value {
+    let table: Value = reqwest::get(format!("{uri}/v1/namespaces/mink/tables/{topic}"))
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    table["metadata"].clone()
+}
+
+fn tiered(snapshot: &Value) -> i64 {
+    snapshot["summary"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter(|(key, _)| {
+            key.starts_with("mink.external.partition.") && key.ends_with(".end-offset")
+        })
+        .filter_map(|(_, offset)| offset.as_str()?.parse::<i64>().ok())
+        .sum()
+}
+
+async fn wait_for_tiered(node: &TestNode, topic: &str, tiered_records: i64, records: u64) -> Value {
+    let wanted = records.to_string();
+
+    wait_for(node, topic, |table| {
+        let snapshot = committed_snapshot(table);
+
+        tiered(snapshot) == tiered_records
+            && snapshot["summary"]["total-records"] == wanted.as_str()
+    })
+    .await
+}
+
+async fn tier_holders(postgres: &str, topic: &str) -> Vec<Uuid> {
+    let store = Store::connect(postgres).await.unwrap();
+    let holders = store.leases().holders(topic).await.unwrap();
+
+    store.close().await;
+    holders
+        .iter()
+        .filter(|holder| matches!(holder.scope(), Scope::Tier(_)))
+        .map(LeaseHolder::holder)
+        .collect()
+}
+
+#[tokio::test]
+async fn tiered_records_read_once_through_every_engine() {
+    let (Some(env), Some(uri), Some(duckdb), Some(interpreter), Some(trino_url), Some(spark)) = (
+        test_env().await,
+        mink_conformance::service("TEST_ICEBERG_REST"),
+        mink_conformance::service("TEST_DUCKDB"),
+        mink_conformance::service("TEST_PYICEBERG"),
+        mink_conformance::service("TEST_TRINO"),
+        mink_conformance::service("TEST_SPARK"),
+    ) else {
+        return;
+    };
+    let topic = format!("tiered_{}", Uuid::new_v4().simple());
+    mink_conformance::create_topic(&env.bootstrap, &topic, 2).await;
+    let node = start_node(&env, &topic, &Role::ALL, &external_catalogs(&uri)).await;
+    let old_ms = mink_core::now_ms() - 2 * 3_600_000;
+
+    for partition in 0..2 {
+        let values: Vec<String> = (0..30).map(|_| noise(100_000)).collect();
+        let values: Vec<&str> = values.iter().map(String::as_str).collect();
+
+        mink_conformance::produce_at(&env.bootstrap, &topic, partition, &values, old_ms);
+    }
+    wait_for_committed(&node, &topic, 60).await;
+    for partition in 0..2 {
+        mink_conformance::produce_values(
+            &env.bootstrap,
+            &topic,
+            partition,
+            &["a", "b", "c", "d", "e"],
+        );
+    }
+    let target = [(
+        "write.target-file-size-bytes",
+        TARGET_FILE_BYTES.to_string(),
+    )];
+    attach(
+        &node,
+        &uri,
+        &topic,
+        Duration::from_secs(3600),
+        new_table(&target),
+    )
+    .await;
+    let table = wait_for_tiered(&node, &topic, 60, 70).await;
+
+    let location = table["metadata-location"].as_str().unwrap();
+    let duckdb_read = duckdb_records(&duckdb, &node, location).await;
+    let pyiceberg_read =
+        pyiceberg_records(&interpreter, &mink_catalog(&node), "merged", &topic).await;
+    let catalog = trino_catalog(&trino_url, &node, &env.host).await;
+    let trino_read = trino(
+        &trino_url,
+        &records_sql(&format!("{catalog}.merged.\"{topic}\"")),
+    )
+    .await;
+    trino(&trino_url, &format!("DROP CATALOG {catalog}")).await;
+    let s3 = format!("http://{}:{}", env.host, node.s3_port);
+    let spark_read = spark_sql(
+        &interpreter,
+        &spark,
+        &[(&catalog, spark_catalog(&node.catalog, &s3, "mink"))],
+        &[records_sql(&format!("{catalog}.merged.{topic}"))],
+    )
+    .await;
+
+    let fixture = fixture_catalog(&uri, &env.s3);
+    let script = format!(
+        "import json\n\
+         import pyarrow.parquet as pq\n\
+         {fixture}\
+         table = catalog.load_table(('mink', '{topic}'))\n\
+         files = []\n\
+         for task in table.scan().plan_files():\n\
+         \x20   parquet = pq.ParquetFile(table.io.new_input(task.file.file_path).open())\n\
+         \x20   rows = parquet.read(columns=['_kafka_partition', '_kafka_offset'])\n\
+         \x20   offsets = rows['_kafka_offset'].to_pylist()\n\
+         \x20   files.append({{'partitions': sorted(set(rows['_kafka_partition'].to_pylist())), \
+         'descending': offsets == sorted(offsets, reverse=True), 'bytes': task.file.file_size_in_bytes, \
+         'codec': parquet.metadata.row_group(0).column(0).compression, 'day': task.file.partition[0]}})\n\
+         print(json.dumps(files))\n"
+    );
+    let files = python(&interpreter, &script).await;
+    let external = pyiceberg_records(&interpreter, &fixture, "mink", &topic).await;
+    node.shutdown().await;
+
+    assert_eq!(duckdb_read, records(70));
+    assert_eq!(pyiceberg_read, records(70));
+    assert_eq!(trino_read, [json!([70, 70])]);
+    assert_eq!(spark_read, records(70));
+    assert_eq!(external, records(60));
+    let files = files.as_array().unwrap();
+    for partition in 0..2 {
+        let written = files
+            .iter()
+            .filter(|file| file["partitions"] == json!([partition]))
+            .count();
+        assert!(written >= 2, "{files:?}");
+    }
+    for file in files {
+        assert_eq!(file["partitions"].as_array().unwrap().len(), 1, "{file}");
+        assert_eq!(file["descending"], true, "{file}");
+        assert_eq!(file["codec"], "ZSTD", "{file}");
+        assert_eq!(file["day"], old_ms / 86_400_000, "{file}");
+        assert!(
+            file["bytes"].as_u64().unwrap() <= 2 * TARGET_FILE_BYTES,
+            "{file}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn the_stream_and_lake_namespaces_split_the_merged_table() {
+    let (Some(env), Some(uri), Some(duckdb), Some(interpreter)) = (
+        test_env().await,
+        mink_conformance::service("TEST_ICEBERG_REST"),
+        mink_conformance::service("TEST_DUCKDB"),
+        mink_conformance::service("TEST_PYICEBERG"),
+    ) else {
+        return;
+    };
+    let topic = format!("split_{}", Uuid::new_v4().simple());
+    mink_conformance::create_topic(&env.bootstrap, &topic, 2).await;
+    let node = start_node(&env, &topic, &Role::ALL, &external_catalogs(&uri)).await;
+    let old_ms = mink_core::now_ms() - 2 * 3_600_000;
+
+    for partition in 0..2 {
+        let values = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
+        mink_conformance::produce_at(&env.bootstrap, &topic, partition, &values, old_ms);
+    }
+    wait_for_committed(&node, &topic, 20).await;
+    for partition in 0..2 {
+        mink_conformance::produce_values(&env.bootstrap, &topic, partition, &["k", "l", "m"]);
+    }
+    attach(
+        &node,
+        &uri,
+        &topic,
+        Duration::from_secs(3600),
+        new_table(&[]),
+    )
+    .await;
+    wait_for_tiered(&node, &topic, 20, 26).await;
+
+    let catalog = mink_catalog(&node);
+    let mut pyiceberg = Vec::new();
+    let mut duckdb_reads = Vec::new();
+    for view in View::ALL {
+        pyiceberg.push(pyiceberg_records(&interpreter, &catalog, view.name(), &topic).await);
+        let table = load_table(&node, view, &topic).await.unwrap();
+        let location = table["metadata-location"].as_str().unwrap();
+        duckdb_reads.push(duckdb_records(&duckdb, &node, location).await);
+    }
+    node.shutdown().await;
+
+    let expected = [records(26), records(6), records(20)];
+    assert_eq!(pyiceberg, expected);
+    assert_eq!(duckdb_reads, expected);
+}
+
+#[tokio::test]
+async fn external_changes_show_in_the_merged_table() {
+    let (Some(env), Some(uri), Some(duckdb), Some(interpreter), Some(spark)) = (
+        test_env().await,
+        mink_conformance::service("TEST_ICEBERG_REST"),
+        mink_conformance::service("TEST_DUCKDB"),
+        mink_conformance::service("TEST_PYICEBERG"),
+        mink_conformance::service("TEST_SPARK"),
+    ) else {
+        return;
+    };
+    let topic = format!("changed_{}", Uuid::new_v4().simple());
+    mink_conformance::create_topic(&env.bootstrap, &topic, 2).await;
+    let settings = format!("{}\nretention_check = \"200ms\"", external_catalogs(&uri));
+    let node = start_node(&env, &topic, &Role::ALL, &settings).await;
+    for partition in 0..2 {
+        let values = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
+
+        mink_conformance::produce_values(&env.bootstrap, &topic, partition, &values);
+    }
+    attach(
+        &node,
+        &uri,
+        &topic,
+        Duration::from_millis(1),
+        new_table(&[]),
+    )
+    .await;
+    wait_for_tiered(&node, &topic, 20, 20).await;
+
+    let fixture = format!("fixture_{}", Uuid::new_v4().simple());
+    let table = format!("{fixture}.mink.{topic}");
+    spark_sql(
+        &interpreter,
+        &spark,
+        &[(&fixture, spark_catalog(&uri, &env.s3, "minkminkmink"))],
+        &[
+            format!("DELETE FROM {table} WHERE _kafka_partition = 0 AND _kafka_offset < 4"),
+            format!(
+                "CALL {fixture}.system.rewrite_data_files(table => '{table}', options => map('rewrite-all', 'true'))"
+            ),
+            format!("CALL {fixture}.system.rewrite_manifests('{table}')"),
+        ],
+    )
+    .await;
+    let changed = external_metadata(&uri, &topic).await;
+    let snapshot_id = changed["current-snapshot-id"].to_string();
+    let listed = wait_for(&node, &topic, |table| {
+        committed_snapshot(table)["summary"]["mink.external.snapshot-id"] == snapshot_id.as_str()
+    })
+    .await;
+    let after_changes = duckdb_records(
+        &duckdb,
+        &node,
+        listed["metadata-location"].as_str().unwrap(),
+    )
+    .await;
+
+    for partition in 0..2 {
+        mink_conformance::produce_values(
+            &env.bootstrap,
+            &topic,
+            partition,
+            &["k", "l", "m", "n", "o"],
+        );
+    }
+    wait_for_tiered(&node, &topic, 30, 26).await;
+    for partition in 0..2 {
+        mink_conformance::delete_records(&env.bootstrap, &topic, partition, 15).await;
+    }
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let table = load_table(&node, View::Merged, &topic).await.unwrap();
+    let after_kafka =
+        duckdb_records(&duckdb, &node, table["metadata-location"].as_str().unwrap()).await;
+    node.shutdown().await;
+
+    assert_eq!(after_changes, records(16));
+    assert_eq!(changed["properties"]["mink.partition.0.end-offset"], "10");
+    assert_eq!(changed["properties"]["mink.partition.1.end-offset"], "10");
+    assert_eq!(after_kafka, records(26));
+}
+
+#[tokio::test]
+async fn a_tier_lease_moves_without_tiering_twice() {
+    let (Some(env), Some(uri), Some(duckdb), Some(interpreter)) = (
+        test_env().await,
+        mink_conformance::service("TEST_ICEBERG_REST"),
+        mink_conformance::service("TEST_DUCKDB"),
+        mink_conformance::service("TEST_PYICEBERG"),
+    ) else {
+        return;
+    };
+    let topic = format!("moved_{}", Uuid::new_v4().simple());
+    mink_conformance::create_topic(&env.bootstrap, &topic, 3).await;
+    let settings = external_catalogs(&uri);
+    let first = start_node(&env, &topic, &Role::ALL, &settings).await;
+    attach(
+        &first,
+        &uri,
+        &topic,
+        Duration::from_millis(1),
+        new_table(&[]),
+    )
+    .await;
+    let alone = live_members(&env.postgres).await;
+    let second = start_node(&env, &topic, &Role::ALL, &settings).await;
+
+    let deadline = Instant::now() + WAIT;
+    let mut tiering = tier_holders(&env.postgres, &topic).await;
+    while tiering.iter().all(|holder| alone.contains(holder)) {
+        assert!(Instant::now() < deadline, "{tiering:?}");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        tiering = tier_holders(&env.postgres, &topic).await;
+    }
+    produce_round(&env.bootstrap, &topic, 0).await;
+    wait_for_tiered(&first, &topic, 30, 30).await;
+    second.kill();
+    produce_round(&env.bootstrap, &topic, 1).await;
+    let table = wait_for_tiered(&first, &topic, 60, 60).await;
+
+    let location = table["metadata-location"].as_str().unwrap();
+    let merged = duckdb_records(&duckdb, &first, location).await;
+    let external = pyiceberg_records(
+        &interpreter,
+        &fixture_catalog(&uri, &env.s3),
+        "mink",
+        &topic,
+    )
+    .await;
+    let remaining = tier_holders(&env.postgres, &topic).await;
+    first.shutdown().await;
+
+    assert_eq!(merged, records(60));
+    assert_eq!(external, records(60));
+    assert_eq!(remaining.len(), 3);
+    assert!(
+        remaining.iter().all(|holder| alone.contains(holder)),
+        "{remaining:?}"
+    );
+}
+
+#[tokio::test]
+async fn detach_keeps_time_travel_and_reattaching_resumes() {
+    let (Some(env), Some(uri), Some(duckdb), Some(interpreter), Some(trino_url)) = (
+        test_env().await,
+        mink_conformance::service("TEST_ICEBERG_REST"),
+        mink_conformance::service("TEST_DUCKDB"),
+        mink_conformance::service("TEST_PYICEBERG"),
+        mink_conformance::service("TEST_TRINO"),
+    ) else {
+        return;
+    };
+    let topic = format!("detached_{}", Uuid::new_v4().simple());
+    mink_conformance::create_topic(&env.bootstrap, &topic, 2).await;
+    let node = start_node(&env, &topic, &Role::ALL, &external_catalogs(&uri)).await;
+    for partition in 0..2 {
+        let values = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
+
+        mink_conformance::produce_values(&env.bootstrap, &topic, partition, &values);
+    }
+    attach(
+        &node,
+        &uri,
+        &topic,
+        Duration::from_millis(1),
+        new_table(&[]),
+    )
+    .await;
+    let table = wait_for_tiered(&node, &topic, 20, 20).await;
+    let listed = committed_snapshot(&table)["snapshot-id"].as_i64().unwrap();
+
+    mink_server::detach_external_table(&node.config, &topic)
+        .await
+        .unwrap();
+    let detached = wait_for(&node, &topic, |table| {
+        let summary = &committed_snapshot(table)["summary"];
+
+        summary["mink.external.generation"].is_null() && summary["total-records"] == "20"
+    })
+    .await;
+    let unlisted = duckdb_records(
+        &duckdb,
+        &node,
+        detached["metadata-location"].as_str().unwrap(),
+    )
+    .await;
+    let catalog = trino_catalog(&trino_url, &node, &env.host).await;
+    let travelled = trino(
+        &trino_url,
+        &records_sql(&format!(
+            "{catalog}.merged.\"{topic}\" FOR VERSION AS OF BIGINT '{listed}'"
+        )),
+    )
+    .await;
+    trino(&trino_url, &format!("DROP CATALOG {catalog}")).await;
+
+    let properties = &external_metadata(&uri, &topic).await["properties"];
+    let end_offsets = (0..2)
+        .map(|partition| {
+            let offset = &properties[format!("mink.partition.{partition}.end-offset")];
+
+            (partition, offset.as_str().unwrap().parse().unwrap())
+        })
+        .collect();
+    let existing = TableSource::Existing { end_offsets };
+    attach(&node, &uri, &topic, Duration::from_millis(1), existing).await;
+    for partition in 0..2 {
+        mink_conformance::produce_values(
+            &env.bootstrap,
+            &topic,
+            partition,
+            &["k", "l", "m", "n", "o"],
+        );
+    }
+    let resumed = wait_for_tiered(&node, &topic, 30, 30).await;
+    let merged = duckdb_records(
+        &duckdb,
+        &node,
+        resumed["metadata-location"].as_str().unwrap(),
+    )
+    .await;
+    let external = pyiceberg_records(
+        &interpreter,
+        &fixture_catalog(&uri, &env.s3),
+        "mink",
+        &topic,
+    )
+    .await;
+    node.shutdown().await;
+
+    assert_eq!(unlisted, records(20));
+    assert_eq!(travelled, [json!([20, 20])]);
+    assert_eq!(
+        committed_snapshot(&resumed)["summary"]["mink.external.generation"],
+        "2"
+    );
+    assert_eq!(merged, records(30));
+    assert_eq!(external, records(30));
 }

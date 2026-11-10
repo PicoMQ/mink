@@ -1,3 +1,4 @@
+mod external;
 mod files;
 mod leases;
 mod members;
@@ -11,12 +12,14 @@ mod specs;
 mod stats;
 #[cfg(test)]
 mod testing;
+mod tiered;
 mod topics;
 
 use mink_core::{File, Partition, Scope};
 use sqlx::PgPool;
 use sqlx::migrate::MigrateError;
 
+pub use external::{ExternalTables, ListedLocation};
 pub use files::{Files, StoredFile, built_bytes, parse_built};
 pub use leases::{Lease, LeaseHolder, Leases};
 pub use members::Members;
@@ -28,6 +31,7 @@ pub use sketches::Sketches;
 pub use snapshots::{SnapshotTotals, Snapshots};
 pub use specs::TimeSpecs;
 pub use stats::{parse_stats, stats_json};
+pub use tiered::TieredRanges;
 pub use topics::{TableSummary, Topics, Totals};
 
 #[derive(Clone)]
@@ -67,6 +71,34 @@ pub enum Error {
         expected: i64,
         given: i64,
     },
+    #[error("snapshot {given} of {topic} needs a sequence number above {latest}")]
+    SequenceNumberConflict {
+        topic: String,
+        latest: i64,
+        given: i64,
+    },
+    #[error("topic {topic} already has an external table")]
+    AlreadyExternalTable { topic: String },
+    #[error("table {topic} has no external table")]
+    NoExternalTable { topic: String },
+    #[error("attach generation {generation} of {topic} is no longer attached")]
+    DetachedGeneration { topic: String, generation: i32 },
+    #[error("location {location} is inside or around another external table's location")]
+    OverlappingLocation { location: String },
+    #[error("end offset {offset} of {partition:?} is past its indexed end {indexed}")]
+    EndOffsetBeyondIndex {
+        partition: Partition,
+        offset: i64,
+        indexed: i64,
+    },
+    #[error("the Iceberg table or location given for {topic} is registered for another topic")]
+    ExternalTableTaken { topic: String },
+    #[error("a tiered range of {partition:?} must start at {expected}, not {given}")]
+    RangeNotAdjacent {
+        partition: Partition,
+        expected: i64,
+        given: i64,
+    },
     #[error("the lease on {0:?} is not held by this holder and epoch")]
     Fenced(Scope),
     #[error("a lease on {0:?} cannot do this")]
@@ -81,6 +113,8 @@ pub enum Error {
     FileOutsideLease(File),
     #[error("offset {offset} is not a file boundary in the indexed range of {partition:?}")]
     NotABoundary { partition: Partition, offset: i64 },
+    #[error("offset {offset} is not the end of a range tiered for {partition:?}")]
+    NotATieredEnd { partition: Partition, offset: i64 },
     #[error("the new snapshot has no offsets for {0:?}, which the latest snapshot has")]
     MissingPartition(Partition),
     #[error("the end offset of {0:?} would move backwards")]
@@ -149,6 +183,10 @@ impl Store {
         Snapshots::new(&self.pool)
     }
 
+    pub fn external_tables(&self) -> ExternalTables<'_> {
+        ExternalTables::new(&self.pool)
+    }
+
     pub fn files(&self) -> Files<'_> {
         Files::new(&self.pool)
     }
@@ -171,6 +209,10 @@ impl Store {
 
     pub fn schemas(&self) -> Schemas<'_> {
         Schemas::new(&self.pool)
+    }
+
+    pub fn tiered_ranges(&self) -> TieredRanges<'_> {
+        TieredRanges::new(&self.pool)
     }
 
     pub fn time_specs(&self) -> TimeSpecs<'_> {

@@ -34,17 +34,24 @@ impl Lease {
         self.epoch
     }
 
-    pub(crate) fn require_partition(&self) -> Result<&Partition, Error> {
+    pub(crate) fn require_indexer(&self) -> Result<&Partition, Error> {
         match &self.scope {
-            Scope::Partition(partition) => Ok(partition),
-            Scope::Topic(_) => Err(Error::LeaseScope(self.scope.clone())),
+            Scope::Indexer(partition) => Ok(partition),
+            Scope::Writer(_) | Scope::Tier(_) => Err(Error::LeaseScope(self.scope.clone())),
         }
     }
 
-    pub(crate) fn require_topic(&self) -> Result<&str, Error> {
+    pub(crate) fn require_tier(&self) -> Result<&Partition, Error> {
         match &self.scope {
-            Scope::Topic(topic) => Ok(topic),
-            Scope::Partition(_) => Err(Error::LeaseScope(self.scope.clone())),
+            Scope::Tier(partition) => Ok(partition),
+            Scope::Indexer(_) | Scope::Writer(_) => Err(Error::LeaseScope(self.scope.clone())),
+        }
+    }
+
+    pub(crate) fn require_writer(&self) -> Result<&str, Error> {
+        match &self.scope {
+            Scope::Writer(topic) => Ok(topic),
+            Scope::Indexer(_) | Scope::Tier(_) => Err(Error::LeaseScope(self.scope.clone())),
         }
     }
 }
@@ -80,30 +87,29 @@ impl<'a> Leases<'a> {
         &self,
         topic: Option<&str>,
         holder: Option<Uuid>,
-        after: Option<(&str, Option<i32>)>,
+        after: Option<&Scope>,
         limit: i64,
     ) -> Result<Vec<LeaseHolder>, Error> {
-        let rows: Vec<(String, Option<i32>, Uuid, i64, i64)> = sqlx::query_as(
-            "SELECT topic, partition, holder, epoch, expires_at_ms FROM lease \
+        let rows: Vec<(String, Option<i32>, String, Uuid, i64, i64)> = sqlx::query_as(
+            "SELECT topic, partition, scope, holder, epoch, expires_at_ms FROM lease \
              WHERE expires_at_ms > now_ms() AND ($1::TEXT IS NULL OR topic = $1) \
              AND ($2::UUID IS NULL OR holder = $2) \
-             AND ($3::TEXT IS NULL OR (topic, coalesce(partition, -1)) > ($3, coalesce($4, -1))) \
-             ORDER BY topic, coalesce(partition, -1) LIMIT $5",
+             AND ($3::TEXT IS NULL \
+                 OR (topic, coalesce(partition, -1), scope) > ($3, coalesce($4, -1), $5)) \
+             ORDER BY topic, coalesce(partition, -1), scope LIMIT $6",
         )
         .bind(topic)
         .bind(holder)
-        .bind(after.map(|(topic, _)| topic))
-        .bind(after.and_then(|(_, partition)| partition))
+        .bind(after.map(Scope::topic))
+        .bind(after.and_then(Scope::partition_index))
+        .bind(after.map(Scope::name))
         .bind(limit)
         .fetch_all(self.pool)
         .await?;
 
         rows.into_iter()
-            .map(|(topic, partition, holder, epoch, expires_at_ms)| {
-                let scope = match partition {
-                    Some(index) => Scope::Partition(Partition::new(&topic, index)?),
-                    None => Scope::Topic(topic),
-                };
+            .map(|(topic, partition, scope, holder, epoch, expires_at_ms)| {
+                let scope = Scope::from_name(&scope, &topic, partition)?;
 
                 Ok(LeaseHolder {
                     scope,
@@ -122,10 +128,10 @@ impl<'a> Leases<'a> {
         ttl: Duration,
     ) -> Result<Option<Lease>, Error> {
         let epoch: Option<i64> = sqlx::query_scalar(
-            "INSERT INTO lease (topic, partition, holder, epoch, expires_at_ms) \
-             SELECT $1, $2, $3, 1, now_ms() + $4 \
+            "INSERT INTO lease (topic, partition, scope, holder, epoch, expires_at_ms) \
+             SELECT $1, $2, $5, $3, 1, now_ms() + $4 \
              WHERE EXISTS (SELECT 1 FROM topic WHERE name = $1 AND state = 'indexing') \
-             ON CONFLICT (topic, partition) DO UPDATE SET \
+             ON CONFLICT (topic, partition, scope) DO UPDATE SET \
                  holder = EXCLUDED.holder, \
                  epoch = CASE WHEN lease.holder = EXCLUDED.holder AND lease.expires_at_ms >= now_ms() \
                      THEN lease.epoch ELSE lease.epoch + 1 END, \
@@ -137,6 +143,7 @@ impl<'a> Leases<'a> {
         .bind(scope.partition_index())
         .bind(holder)
         .bind(millis(ttl))
+        .bind(scope.name())
         .fetch_optional(self.pool)
         .await?;
 
@@ -150,7 +157,7 @@ impl<'a> Leases<'a> {
     pub async fn renew(&self, lease: &Lease, ttl: Duration) -> Result<(), Error> {
         let renewed = sqlx::query(
             "UPDATE lease SET expires_at_ms = now_ms() + $5 \
-             WHERE topic = $1 AND partition IS NOT DISTINCT FROM $2 \
+             WHERE topic = $1 AND partition IS NOT DISTINCT FROM $2 AND scope = $6 \
              AND holder = $3 AND epoch = $4 AND expires_at_ms >= now_ms() \
              AND EXISTS (SELECT 1 FROM topic WHERE name = $1 AND state = 'indexing')",
         )
@@ -159,6 +166,7 @@ impl<'a> Leases<'a> {
         .bind(lease.holder)
         .bind(lease.epoch)
         .bind(millis(ttl))
+        .bind(lease.scope.name())
         .execute(self.pool)
         .await?;
 
@@ -171,13 +179,14 @@ impl<'a> Leases<'a> {
     pub async fn release(&self, lease: &Lease) -> Result<(), Error> {
         let released = sqlx::query(
             "UPDATE lease SET expires_at_ms = 0 \
-             WHERE topic = $1 AND partition IS NOT DISTINCT FROM $2 \
+             WHERE topic = $1 AND partition IS NOT DISTINCT FROM $2 AND scope = $5 \
              AND holder = $3 AND epoch = $4 AND expires_at_ms >= now_ms()",
         )
         .bind(lease.scope.topic())
         .bind(lease.scope.partition_index())
         .bind(lease.holder)
         .bind(lease.epoch)
+        .bind(lease.scope.name())
         .execute(self.pool)
         .await?;
 
@@ -190,7 +199,7 @@ impl<'a> Leases<'a> {
 
 pub(crate) async fn check(connection: &mut PgConnection, lease: &Lease) -> Result<(), Error> {
     let held: Option<i32> = sqlx::query_scalar(
-        "SELECT 1 FROM lease WHERE topic = $1 AND partition IS NOT DISTINCT FROM $2 \
+        "SELECT 1 FROM lease WHERE topic = $1 AND partition IS NOT DISTINCT FROM $2 AND scope = $5 \
          AND holder = $3 AND epoch = $4 AND expires_at_ms >= now_ms() \
          AND EXISTS (SELECT 1 FROM topic WHERE name = $1 AND state = 'indexing') \
          FOR UPDATE OF lease",
@@ -199,6 +208,7 @@ pub(crate) async fn check(connection: &mut PgConnection, lease: &Lease) -> Resul
     .bind(lease.scope.partition_index())
     .bind(lease.holder)
     .bind(lease.epoch)
+    .bind(lease.scope.name())
     .fetch_optional(&mut *connection)
     .await?;
 
@@ -219,13 +229,38 @@ mod tests {
     const SECOND: Uuid = Uuid::from_u128(2);
 
     #[tokio::test]
+    async fn index_and_tier_leases_on_one_partition_are_held_apart() {
+        let Some(store) = testing::store().await else {
+            return;
+        };
+        let topic = testing::topic(&store, 1).await;
+        let partition = Partition::new(topic.name(), 0).unwrap();
+
+        let index = store
+            .leases()
+            .acquire(&Scope::Indexer(partition.clone()), FIRST, TTL)
+            .await
+            .unwrap();
+        let tier = store
+            .leases()
+            .acquire(&Scope::Tier(partition), SECOND, TTL)
+            .await
+            .unwrap();
+
+        let holders = store.leases().holders(topic.name()).await.unwrap();
+        assert!(index.is_some());
+        assert!(tier.is_some());
+        assert_eq!(holders.len(), 2);
+    }
+
+    #[tokio::test]
     async fn only_one_holder_acquires_a_lease() {
         let Some(store) = testing::store().await else {
             return;
         };
         let topic = testing::topic(&store, 1).await;
-        let partition = Scope::Partition(Partition::new(topic.name(), 0).unwrap());
-        let whole = Scope::Topic(topic.name().to_owned());
+        let partition = Scope::Indexer(Partition::new(topic.name(), 0).unwrap());
+        let whole = Scope::Writer(topic.name().to_owned());
 
         let first = store
             .leases()
@@ -256,7 +291,7 @@ mod tests {
             return;
         };
         let topic = testing::topic(&store, 1).await;
-        let scope = Scope::Topic(topic.name().to_owned());
+        let scope = Scope::Writer(topic.name().to_owned());
 
         store
             .leases()
@@ -276,7 +311,7 @@ mod tests {
             return;
         };
         let topic = testing::topic(&store, 1).await;
-        let scope = Scope::Partition(Partition::new(topic.name(), 0).unwrap());
+        let scope = Scope::Indexer(Partition::new(topic.name(), 0).unwrap());
         let stalled = store
             .leases()
             .acquire(&scope, FIRST, Duration::ZERO)
@@ -304,7 +339,7 @@ mod tests {
             return;
         };
         let topic = testing::topic(&store, 1).await;
-        let scope = Scope::Partition(Partition::new(topic.name(), 0).unwrap());
+        let scope = Scope::Indexer(Partition::new(topic.name(), 0).unwrap());
         let stale = store
             .leases()
             .acquire(&scope, FIRST, Duration::ZERO)
@@ -335,8 +370,8 @@ mod tests {
         };
         let topic = testing::topic(&store, 2).await;
         let (held, free) = (
-            Scope::Partition(Partition::new(topic.name(), 0).unwrap()),
-            Scope::Partition(Partition::new(topic.name(), 1).unwrap()),
+            Scope::Indexer(Partition::new(topic.name(), 0).unwrap()),
+            Scope::Indexer(Partition::new(topic.name(), 1).unwrap()),
         );
         let lease = store
             .leases()

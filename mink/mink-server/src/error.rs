@@ -63,8 +63,40 @@ pub enum Error {
     Json(#[from] serde_json::Error),
     #[error(transparent)]
     Cache(NestorError),
+    #[error("external catalog {0} is not configured")]
+    NoSuchExternalCatalog(String),
+    #[error("the external table of {0} was replaced since it was registered")]
+    ReplacedExternalTable(String),
+    #[error("the external table of {0} no longer holds the offsets Mink committed to it")]
+    ExternalProgressLost(String),
+    #[error(
+        "topic {topic} keeps records for {retention:?}, not more than tier_after plus twice tier_interval ({needed:?})"
+    )]
+    ShortRetention {
+        topic: String,
+        retention: std::time::Duration,
+        needed: std::time::Duration,
+    },
+    #[error("location {0} overlaps Mink's warehouse")]
+    LocationInWarehouse(String),
+    #[error("the end offsets given for {0} differ from those its table already has")]
+    ConflictingEndOffsets(String),
+    #[error("the table attached to {0} holds data, so it needs an end offset for every partition")]
+    MissingEndOffsets(String),
+    #[error("end offset {offset} of partition {partition} is not an offset of the topic")]
+    InvalidEndOffset { partition: i32, offset: i64 },
+    #[error("the topic's schema has no column {0}")]
+    UnknownColumn(String),
+    #[error("cannot read {0:?} as a partition or sort term")]
+    UnreadableTerm(String),
     #[error("the range is outside the object of {0} bytes")]
     Unsatisfiable(u64),
+}
+
+impl From<iceberg::Error> for Error {
+    fn from(error: iceberg::Error) -> Error {
+        Error::Iceberg(error.into())
+    }
 }
 
 impl Error {

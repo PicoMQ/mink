@@ -30,6 +30,7 @@ const docsSidebar = [
       { text: 'Reads', link: '/docs/design/reads' },
       { text: 'Layout and pruning', link: '/docs/design/layout' },
       { text: 'Retention', link: '/docs/design/retention' },
+      { text: 'Tiering', link: '/docs/design/tiering' },
       { text: 'Cluster', link: '/docs/design/cluster' },
     ],
   },
@@ -38,7 +39,17 @@ const docsSidebar = [
     collapsed: false,
     items: [
       { text: 'Engines', link: '/docs/engines' },
-      { text: 'File formats', link: '/docs/formats' },
+    ],
+  },
+  {
+    text: 'File formats',
+    collapsed: false,
+    items: [
+      { text: 'Overview', link: '/docs/formats' },
+      { text: 'Data files', link: '/docs/formats/data' },
+      { text: 'Schemas', link: '/docs/formats/schema' },
+      { text: 'Table metadata', link: '/docs/formats/metadata' },
+      { text: 'Statistics', link: '/docs/formats/statistics' },
     ],
   },
   {
@@ -59,7 +70,6 @@ const docsSidebar = [
     text: 'Community',
     collapsed: true,
     items: [
-      { text: 'Roadmap', link: '/docs/roadmap' },
       { text: 'Contribute', link: '/docs/contribute' },
     ],
   },
@@ -107,6 +117,7 @@ export default defineConfig({
     nav: [
       { text: 'Docs', link: '/docs' },
       { text: 'Contribute', link: '/docs/contribute' },
+      { text: 'Discord', link: 'https://discord.gg/qsMy5sSpYX' },
       { text: 'GitHub', link: 'https://github.com/PicoMQ/mink' },
     ],
     sidebar: docsSidebar,

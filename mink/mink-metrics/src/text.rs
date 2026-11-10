@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use crate::histogram::Histogram;
 use crate::instruments::Instruments;
 use crate::labels::{
-    Answer, Forward, Method, Object, Outcome, Request, Route, Scope, Source, Status, Worker,
+    Answer, Forward, Method, Object, Outcome, Request, Route, Source, Status, Worker,
 };
 
 pub(crate) fn render(instruments: &Instruments) -> String {
@@ -135,17 +135,28 @@ pub(crate) fn render(instruments: &Instruments) -> String {
     }
 
     family(&mut out, "mink_leases", "gauge");
-    for scope in Scope::ALL {
-        let labels = format!(r#"scope="{}""#, scope.label());
+    for worker in Worker::ALL {
+        let labels = format!(r#"worker="{}""#, worker.label());
         sample(
             &mut out,
             "mink_leases",
             &labels,
-            &instruments.leases[scope as usize],
+            &instruments.leases[worker as usize],
         );
     }
 
     gauge(&mut out, "mink_cache_bytes", &instruments.cache_bytes);
+    counter(&mut out, "mink_tier_gaps_total", &instruments.tier_gaps);
+    counter(
+        &mut out,
+        "mink_tier_skipped_offsets_total",
+        &instruments.tier_skipped_offsets,
+    );
+    gauge(
+        &mut out,
+        "mink_tier_lag_seconds",
+        &instruments.tier_lag_seconds,
+    );
 
     out
 }

@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use mink_core::{FieldSketches, File, IndexedFile, Snapshot, Topic, now_ms};
-use mink_iceberg::{FormatVersion, Table};
+use mink_iceberg::{ExternalSnapshot, FormatVersion, Table};
 use mink_metrics::Outcome;
 use mink_store::Lease;
 use tokio::time::Instant;
@@ -13,14 +13,22 @@ use crate::services::Services;
 mod assembly;
 mod collection;
 mod expiry;
+mod tiering;
+
+enum ExternalUpdate {
+    List(ExternalSnapshot),
+    Unlist,
+}
 
 pub(crate) struct Writer {
     services: Arc<Services>,
     lease: Lease,
     topic: Topic,
     table: Table,
+    external_update: Option<ExternalUpdate>,
     last_collection: Instant,
     last_statistics: Option<Instant>,
+    last_tiering: Option<Instant>,
 }
 
 impl Writer {
@@ -46,8 +54,10 @@ impl Writer {
             lease,
             topic,
             table,
+            external_update: None,
             last_collection: Instant::now(),
             last_statistics: None,
+            last_tiering: None,
         })
     }
 
@@ -70,6 +80,13 @@ impl Writer {
             self.collect().await?;
             self.last_collection = Instant::now();
         }
+
+        if let Err(error) = self.commit_tiered().await {
+            tracing::warn!(topic = self.topic.name(), %error, "the tier commit failed");
+            self.services
+                .metrics
+                .worker_failed(mink_metrics::Worker::Writer);
+        }
         Ok(())
     }
 
@@ -83,8 +100,25 @@ impl Writer {
         }
 
         let latest = store.snapshots().latest(name).await?;
+        let listing_deferred = self.listing_deferred();
+        let external = match listing_deferred {
+            true => None,
+            false => self.next_external_snapshot(),
+        };
+        let offsets = offsets
+            .into_iter()
+            .map(|offsets| match external {
+                Some(external) => external.own(offsets),
+                None => Ok(offsets),
+            })
+            .collect::<Result<_, _>>()?;
+        let sequence_number = latest
+            .as_ref()
+            .map(Snapshot::sequence_number)
+            .max(external.and_then(ExternalSnapshot::sequence_number));
         let snapshot = Snapshot::new(
-            Snapshot::next_id(latest.as_ref().map(Snapshot::id)),
+            Snapshot::next(latest.as_ref().map(Snapshot::id)),
+            Snapshot::next(sequence_number),
             now_ms(),
             self.lease.epoch(),
             offsets,
@@ -105,14 +139,35 @@ impl Writer {
         let unchanged = latest
             .as_ref()
             .is_some_and(|latest| latest.offsets() == snapshot.offsets());
-        if unchanged && assemblies.is_empty() && sketches.is_none() {
+        if unchanged
+            && assemblies.is_empty()
+            && sketches.is_none()
+            && self.external_update.is_none()
+        {
             return Ok(None);
         }
 
-        let expire_through_id = self.expire_through_id().await?;
-        let table = match expire_through_id {
+        let other_generations_through_id = match &self.external_update {
+            Some(ExternalUpdate::List(external)) if !listing_deferred => self
+                .table
+                .other_generations_through_id(external.generation())?,
+            _ => None,
+        };
+        let expire_through_id = self
+            .expire_through_id()
+            .await?
+            .max(other_generations_through_id);
+        let mut table = match expire_through_id {
             Some(through_id) => self.table.expire(through_id)?,
             None => self.table.clone(),
+        };
+        table = match &self.external_update {
+            Some(ExternalUpdate::List(_)) if listing_deferred => table.without_external_snapshot(),
+            Some(ExternalUpdate::List(external)) => {
+                table.with_external_snapshot(external.clone())?
+            }
+            Some(ExternalUpdate::Unlist) => table.without_external_snapshot(),
+            None => table,
         };
 
         let mut added = self.new_files(&snapshot, latest.as_ref()).await?;
@@ -160,7 +215,34 @@ impl Writer {
             self.last_statistics = Some(Instant::now());
         }
         self.table = change.into_table();
+        if !listing_deferred {
+            self.external_update = None;
+        }
+        if expire_through_id.is_some() {
+            let listed = self.table.listed_generations()?;
+            store
+                .external_tables()
+                .forget_unlisted(&self.lease, &listed)
+                .await?;
+        }
         Ok(Some(snapshot))
+    }
+
+    fn listing_deferred(&self) -> bool {
+        match (&self.external_update, self.table.external_snapshot()) {
+            (Some(ExternalUpdate::List(external)), Some(listed)) => {
+                listed.generation() != external.generation()
+            }
+            _ => false,
+        }
+    }
+
+    fn next_external_snapshot(&self) -> Option<&ExternalSnapshot> {
+        match &self.external_update {
+            Some(ExternalUpdate::List(external)) => Some(external),
+            Some(ExternalUpdate::Unlist) => None,
+            None => self.table.external_snapshot(),
+        }
     }
 
     async fn sketches(&self) -> Result<Option<FieldSketches>, Error> {
@@ -292,7 +374,7 @@ mod tests {
         }
 
         pub(super) async fn writer(&self, holder: Uuid, ttl: Duration) -> Writer {
-            let scope = Scope::Topic(self.topic.name().to_owned());
+            let scope = Scope::Writer(self.topic.name().to_owned());
             let lease = self
                 .services
                 .store
@@ -424,7 +506,7 @@ mod tests {
             matches!(fenced, Err(Error::Store(mink_store::Error::Fenced(_)))),
             "{fenced:?}"
         );
-        assert_eq!(unrecorded.len(), 3);
+        assert_eq!(unrecorded.len(), 7);
         let recorded = setup.recorded().await;
         let warehouse = setup.in_warehouse().await;
         assert!(recorded.iter().all(|path| warehouse.contains(path)));

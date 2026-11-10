@@ -1,5 +1,6 @@
 mod cluster;
 mod console;
+mod external;
 mod files;
 mod leases;
 mod nodes;
@@ -47,6 +48,8 @@ impl Admin {
         if let Some(cache) = &self.cache {
             self.services.metrics.cache_size(cache.usage().memory_bytes);
         }
+        let lag = self.services.tier_lags.lag(mink_core::now_ms());
+        self.services.metrics.tier_lag(lag);
 
         self.services.metrics.render()
     }
@@ -76,6 +79,7 @@ pub(crate) fn router(
         .merge(nodes::routes())
         .merge(leases::routes())
         .merge(tables::routes())
+        .merge(external::routes())
         .merge(partitions::routes())
         .merge(files::routes())
         .merge(snapshots::routes())
@@ -300,7 +304,7 @@ pub(super) mod tests {
             .unwrap();
 
         let (config, _) = get(&base, "/catalog/v1/config").await;
-        let (tables, _) = get(&base, "/catalog/v1/namespaces/kafka/tables").await;
+        let (tables, _) = get(&base, "/catalog/v1/namespaces/merged/tables").await;
         let metadata = reqwest::get(format!("{base}/s3/mink/{path}"))
             .await
             .unwrap();

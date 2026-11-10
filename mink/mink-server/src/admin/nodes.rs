@@ -144,7 +144,7 @@ fn summary(member: &Member, expires_at_ms: i64, leases: &[LeaseHolder]) -> Value
     let held = leases.iter().filter(|lease| lease.holder() == member.id());
     let partition_leases = held
         .clone()
-        .filter(|lease| matches!(lease.scope(), Scope::Partition(_)))
+        .filter(|lease| matches!(lease.scope(), Scope::Indexer(_)))
         .count();
     let topic_leases = held.count() - partition_leases;
     let roles: Vec<&str> = member.roles().iter().map(Role::name).collect();

@@ -2,7 +2,7 @@
   "current-schema-id": 0,
   "current-snapshot-id": 3,
   "default-sort-order-id": 0,
-  "default-spec-id": 0,
+  "default-spec-id": 1073741824,
   "format-version": 2,
   "last-column-id": 9,
   "last-partition-id": 1000,
@@ -29,7 +29,7 @@
           "transform": "identity"
         }
       ],
-      "spec-id": 0
+      "spec-id": 1073741824
     }
   ],
   "refs": {
@@ -73,13 +73,13 @@
             "element": {
               "fields": [
                 {
-                  "id": 7,
+                  "id": 8,
                   "name": "key",
                   "required": true,
                   "type": "string"
                 },
                 {
-                  "id": 8,
+                  "id": 9,
                   "name": "value",
                   "required": false,
                   "type": "binary"
@@ -87,13 +87,13 @@
               ],
               "type": "struct"
             },
-            "element-id": 6,
+            "element-id": 7,
             "element-required": true,
             "type": "list"
           }
         },
         {
-          "id": 9,
+          "id": 6,
           "name": "_kafka_value",
           "required": false,
           "type": "binary"

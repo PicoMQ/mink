@@ -18,7 +18,7 @@ use mink_schema::{
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
-use crate::rows::rows;
+use crate::rows::record_batch;
 use crate::schema::{FileSchema, TypedSchema};
 
 struct FixtureTable {
@@ -65,7 +65,7 @@ impl FixtureTable {
         let typed = TypedSchema::new(latest, self.decoders).unwrap();
         let partition = Partition::new("payload", 0).unwrap();
 
-        rows(&partition, records, &FileSchema::Typed(Box::new(typed))).unwrap()
+        record_batch(&partition, records, &FileSchema::Typed(Box::new(typed))).unwrap()
     }
 }
 
