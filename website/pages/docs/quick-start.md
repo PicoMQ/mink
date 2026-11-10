@@ -71,7 +71,7 @@ The table shows up in the catalog with its first snapshot, about 10 seconds late
 
 ## Query it
 
-In DuckDB 1.4 or later:
+In DuckDB 2.0 or later:
 
 ```sql
 INSTALL iceberg; LOAD iceberg;
@@ -79,7 +79,7 @@ INSTALL httpfs; LOAD httpfs;
 
 CREATE SECRET mink (TYPE S3, KEY_ID 'mink', SECRET 'mink', REGION 'us-east-1',
   ENDPOINT '127.0.0.1:9100', URL_STYLE 'path', USE_SSL false);
-ATTACH 'warehouse' AS mink (TYPE iceberg, ENDPOINT 'http://127.0.0.1:8181', AUTHORIZATION_TYPE 'none');
+ATTACH 'warehouse' AS mink (TYPE iceberg, URI 'http://127.0.0.1:8181', AUTHORIZATION_TYPE 'none');
 
 SELECT _kafka_offset, id, item, amount FROM mink.merged.payments ORDER BY id;
 ```

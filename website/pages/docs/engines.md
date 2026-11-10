@@ -4,7 +4,7 @@ Any engine with an Iceberg REST catalog connects to Mink with two addresses: the
 
 | Engine | Version | Catalog |
 | --- | --- | --- |
-| DuckDB | 1.4 or later | `ATTACH ... (TYPE iceberg)` |
+| DuckDB | 2.0 or later | `ATTACH ... (TYPE iceberg)` |
 | PyIceberg | 0.12 | `RestCatalog` |
 | Spark | 4.1, with Iceberg 1.12 | `SparkCatalog` of type `rest` |
 | Trino | 484 | `iceberg` connector, catalog type `rest` |
@@ -22,10 +22,12 @@ INSTALL httpfs; LOAD httpfs;
 
 CREATE SECRET mink (TYPE S3, KEY_ID 'mink', SECRET 'mink', REGION 'us-east-1',
   ENDPOINT '127.0.0.1:9100', URL_STYLE 'path', USE_SSL false);
-ATTACH 'warehouse' AS mink (TYPE iceberg, ENDPOINT 'http://127.0.0.1:8181', AUTHORIZATION_TYPE 'none');
+ATTACH 'warehouse' AS mink (TYPE iceberg, URI 'http://127.0.0.1:8181', AUTHORIZATION_TYPE 'none');
 
 SELECT count(*) FROM mink.merged."orders";
 ```
+
+DuckDB 1.4 takes `ENDPOINT` in place of `URI`.
 
 ## PyIceberg
 

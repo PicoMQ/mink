@@ -188,7 +188,7 @@ for statement in [
     "INSTALL iceberg", "LOAD iceberg", "INSTALL httpfs", "LOAD httpfs",
     "CREATE SECRET mink (TYPE S3, KEY_ID 'mink', SECRET 'mink', REGION 'us-east-1', "
     "ENDPOINT 'mink.internal:9100', URL_STYLE 'path', USE_SSL false)",
-    "ATTACH 'warehouse' AS mink (TYPE iceberg, ENDPOINT 'http://mink.internal:8181', AUTHORIZATION_TYPE 'none')",
+    "ATTACH 'warehouse' AS mink (TYPE iceberg, URI 'http://mink.internal:8181', AUTHORIZATION_TYPE 'none')",
 ]:
     db.execute(statement)
 db.sql("SELECT _kafka_partition, _kafka_offset, CAST(_kafka_value AS VARCHAR) FROM mink.merged.payments").show()

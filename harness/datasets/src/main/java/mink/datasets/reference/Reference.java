@@ -54,7 +54,7 @@ public final class Reference implements AutoCloseable {
                     URL_STYLE 'path', USE_SSL %s)
                 """.formatted(s3.getAuthority(), s3.getPath(), s3.getScheme().equals("https")));
         execute("""
-                ATTACH '%s' AS mink (TYPE iceberg, ENDPOINT '%s',
+                ATTACH '%s' AS mink (TYPE iceberg, URI '%s',
                     AUTHORIZATION_TYPE 'none', ACCESS_DELEGATION_MODE 'none')
                 """.formatted(mink.warehouse(), mink.catalog()));
 
