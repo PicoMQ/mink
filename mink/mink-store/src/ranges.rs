@@ -51,23 +51,9 @@ impl<'a> IndexedRanges<'a> {
     }
 
     pub async fn list(&self, topic: &str) -> Result<Vec<Offsets>, Error> {
-        let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
-            "SELECT partition, start_offset, end_offset FROM indexed_range \
-             WHERE topic = $1 ORDER BY partition",
-        )
-        .bind(topic)
-        .fetch_all(self.pool)
-        .await?;
+        let mut connection = self.pool.acquire().await?;
 
-        rows.into_iter()
-            .map(|(index, start_offset, end_offset)| {
-                Ok(Offsets::new(
-                    Partition::new(topic, index)?,
-                    start_offset,
-                    end_offset,
-                )?)
-            })
-            .collect()
+        list(&mut connection, topic).await
     }
 
     pub async fn trim(&self, lease: &Lease, start_offset: i64) -> Result<Offsets, Error> {
@@ -92,6 +78,29 @@ impl<'a> IndexedRanges<'a> {
             range.end_offset(),
         )?)
     }
+}
+
+pub(crate) async fn list(
+    connection: &mut PgConnection,
+    topic: &str,
+) -> Result<Vec<Offsets>, Error> {
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT partition, start_offset, end_offset FROM indexed_range \
+         WHERE topic = $1 ORDER BY partition",
+    )
+    .bind(topic)
+    .fetch_all(&mut *connection)
+    .await?;
+
+    rows.into_iter()
+        .map(|(index, start_offset, end_offset)| {
+            Ok(Offsets::new(
+                Partition::new(topic, index)?,
+                start_offset,
+                end_offset,
+            )?)
+        })
+        .collect()
 }
 
 pub(crate) async fn lock(

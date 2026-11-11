@@ -2,10 +2,10 @@ use mink_core::{Assembly, IndexedFile, Object, Offsets, Partition, Snapshot};
 use sqlx::{PgConnection, PgPool};
 
 use crate::Error;
-use crate::files::{self, listed_in, remove_unlisted};
+use crate::files::{self, listed_in, remove_replaced, remove_trimmed};
 use crate::leases::{Lease, check};
 use crate::objects::{record_commit, unreference_through};
-use crate::ranges::{check_boundary, lock};
+use crate::ranges::{self, check_boundary, lock};
 use crate::tiered;
 
 pub struct Snapshots<'a> {
@@ -78,7 +78,10 @@ impl<'a> Snapshots<'a> {
             .bind(through_id)
             .execute(&mut *transaction)
             .await?;
-        remove_unlisted(&mut transaction, topic).await?;
+        for range in ranges::list(&mut transaction, topic).await? {
+            remove_trimmed(&mut transaction, &range).await?;
+        }
+        remove_replaced(&mut transaction, topic).await?;
 
         transaction.commit().await?;
         Ok(expired.rows_affected())
@@ -499,6 +502,14 @@ mod tests {
         lease
     }
 
+    async fn commit(store: &Store, lease: &Lease, topic: &Topic, id: i64, ranges: &[(i64, i64)]) {
+        store
+            .snapshots()
+            .commit(lease, &snapshot(lease, topic, id, ranges), &[], &[], &[])
+            .await
+            .unwrap();
+    }
+
     #[tokio::test]
     async fn a_commit_with_the_wrong_id_conflicts() {
         let Some(store) = testing::store().await else {
@@ -821,7 +832,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn expiry_removes_snapshots_offsets_and_uncovered_files() {
+    async fn expiry_removes_snapshots_offsets_and_trimmed_files() {
         let Some(store) = testing::store().await else {
             return;
         };
@@ -829,28 +840,8 @@ mod tests {
         let indexer = indexed(&store, &topic, &[(0, 5), (5, 10), (10, 15)]).await;
         let lease = testing::topic_lease(&store, &topic, WRITER).await;
 
-        store
-            .snapshots()
-            .commit(
-                &lease,
-                &snapshot(&lease, &topic, 1, &[(0, 5)]),
-                &[],
-                &[],
-                &[],
-            )
-            .await
-            .unwrap();
-        store
-            .snapshots()
-            .commit(
-                &lease,
-                &snapshot(&lease, &topic, 2, &[(5, 10)]),
-                &[],
-                &[],
-                &[],
-            )
-            .await
-            .unwrap();
+        commit(&store, &lease, &topic, 1, &[(0, 5)]).await;
+        commit(&store, &lease, &topic, 2, &[(5, 10)]).await;
         store.indexed_ranges().trim(&indexer, 5).await.unwrap();
         let trimmed = file(&topic, 0, 0, 5).file().clone();
         let indexed_only = file(&topic, 0, 10, 15).file().clone();
@@ -873,6 +864,27 @@ mod tests {
             matches!(latest, Err(Error::LatestSnapshot { id: 2, .. })),
             "{latest:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn a_trimmed_file_stays_while_a_kept_snapshot_lists_it() {
+        let Some(store) = testing::store().await else {
+            return;
+        };
+        let topic = testing::topic(&store, 1).await;
+        let indexer = indexed(&store, &topic, &[(0, 5), (5, 10), (10, 15)]).await;
+        let lease = testing::topic_lease(&store, &topic, WRITER).await;
+        commit(&store, &lease, &topic, 1, &[(0, 5)]).await;
+        commit(&store, &lease, &topic, 2, &[(0, 10)]).await;
+        store.indexed_ranges().trim(&indexer, 5).await.unwrap();
+        commit(&store, &lease, &topic, 3, &[(5, 15)]).await;
+        let trimmed = file(&topic, 0, 0, 5).file().clone();
+
+        store.snapshots().expire(&lease, 1).await.unwrap();
+        assert!(store.files().built(&trimmed).await.unwrap().is_some());
+
+        store.snapshots().expire(&lease, 2).await.unwrap();
+        assert_eq!(store.files().built(&trimmed).await.unwrap(), None);
     }
 
     #[derive(Debug, Clone)]
