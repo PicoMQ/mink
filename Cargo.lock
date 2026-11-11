@@ -3169,7 +3169,7 @@ dependencies = [
 
 [[package]]
 name = "mink-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -3182,7 +3182,7 @@ dependencies = [
 
 [[package]]
 name = "mink-conformance"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "bytes",
@@ -3209,7 +3209,7 @@ dependencies = [
 
 [[package]]
 name = "mink-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bytes",
  "datasketches 0.5.0",
@@ -3223,7 +3223,7 @@ dependencies = [
 
 [[package]]
 name = "mink-iceberg"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
@@ -3248,7 +3248,7 @@ dependencies = [
 
 [[package]]
 name = "mink-kafka"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -3272,7 +3272,7 @@ dependencies = [
 
 [[package]]
 name = "mink-metrics"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "metrics",
  "metrics-exporter-prometheus",
@@ -3280,7 +3280,7 @@ dependencies = [
 
 [[package]]
 name = "mink-schema"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "apache-avro 0.22.0",
  "bytes",
@@ -3300,7 +3300,7 @@ dependencies = [
 
 [[package]]
 name = "mink-server"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "arrow-array",
  "async-trait",
@@ -3344,7 +3344,7 @@ dependencies = [
 
 [[package]]
 name = "mink-store"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bytes",
  "hex",

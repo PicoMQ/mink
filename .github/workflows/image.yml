@@ -88,7 +88,10 @@ jobs:
           outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
 
       - name: run the image
-        run: docker run --rm "$IMAGE_NAME@$DIGEST" --version
+        run: |
+          version=$(docker run --rm "$IMAGE_NAME@$DIGEST" --version)
+          echo "$version"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then test "$version" = "mink ${GITHUB_REF_NAME#v}"; fi
         env:
           DIGEST: ${{ steps.image.outputs.digest }}
 
