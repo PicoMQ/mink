@@ -352,19 +352,33 @@ pub(crate) async fn replace(
     }
 }
 
-pub(crate) async fn remove_unlisted(
+pub(crate) async fn remove_trimmed(
+    connection: &mut PgConnection,
+    range: &Offsets,
+) -> Result<(), Error> {
+    sqlx::query(
+        "WITH kept AS (SELECT start_offset, MAX(end_offset) AS end_offset FROM snapshot_offsets \
+             WHERE topic = $1 AND partition = $2 GROUP BY start_offset) \
+         DELETE FROM file f WHERE f.topic = $1 AND f.partition = $2 AND f.start_offset < $3 \
+         AND NOT EXISTS (SELECT 1 FROM kept k \
+             WHERE covers(k.start_offset, k.end_offset, f.start_offset, f.end_offset))",
+    )
+    .bind(range.partition().topic())
+    .bind(range.partition().index())
+    .bind(range.start_offset())
+    .execute(&mut *connection)
+    .await?;
+
+    Ok(())
+}
+
+pub(crate) async fn remove_replaced(
     connection: &mut PgConnection,
     topic: &str,
 ) -> Result<(), Error> {
     sqlx::query(
-        "DELETE FROM file f WHERE f.topic = $1 AND (\
-             (NOT EXISTS (SELECT 1 FROM snapshot_offsets o \
-                 WHERE o.topic = f.topic AND o.partition = f.partition \
-                 AND covers(o.start_offset, o.end_offset, f.start_offset, f.end_offset)) \
-             AND NOT EXISTS (SELECT 1 FROM indexed_range r \
-                 WHERE r.topic = f.topic AND r.partition = f.partition \
-                 AND covers(r.start_offset, r.end_offset, f.start_offset, f.end_offset))) \
-             OR f.replaced_snapshot_id <= (SELECT MIN(id) FROM snapshot s WHERE s.topic = f.topic))",
+        "DELETE FROM file WHERE topic = $1 \
+         AND replaced_snapshot_id <= (SELECT MIN(id) FROM snapshot WHERE topic = $1)",
     )
     .bind(topic)
     .execute(&mut *connection)
@@ -915,6 +929,15 @@ mod tests {
 
         snapshots.expire(&writer, 1).await.unwrap();
         assert_eq!(store.files().built(&replaced[0]).await.unwrap(), None);
+        assert_eq!(store.files().built(&replaced[1]).await.unwrap(), None);
         assert!(store.files().built(&assembled).await.unwrap().is_some());
+        assert!(
+            store
+                .files()
+                .built(indexed[2].file())
+                .await
+                .unwrap()
+                .is_some()
+        );
     }
 }
